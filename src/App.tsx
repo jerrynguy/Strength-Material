@@ -5,6 +5,8 @@ import { PRESETS, defaultModel } from './core/presets';
 import type { FrameModel } from './core/frame';
 import { FRAME_PRESETS } from './core/framePresets';
 import { FrameApp } from './ui/frame/FrameApp';
+import { designBeam } from './core/design';
+import { DesignCard } from './ui/DesignCard';
 import type { Model } from './core/types';
 import { BeamView } from './ui/BeamView';
 import { Diagram } from './ui/Diagram';
@@ -185,6 +187,8 @@ export default function App() {
                 {!['v', 'w', 'u', 'phi'].some((k) => anyD(k as 'v')) && <p className="muted">Không có chuyển vị.</p>}
               </Card>
               <SummaryCard res={res} model={model} />
+              <DesignCard allowable={model.material.allowable} run={(o) => designBeam(model, o)}
+                apply={(spec) => { set((m) => ({ ...m, section: spec })); setVersion((v) => v + 1); }} />
             </>
           )}
           <StressCard res={res} model={model} x={pickX} setX={setPickX} />

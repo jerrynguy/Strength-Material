@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import type { AnalysisResult } from '../core/analysis';
 import type { Classification } from '../core/classify';
 import type { SectionProps } from '../core/section';
+import { findProfile } from '../core/steelTables';
 import { equilibriumSteps, sectionSteps } from '../core/steps';
 import { fmt, maxNormalOnSection, neutralAxisCoeffs, stressAt, type PointStress } from '../core/stress';
 import type { InternalForces, Material, Model, SectionSpec } from '../core/types';
@@ -191,6 +192,24 @@ function quickPoints(s: SectionSpec, sec: SectionProps): { label: string; y: num
     pts[1].z = zw;
   } else if (s.kind === 'tube') {
     pts[1].z = -(s.D / 2 - s.t / 2);
+  } else if (s.kind === 'catalog' && !s.rotate) {
+    const f = findProfile(s.family, s.name);
+    const g = f?.profile.geom;
+    if (g && (g.type === 'I' || g.type === 'U')) {
+      const zw = g.type === 'U' ? g.tw / 2 - zc : 0;
+      if (g.type === 'U') pts.forEach((p) => (p.z = zw));
+      const tWeb = g.tf + ((g.slope ?? 0) * (g.type === 'I' ? (g.b - g.tw) / 2 : g.b - g.tw)) / 2;
+      pts.push({ label: 'Đầu bản bụng (trên)', y: sec.yMax - tWeb - eps, z: zw });
+      pts.push({ label: 'Chân bản bụng (dưới)', y: sec.yMin + tWeb + eps, z: zw });
+    } else if (g && g.type === 'RHS') {
+      const zw = -(g.B - g.t) / 2;
+      pts[1].z = zw;
+      pts.push({ label: 'Thành đứng – tiếp giáp cánh dưới', y: sec.yMin + g.t + eps, z: zw });
+    } else if (g && g.type === 'CHS') {
+      pts[1].z = -(g.D / 2 - g.t / 2);
+    } else if (g && g.type === 'L') {
+      pts.forEach((p) => (p.z = g.t / 2 - zc));
+    }
   } else if (s.kind === 'L') {
     pts.forEach((p) => (p.z = s.t / 2 - zc));
   }

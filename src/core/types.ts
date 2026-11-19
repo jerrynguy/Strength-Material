@@ -100,7 +100,9 @@ export type SectionSpec =
   | { kind: 'T'; b: number; tf: number; hw: number; tw: number }
   | { kind: 'U'; h: number; b: number; tw: number; tf: number }
   | { kind: 'L'; b: number; h: number; t: number }
-  | { kind: 'polygon'; outer: [number, number][]; holes: [number, number][][] };
+  | { kind: 'polygon'; outer: [number, number][]; holes: [number, number][][] }
+  /** Thép hình tra bảng; rotate = xoay 90° (uốn quanh trục yếu) */
+  | { kind: 'catalog'; family: string; name: string; rotate: boolean };
 
 export interface Model {
   title: string;

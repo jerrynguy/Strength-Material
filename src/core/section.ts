@@ -8,6 +8,7 @@
  * nên mọi hình (I, hộp rỗng, T, U, L, tự vẽ...) đều dùng chung một thuật toán.
  * Tròn đặc / ống tròn được tính giải tích để tránh sai số rời rạc hoá.
  */
+import { findProfile, type ProfileGeom } from './steelTables';
 import type { SectionSpec } from './types';
 
 export type Pt = [number, number]; // [z, y]
@@ -248,7 +249,7 @@ function openThinTorsion(parts: [number, number][]): TorsionInfo {
 
 // ───────────────────────── Hình tròn ─────────────────────────
 
-function circularSection(D: number, d: number): SectionProps {
+function circularSection(D: number, d: number, labelOverride?: string): SectionProps {
   const R = D / 2;
   const r = d / 2;
   const A = Math.PI * (R * R - r * r);
@@ -271,7 +272,7 @@ function circularSection(D: number, d: number): SectionProps {
     return [R * Math.cos(t), R * Math.sin(t)] as Pt;
   });
   return {
-    label: r > 0 ? `Ống tròn D=${D}, t=${(D - d) / 2} mm` : `Tròn đặc D=${D} mm`,
+    label: labelOverride ?? (r > 0 ? `Ống tròn D=${D}, t=${(D - d) / 2} mm` : `Tròn đặc D=${D} mm`),
     A, Iz: I, Iy: I, Iyz: 0,
     centroid: [R, R], yMin: -R, yMax: R, zMin: -R, zMax: R, rings, checkPoints,
     widthAtY: (y) => chord(R, y) - chord(r, y),
@@ -289,6 +290,126 @@ function circularSection(D: number, d: number): SectionProps {
       tauAt: (y, z, T) => (Math.abs(T) * Math.hypot(y, z)) / Ip,
     },
   };
+}
+
+
+// ───────────────────────── Thép hình ─────────────────────────
+
+/** Thay mỗi đỉnh có bán kính r > 0 bằng cung tròn tiếp xúc hai cạnh (dùng cho cả góc lồi và góc lõm). */
+export function filletPolygon(pts: Pt[], radii: number[], seg = 8): Pt[] {
+  const n = pts.length;
+  const out: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const r = radii[i] ?? 0;
+    const P = pts[i];
+    if (!(r > 0)) { out.push(P); continue; }
+    const A = pts[(i - 1 + n) % n];
+    const B = pts[(i + 1) % n];
+    const l1 = Math.hypot(A[0] - P[0], A[1] - P[1]);
+    const l2 = Math.hypot(B[0] - P[0], B[1] - P[1]);
+    const u1: Pt = [(A[0] - P[0]) / l1, (A[1] - P[1]) / l1];
+    const u2: Pt = [(B[0] - P[0]) / l2, (B[1] - P[1]) / l2];
+    const cos = Math.max(-1, Math.min(1, u1[0] * u2[0] + u1[1] * u2[1]));
+    const half = Math.acos(cos) / 2;
+    if (half < 1e-6 || half > Math.PI / 2 - 1e-6) { out.push(P); continue; }
+    const d = Math.min(r / Math.tan(half), l1 * 0.5, l2 * 0.5);
+    const rr = d * Math.tan(half);
+    const bis: Pt = [u1[0] + u2[0], u1[1] + u2[1]];
+    const bl = Math.hypot(bis[0], bis[1]);
+    const dc = rr / Math.sin(half);
+    const C: Pt = [P[0] + (bis[0] / bl) * dc, P[1] + (bis[1] / bl) * dc];
+    const T1: Pt = [P[0] + u1[0] * d, P[1] + u1[1] * d];
+    const T2: Pt = [P[0] + u2[0] * d, P[1] + u2[1] * d];
+    const a1 = Math.atan2(T1[1] - C[1], T1[0] - C[0]);
+    let da = Math.atan2(T2[1] - C[1], T2[0] - C[0]) - a1;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    for (let k = 0; k <= seg; k++) {
+      const a = a1 + (da * k) / seg;
+      out.push([C[0] + rr * Math.cos(a), C[1] + rr * Math.sin(a)]);
+    }
+  }
+  return out;
+}
+
+function roundedRect(B: number, H: number, r: number, z0: number, y0: number, seg = 8): Pt[] {
+  return filletPolygon([[z0, y0], [z0 + B, y0], [z0 + B, y0 + H], [z0, y0 + H]], [r, r, r, r], seg);
+}
+
+/** Bán kính góc ngoài hộp theo EN 10219 */
+export const rhsOuterRadius = (t: number) => (t <= 6 ? 2 * t : t <= 10 ? 2.5 * t : 3 * t);
+
+function profileRings(g: ProfileGeom): Ring[] {
+  switch (g.type) {
+    case 'I': {
+      const o = (g.b - g.tw) / 2;
+      const dt = ((g.slope ?? 0) * o) / 2;
+      const tTip = g.tf - dt, tWeb = g.tf + dt;
+      const r2 = g.r2 ?? 0;
+      const pts: Pt[] = [
+        [-g.b / 2, 0], [g.b / 2, 0], [g.b / 2, tTip], [g.tw / 2, tWeb], [g.tw / 2, g.h - tWeb], [g.b / 2, g.h - tTip],
+        [g.b / 2, g.h], [-g.b / 2, g.h], [-g.b / 2, g.h - tTip], [-g.tw / 2, g.h - tWeb], [-g.tw / 2, tWeb], [-g.b / 2, tTip],
+      ];
+      const radii = [0, 0, r2, g.r, g.r, r2, 0, 0, r2, g.r, g.r, r2];
+      return [{ pts: filletPolygon(pts, radii), hole: false }];
+    }
+    case 'U': {
+      const o = g.b - g.tw;
+      const dt = ((g.slope ?? 0) * o) / 2;
+      const tTip = g.tf - dt, tWeb = g.tf + dt;
+      const r2 = g.r2 ?? 0;
+      const pts: Pt[] = [[0, 0], [g.b, 0], [g.b, tTip], [g.tw, tWeb], [g.tw, g.h - tWeb], [g.b, g.h - tTip], [g.b, g.h], [0, g.h]];
+      return [{ pts: filletPolygon(pts, [0, 0, r2, g.r, g.r, r2, 0, 0]), hole: false }];
+    }
+    case 'L': {
+      const pts: Pt[] = [[0, 0], [g.b, 0], [g.b, g.t], [g.t, g.t], [g.t, g.b], [0, g.b]];
+      return [{ pts: filletPolygon(pts, [0, 0, g.r2, g.r, g.r2, 0]), hole: false }];
+    }
+    case 'RHS': {
+      const ro = rhsOuterRadius(g.t);
+      return [
+        { pts: roundedRect(g.B, g.H, ro, -g.B / 2, 0), hole: false },
+        { pts: roundedRect(g.B - 2 * g.t, g.H - 2 * g.t, Math.max(ro - g.t, 0), -g.B / 2 + g.t, g.t), hole: true },
+      ];
+    }
+    case 'CHS':
+      return [];
+  }
+}
+
+function profileTorsion(g: ProfileGeom): TorsionInfo {
+  switch (g.type) {
+    case 'I': return openThinTorsion([[g.b, g.tf], [g.b, g.tf], [g.h - 2 * g.tf, g.tw]]);
+    case 'U': return openThinTorsion([[g.b, g.tf], [g.b, g.tf], [g.h - 2 * g.tf, g.tw]]);
+    case 'L': return openThinTorsion([[g.b, g.t], [g.b - g.t, g.t]]);
+    case 'RHS': {
+      const rm = rhsOuterRadius(g.t) - g.t / 2;
+      const bm = g.B - g.t, hm = g.H - g.t;
+      const A0 = bm * hm - (4 - Math.PI) * rm * rm;
+      const per = 2 * (bm + hm) - (8 - 2 * Math.PI) * rm;
+      return {
+        J: (4 * A0 * A0 * g.t) / per,
+        model: 'Thành mỏng kín (Bredt): τ = T/(2·A₀·t), J = 4A₀²t/p',
+        tauMax: (T) => Math.abs(T) / (2 * A0 * g.t),
+      };
+    }
+    case 'CHS':
+      return { J: 0, model: '', tauMax: () => NaN };
+  }
+}
+
+function rotateRings(rings: Ring[]): Ring[] {
+  // xoay 90°: (z, y) → (−y, z)
+  return rings.map((r) => ({ hole: r.hole, pts: r.pts.map(([z, y]) => [-y, z] as Pt) }));
+}
+
+function catalogSection(family: string, name: string, rotate: boolean): SectionProps {
+  const found = findProfile(family, name)!;
+  const g = found.profile.geom;
+  const label = `${name} (${found.family.standard})${rotate ? ' — xoay 90°' : ''}`;
+  if (g.type === 'CHS') return circularSection(g.D, g.D - 2 * g.t, label);
+  const rings = profileRings(g);
+  return polygonSection(label, rotate ? rotateRings(rings) : rings, profileTorsion(g));
 }
 
 // ───────────────────────── Bộ dựng ─────────────────────────
@@ -320,6 +441,8 @@ export function validateSection(s: SectionSpec): string | null {
     case 'L':
       if (!pos(s.b, s.h, s.t)) return 'Kích thước phải dương';
       return s.t < Math.min(s.b, s.h) ? null : 'Chiều dày quá lớn';
+    case 'catalog':
+      return findProfile(s.family, s.name) ? null : 'Không tìm thấy thép hình trong bảng';
     case 'polygon': {
       if (s.outer.length < 3) return 'Đa giác cần ít nhất 3 đỉnh';
       const p = ringsRaw([{ pts: s.outer, hole: false }, ...s.holes.map((h) => ({ pts: h, hole: true }))]);
@@ -388,6 +511,8 @@ export function computeSection(s: SectionSpec): SectionProps {
       return polygonSection(`Chữ L ${s.b}×${s.h}×${s.t} mm`, [{ pts, hole: false }],
         openThinTorsion([[s.b, s.t], [s.h - s.t, s.t]]));
     }
+    case 'catalog':
+      return catalogSection(s.family, s.name, s.rotate);
     case 'polygon':
       return polygonSection(
         'Đa giác tự định nghĩa',
@@ -407,6 +532,7 @@ export const SECTION_LABELS: Record<SectionSpec['kind'], string> = {
   U: 'Chữ U (máng)',
   L: 'Chữ L (thép góc)',
   polygon: 'Đa giác tuỳ ý',
+  catalog: 'Thép hình tiêu chuẩn (tra bảng)',
 };
 
 export const SECTION_DEFAULTS: Record<SectionSpec['kind'], SectionSpec> = {
@@ -419,4 +545,5 @@ export const SECTION_DEFAULTS: Record<SectionSpec['kind'], SectionSpec> = {
   U: { kind: 'U', h: 200, b: 80, tw: 8, tf: 12 },
   L: { kind: 'L', b: 100, h: 100, t: 10 },
   polygon: { kind: 'polygon', outer: [[0, 0], [200, 0], [200, 50], [100, 300], [0, 50]], holes: [] },
+  catalog: { kind: 'catalog', family: 'I_GOST', name: 'I20', rotate: false },
 };

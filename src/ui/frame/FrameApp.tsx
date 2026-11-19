@@ -6,6 +6,8 @@ import { fmt } from '../../core/stress';
 import type { InternalForces } from '../../core/types';
 import { Card, NumField, Select } from '../fields';
 import { StressPanel } from '../results';
+import { designFrame } from '../../core/design';
+import { DesignCard } from '../DesignCard';
 import { FrameGeneral, FrameGeometry, FrameLoads } from './FrameEditor';
 import { FrameView, type FrameViewMode } from './FrameView';
 
@@ -31,6 +33,7 @@ export function FrameApp({ model, setModel, replace }: {
   const [view, setView] = useState<FrameViewMode>('M');
   const [pick, setPick] = useState<{ memberId: string; s: number } | null>(null);
   const [side, setSide] = useState<'left' | 'right'>('left');
+  const [designSec, setDesignSec] = useState<string>('');
   const set = setModel;
   const res = useMemo(() => analyzeFrame(model), [model]);
   const mr = res.ok ? res.members.find((m) => m.id === pick?.memberId) ?? res.members[0] : undefined;
@@ -70,6 +73,19 @@ export function FrameApp({ model, setModel, replace }: {
             <FrameReactions res={res} model={model} />
             <FrameMembers res={res} />
             <FrameDisp res={res} />
+            {model.sections.length > 0 && (() => {
+              const sid = model.sections.some((x) => x.id === designSec) ? designSec : model.sections[0].id;
+              return (
+                <DesignCard
+                  allowable={model.material.allowable}
+                  run={(o) => designFrame(model, sid, o)}
+                  apply={(spec) => set((m) => ({ ...m, sections: m.sections.map((x) => (x.id === sid ? { ...x, spec } : x)) }))}
+                  extraControls={<Select label="Tiết diện cần chọn" value={sid} onChange={setDesignSec}
+                    options={model.sections.map((x) => ({ value: x.id, label: `${x.name} (${model.members.filter((b) => b.sectionId === x.id).map((b) => b.name).join(', ')})` }))} />}
+                  note="Với khung: kiểm tra mọi thanh dùng tiết diện đã chọn; độ võng là độ võng tương đối của thanh so với dây cung."
+                />
+              );
+            })()}
             {mr && (
               <StressPanel
                 key={mr.id}

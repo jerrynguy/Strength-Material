@@ -46,7 +46,7 @@ export const PRESETS: Preset[] = [
       title: 'Dầm đơn giản, q = 10 kN/m',
       length: 6,
       material: { ...STEEL },
-      section: { kind: 'I', bt: 150, tt: 12, hw: 276, tw: 8, bb: 150, tb: 12 },
+      section: { kind: 'catalog', family: 'I_GOST', name: 'I24', rotate: false },
       supports: [support('A', 0, 'pin'), support('B', 6, 'roller')],
       hinges: [],
       loads: [dist('q', 0, 6, -10)],

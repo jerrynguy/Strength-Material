@@ -7,6 +7,7 @@ import {
 } from '../core/types';
 import { Card, NumField, Select, TextField } from './fields';
 import { SectionView } from './SectionView';
+import { SteelPicker } from './SteelPicker';
 
 type Setter = (fn: (m: Model) => Model) => void;
 
@@ -73,7 +74,9 @@ export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200 }: { s
           }}
         />
       </div>
-      {s.kind !== 'polygon' ? (
+      {s.kind === 'catalog' ? (
+        <SteelPicker spec={s} onChange={setSec} />
+      ) : s.kind !== 'polygon' ? (
         <div className="row">
           {Object.entries(s)
             .filter(([k]) => k !== 'kind')
@@ -113,6 +116,7 @@ export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200 }: { s
               <tr><th>W<sub>z</sub> = I<sub>z</sub>/y<sub>max</sub></th><td>{fmt(props.Iz / Math.max(props.yMax, -props.yMin), 0)} mm³</td></tr>
               <tr><th>W<sub>y</sub></th><td>{fmt(props.Iy / Math.max(props.zMax, -props.zMin), 0)} mm³</td></tr>
               <tr><th>Trọng tâm cách đáy</th><td>{fmt(-props.yMin, 2)} mm</td></tr>
+              <tr><th>Khối lượng (thép)</th><td>{fmt(props.A * 1e-6 * 7850, 2)} kg/m</td></tr>
               <tr><th>J (xoắn)</th><td>{props.torsion.J ? `${fmt(props.torsion.J, 0)} mm⁴` : '—'}</td></tr>
               <tr><td colSpan={2} className="muted">{props.torsion.model}</td></tr>
             </tbody>

@@ -231,3 +231,12 @@ details.item > summary { cursor: pointer; padding-bottom: 6px; color: var(--ink)
 .fr-dia.fr-M, .fr-dial.fr-M { fill: var(--tone-b); stroke: var(--tone-b); }
 .fr-dial { fill: none !important; }
 .fr-deform { fill: none; stroke: var(--tone-d); stroke-width: 2.4; }
+
+/* ───── Thép hình ───── */
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.steel-table tbody tr { cursor: pointer; }
+.steel-table tbody tr:hover { background: var(--soft); }
+.sel-row { background: var(--accent-soft) !important; }
+td.good { color: var(--ok); font-weight: 600; }
+td.bad { color: var(--err); }
+button.linkish { border: 0; background: none; color: var(--accent); padding: 4px 0; margin-top: 4px; }

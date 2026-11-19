@@ -29,6 +29,23 @@ Bộ giải là **tất định**: tính bằng công thức và phương pháp 
 
 Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) và **phương pháp ma trận độ cứng** với phần tử khung phẳng. Gối nghiêng đưa vào bằng nhân tử Lagrange. Nội lực dọc thanh tính chính xác theo phương pháp mặt cắt từ lực đầu thanh.
 
+## Thép hình tiêu chuẩn
+
+| Họ | Tiêu chuẩn | Số hiệu |
+|---|---|---|
+| I cán nóng (cánh dốc 12%) | GOST 8239-89 | I10 – I60 |
+| U / C cán nóng (cánh dốc 10%) | GOST 8240-89 | U5 – U40 |
+| L đều cạnh | GOST 8509-93 | L20×3 – L200×16 |
+| H cán nóng | JIS G3192 | H100×100 – H600×200 |
+| IPE, HEA, HEB | EN 10365 | IPE 80 – 600, HEA/HEB 100 – 500 |
+| Ống tròn, hộp vuông, hộp chữ nhật | EN 10219 / kích thước thương mại | Ø21.3 – Ø406.4, □20 – □300, ▭40×20 – ▭300×200 |
+
+- **Hình học thật:** mặt cắt dựng theo kích thước danh nghĩa, có góc lượn chân, lượn mép và cánh dốc (thép GOST). Hộp có góc lượn theo EN 10219. Mọi đặc trưng (A, I, W, S, i) và ứng suất đều tính từ cùng một hình học.
+- **Kiểm chứng:** A và Iₓ tính được sai lệch < 1% so với bảng tra cho toàn bộ hơn 120 số hiệu có số liệu đối chiếu (`tests/steel.test.ts`).
+- **Xoay 90°:** cho trường hợp uốn quanh trục yếu.
+- **Chọn số hiệu thép:** duyệt cả họ thép, tính lại kết cấu với từng tiết diện (đúng cả cho hệ siêu tĩnh) rồi chọn tiết diện nhẹ nhất thoả cả ba điều kiện |σ| ≤ [σ], τ ≤ [σ]/√3, f ≤ L/n. Có tuỳ chọn kể trọng lượng bản thân. Dùng được cho dầm và cho từng nhóm tiết diện trong khung.
+- **Chưa kiểm tra ổn định:** chưa có kiểm tra ổn định tổng thể và cục bộ. Kích thước lấy theo tiêu chuẩn, nên cần đối chiếu catalogue của nhà sản xuất khi lập hồ sơ thiết kế.
+
 ## Phương pháp
 
 1. **Cấu tạo hình học:** mỗi đoạn giữa các khớp nối được coi là cứng tuyệt đối. Ma trận liên kết có hạng bằng số bậc tự do thì hệ bất biến hình; bậc siêu tĩnh = số liên kết − hạng.
@@ -81,7 +98,7 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 
 - [x] Khung phẳng / dầm nghiêng, dàn
 - [ ] Lực nhiệt / lún gối cho khung
-- [ ] Bảng thép hình tiêu chuẩn (TCVN / JIS)
+- [x] Bảng thép hình tiêu chuẩn (GOST, JIS, EN) + chọn số hiệu thép
 - [ ] Ổn định thanh chịu nén (Euler, hệ số φ)
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [ ] Xuất báo cáo PDF
