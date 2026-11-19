@@ -1,6 +1,6 @@
-# Sức bền vật liệu — Bộ giải thanh
+# Sức bền vật liệu — Bộ giải thanh & khung phẳng
 
-Ứng dụng web tính toán Sức bền vật liệu cho **thanh thẳng** với sơ đồ do người dùng tự dựng: gối, khớp, tải trọng, tiết diện đều tuỳ chỉnh được.
+Ứng dụng web tính toán Sức bền vật liệu cho **thanh thẳng** (dầm, trục, cột) và **khung phẳng / dầm nghiêng** với sơ đồ do người dùng tự dựng: nút, thanh, gối, khớp, tải trọng, tiết diện đều tuỳ chỉnh được.
 Bộ giải là **tất định**: tính bằng công thức và phương pháp số, không dùng AI để "đoán" đáp số.
 
 ## Tính năng
@@ -16,6 +16,18 @@ Bộ giải là **tất định**: tính bằng công thức và phương pháp 
 | **Ứng suất** | σ (Navier, kể cả uốn không đối xứng), τ (Jurapxki), τ xoắn (tròn / Bredt / thành mỏng hở / chữ nhật); σ₁, σ₃, vòng Mohr; thuyết bền 3 và 4; biểu đồ σ, τ theo chiều cao |
 | **Biến dạng** | Độ võng v, w; góc xoay; chuyển vị dọc trục, ΔL; góc xoắn; ε, γ tại điểm |
 | **Khác** | Bài mẫu, lưu/mở bài toán (.json), tự lưu trên trình duyệt, chạy được trên điện thoại |
+
+## Khung phẳng / dầm nghiêng
+
+| Nhóm | Nội dung |
+|---|---|
+| **Hình học** | Nút (X, Y) bất kỳ, thanh nối hai nút, mỗi thanh có tiết diện riêng; khớp ở đầu thanh (khung ba khớp, dầm ghép, dàn) |
+| **Gối** | Ngàm, gối cố định, gối di động; **mặt tựa nghiêng** góc bất kỳ (phản lực vuông góc mặt nghiêng); liên kết tuỳ chỉnh |
+| **Tải** | Lực/mô men tại nút; lực tập trung trên thanh (hệ tổng thể hoặc địa phương); tải phân bố đều/hình thang theo phương đứng, ngang, vuông góc hoặc dọc thanh. Tải đứng/ngang tính **trên 1 m chiều dài thanh** (trọng lượng bản thân) hoặc **trên 1 m hình chiếu** (tải sàn, mái, tuyết) |
+| **Kết quả** | Tĩnh định / siêu tĩnh (bậc n) / biến hình, kể cả biến hình tức thời; phản lực (kể cả thành phần vuông góc/song song mặt tựa); biểu đồ N, Q, M vẽ trên khung (M về phía thớ căng); hình dạng biến dạng; chuyển vị và góc xoay nút; dạng chịu lực từng thanh; ứng suất tại điểm bất kỳ trên mọi thanh |
+| **Tạo nhanh** | Dầm nghiêng từ nhịp ngang, chênh cao, loại gối, góc mặt tựa; bài mẫu: cầu thang gãy khúc, khung cổng, khung ba khớp, khung mái dốc, khung chữ L |
+
+Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) và **phương pháp ma trận độ cứng** với phần tử khung phẳng. Gối nghiêng đưa vào bằng nhân tử Lagrange. Nội lực dọc thanh tính chính xác theo phương pháp mặt cắt từ lực đầu thanh.
 
 ## Phương pháp
 
@@ -54,9 +66,21 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - Dầm ghép có khớp; thanh hai đầu ngàm chịu lực dọc.
 - Chữ nhật: τ_max = 1.5Q/A; ống tròn xoắn; nhận biết dạng chịu lực.
 
+`tests/frame.test.ts`:
+
+- Dầm nghiêng: M = ql²/8 theo nhịp ngang; N = −V·sinα, Q = V·cosα; gối di động trên mặt nghiêng.
+- Khung ba khớp: H = ql²/(8f), M tại khớp = 0.
+- Khung cổng chân ngàm: siêu tĩnh bậc 3.
+- Công-xôn: f = PL³/3EI.
+- Khung chữ L.
+- Dầm liên tục dựng bằng khung khớp với bộ giải dầm.
+- Dàn tam giác.
+- Phát hiện biến hình và biến hình tức thời (ba khớp thẳng hàng).
+
 ## Lộ trình
 
-- [ ] Khung phẳng / dầm nghiêng, dàn
+- [x] Khung phẳng / dầm nghiêng, dàn
+- [ ] Lực nhiệt / lún gối cho khung
 - [ ] Bảng thép hình tiêu chuẩn (TCVN / JIS)
 - [ ] Ổn định thanh chịu nén (Euler, hệ số φ)
 - [ ] Lún gối, gối đàn hồi, nhiệt độ

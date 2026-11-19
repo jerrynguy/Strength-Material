@@ -13,6 +13,17 @@ type Setter = (fn: (m: Model) => Model) => void;
 const nextName = (used: string[], letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') =>
   [...letters].find((c) => !used.includes(c)) ?? `G${used.length + 1}`;
 
+export function MaterialRow({ m, setMat }: { m: Model['material']; setMat: (p: Partial<Model['material']>) => void }) {
+  return (
+    <div className="row">
+      <TextField label="Vật liệu" value={m.name} onChange={(v) => setMat({ name: v })} width={160} />
+      <NumField label="E" unit="GPa" value={m.E} onChange={(v) => setMat({ E: v })} />
+      <NumField label="ν (Poisson)" value={m.nu} onChange={(v) => setMat({ nu: v })} />
+      <NumField label="[σ]" unit="MPa" value={m.allowable} onChange={(v) => setMat({ allowable: v })} />
+    </div>
+  );
+}
+
 export function GeneralEditor({ model, set }: { model: Model; set: Setter }) {
   const m = model.material;
   const setMat = (patch: Partial<typeof m>) => set((s) => ({ ...s, material: { ...s.material, ...patch } }));
@@ -22,12 +33,7 @@ export function GeneralEditor({ model, set }: { model: Model; set: Setter }) {
         <TextField label="Tên bài toán" value={model.title} onChange={(v) => set((s) => ({ ...s, title: v }))} width={260} />
         <NumField label="Chiều dài L" unit="m" value={model.length} onChange={(v) => set((s) => ({ ...s, length: v }))} />
       </div>
-      <div className="row">
-        <TextField label="Vật liệu" value={m.name} onChange={(v) => setMat({ name: v })} width={160} />
-        <NumField label="E" unit="GPa" value={m.E} onChange={(v) => setMat({ E: v })} />
-        <NumField label="ν (Poisson)" value={m.nu} onChange={(v) => setMat({ nu: v })} />
-        <NumField label="[σ]" unit="MPa" value={m.allowable} onChange={(v) => setMat({ allowable: v })} />
-      </div>
+      <MaterialRow m={m} setMat={setMat} />
     </Card>
   );
 }
@@ -48,15 +54,13 @@ function parsePts(text: string): [number, number][] {
 }
 const ptsText = (pts: [number, number][]) => pts.map((p) => `${p[0]}, ${p[1]}`).join('\n');
 
-export function SectionEditor({ model, set }: { model: Model; set: Setter }) {
-  const s = model.section;
-  const setSec = (sec: SectionSpec) => set((m) => ({ ...m, section: sec }));
+export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200 }: { spec: SectionSpec; onChange: (s: SectionSpec) => void; size?: number }) {
   const err = validateSection(s);
   const props = err ? null : computeSection(s);
   const [outerText, setOuterText] = useState(s.kind === 'polygon' ? ptsText(s.outer) : '');
   const [holesText, setHolesText] = useState(s.kind === 'polygon' ? s.holes.map(ptsText).join('\n\n') : '');
   return (
-    <Card title="Mặt cắt ngang">
+    <>
       <div className="row">
         <Select
           label="Hình dạng"
@@ -99,7 +103,7 @@ export function SectionEditor({ model, set }: { model: Model; set: Setter }) {
       {err && <p className="error">{err}</p>}
       {props && (
         <div className="section-grid">
-          <SectionView sec={props} size={200} />
+          <SectionView sec={props} size={size} />
           <table className="kv">
             <tbody>
               <tr><th>A</th><td>{fmt(props.A, 1)} mm²</td></tr>
@@ -115,6 +119,14 @@ export function SectionEditor({ model, set }: { model: Model; set: Setter }) {
           </table>
         </div>
       )}
+    </>
+  );
+}
+
+export function SectionEditor({ model, set }: { model: Model; set: Setter }) {
+  return (
+    <Card title="Mặt cắt ngang">
+      <SectionSpecEditor spec={model.section} onChange={(sec) => set((m) => ({ ...m, section: sec }))} />
     </Card>
   );
 }

@@ -19,7 +19,7 @@ export interface Classification {
   kinds: string[];
 }
 
-function labelFor(m: Record<keyof InternalForces, number>, tolF: number, tolM: number, nSign: number) {
+export function labelFor(m: Record<keyof InternalForces, number>, tolF: number, tolM: number, nSign: number) {
   const hasN = m.N > tolF;
   const hasQy = m.Qy > tolF;
   const hasQz = m.Qz > tolF;

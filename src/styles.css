@@ -202,3 +202,32 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 8px; }
   .app { padding: 10px 16px; }
   .field-input { width: 104px; }
 }
+
+/* ───── Chế độ & khung phẳng ───── */
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.primary:hover { color: #fff; filter: brightness(1.08); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; border-right: 1px solid var(--line); background: var(--panel); }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--accent); color: #fff; }
+.seg.mode { flex: 1 1 100%; }
+.seg.mode button { flex: 1 1 auto; }
+.small-note { font-size: 12px; align-self: center; }
+.edit-table { border-collapse: collapse; }
+.edit-table th { font-size: 12px; color: var(--muted); text-align: left; font-weight: 500; padding: 0 6px 2px 0; }
+.edit-table td { padding: 2px 6px 2px 0; }
+.edit-table .field-label:empty { display: none; }
+details.item > summary { cursor: pointer; padding-bottom: 6px; color: var(--ink); }
+
+.frame-svg { width: 100%; height: auto; display: block; }
+.fr-member { stroke: var(--ink); stroke-width: 3.5; stroke-linecap: round; }
+.fr-member.faint { stroke: var(--muted); stroke-width: 2.5; }
+.fr-node { fill: var(--ink); }
+.fr-dia { fill-opacity: 0.16; stroke: none; }
+.fr-dial { fill: none; stroke-width: 1.8; }
+.fr-dia.fr-N, .fr-dial.fr-N { fill: var(--tone-c); stroke: var(--tone-c); }
+.fr-dia.fr-Q, .fr-dial.fr-Q { fill: var(--tone-a); stroke: var(--tone-a); }
+.fr-dia.fr-M, .fr-dial.fr-M { fill: var(--tone-b); stroke: var(--tone-b); }
+.fr-dial { fill: none !important; }
+.fr-deform { fill: none; stroke: var(--tone-d); stroke-width: 2.4; }

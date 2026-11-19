@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { AnalysisResult } from '../core/analysis';
 import type { Classification } from '../core/classify';
 import type { SectionProps } from '../core/section';
 import { equilibriumSteps, sectionSteps } from '../core/steps';
 import { fmt, maxNormalOnSection, neutralAxisCoeffs, stressAt, type PointStress } from '../core/stress';
-import type { InternalForces, Model } from '../core/types';
+import type { InternalForces, Material, Model, SectionSpec } from '../core/types';
 import { Card, NumField, Select } from './fields';
 import { SectionView } from './SectionView';
 
@@ -167,13 +167,12 @@ export function SummaryCard({ res, model }: { res: AnalysisResult; model: Model 
   );
 }
 
-function quickPoints(model: Model, sec: SectionProps): { label: string; y: number; z: number }[] {
+function quickPoints(s: SectionSpec, sec: SectionProps): { label: string; y: number; z: number }[] {
   const pts = [
     { label: 'Thớ trên', y: sec.yMax, z: 0 },
     { label: 'Trọng tâm / trục trung hoà', y: 0, z: 0 },
     { label: 'Thớ dưới', y: sec.yMin, z: 0 },
   ];
-  const s = model.section;
   const zc = sec.centroid[0];
   const eps = 1e-6;
   if (s.kind === 'I') {
@@ -199,28 +198,51 @@ function quickPoints(model: Model, sec: SectionProps): { label: string; y: numbe
 }
 
 export function StressCard({ res, model, x, setX }: { res: AnalysisResult; model: Model; x: number; setX: (x: number) => void }) {
-  const sec = res.section;
   const [side, setSide] = useState<'left' | 'right'>('left');
+  if (!res.section) return null;
+  return (
+    <StressPanel
+      sec={res.section}
+      spec={model.section}
+      material={model.material}
+      F={res.ok ? res.internalAt(x, side) : null}
+      steps={res.ok ? sectionSteps(res, x, side) : []}
+      controls={
+        <>
+          <NumField label="Mặt cắt x" unit="m" value={x} onChange={setX} />
+          <Select label="Phía" value={side} onChange={setSide}
+            options={[{ value: 'left', label: 'trái (x⁻)' }, { value: 'right', label: 'phải (x⁺)' }]} />
+        </>
+      }
+    />
+  );
+}
+
+/** Khối tính ứng suất tại điểm — dùng chung cho dầm và khung. */
+export function StressPanel(props: {
+  sec: SectionProps;
+  spec: SectionSpec;
+  material: Material;
+  /** Nội lực từ kết quả tính (null nếu chưa có) */
+  F: InternalForces | null;
+  steps: string[];
+  controls: ReactNode;
+  title?: string;
+}) {
+  const { sec, spec, material } = props;
   const [mode, setMode] = useState<'beam' | 'manual'>('beam');
   const [manual, setManual] = useState<InternalForces>({ N: 0, Qy: 40, Qz: 0, T: 0, Mz: 60, My: 0 });
   const [pt, setPt] = useState<{ y: number; z: number }>({ y: 0, z: 0 });
-  if (!sec) return null;
-  const F = mode === 'manual' ? manual : res.ok ? res.internalAt(x, side) : null;
-  const st: PointStress | null = F ? stressAt(sec, F, model.material, pt.y, pt.z) : null;
-  const quick = quickPoints(model, sec);
-  const allow = model.material.allowable;
+  const F = mode === 'manual' ? manual : props.F;
+  const st: PointStress | null = F ? stressAt(sec, F, material, pt.y, pt.z) : null;
+  const quick = quickPoints(spec, sec);
+  const allow = material.allowable;
   return (
-    <Card title="Ứng suất & biến dạng tại điểm K trên mặt cắt">
+    <Card title={props.title ?? 'Ứng suất & biến dạng tại điểm K trên mặt cắt'}>
       <div className="row">
         <Select label="Nội lực lấy từ" value={mode} onChange={setMode}
-          options={[{ value: 'beam', label: 'Kết quả tính dầm tại x' }, { value: 'manual', label: 'Nhập trực tiếp (đề cho sẵn N, Q, M)' }]} />
-        {mode === 'beam' ? (
-          <>
-            <NumField label="Mặt cắt x" unit="m" value={x} onChange={setX} />
-            <Select label="Phía" value={side} onChange={setSide}
-              options={[{ value: 'left', label: 'trái (x⁻)' }, { value: 'right', label: 'phải (x⁺)' }]} />
-          </>
-        ) : null}
+          options={[{ value: 'beam', label: 'Kết quả tính tại mặt cắt' }, { value: 'manual', label: 'Nhập trực tiếp (đề cho sẵn N, Q, M)' }]} />
+        {mode === 'beam' ? props.controls : null}
       </div>
       {mode === 'manual' && (
         <div className="row">
@@ -268,12 +290,12 @@ export function StressCard({ res, model, x, setX }: { res: AnalysisResult; model
           <details open>
             <summary>Lời giải từng bước</summary>
             <ul className="steps">
-              {mode === 'beam' && res.ok && sectionSteps(res, x, side).map((l, i) => <li key={'s' + i}>{l}</li>)}
+              {mode === 'beam' && props.steps.map((l, i) => <li key={'s' + i}>{l}</li>)}
               <li>A = {fmt(sec.A, 2)} mm²; I<sub>z</sub> = {fmt(sec.Iz, 0)} mm⁴; I<sub>y</sub> = {fmt(sec.Iy, 0)} mm⁴</li>
               {st.steps.map((l, i) => <li key={i}>{l}</li>)}
             </ul>
           </details>
-          <StressProfile sec={sec} F={F} model={model} z={pt.z} probeY={pt.y} />
+          <StressProfile sec={sec} F={F} material={material} z={pt.z} probeY={pt.y} />
         </>
       )}
     </Card>
@@ -306,18 +328,18 @@ function Mohr({ st }: { st: PointStress }) {
   );
 }
 
-function StressProfile({ sec, F, model, z, probeY }: { sec: SectionProps; F: InternalForces; model: Model; z: number; probeY: number }) {
+function StressProfile({ sec, F, material, z, probeY }: { sec: SectionProps; F: InternalForces; material: Material; z: number; probeY: number }) {
   const data = useMemo(() => {
     const n = 120;
     const out: { y: number; s: number; t: number }[] = [];
     for (let i = 0; i <= n; i++) {
       const y = sec.yMin + ((sec.yMax - sec.yMin) * i) / n;
       const yy = i === 0 ? y + 1e-6 : i === n ? y - 1e-6 : y;
-      const st = stressAt(sec, F, model.material, yy, z);
+      const st = stressAt(sec, F, material, yy, z);
       out.push({ y, s: st.sigma, t: st.tauQy });
     }
     return out;
-  }, [sec, F, model.material, z]);
+  }, [sec, F, material, z]);
   const H = 220, Wd = 200, pad = 18;
   const Y = (y: number) => pad + ((sec.yMax - y) / (sec.yMax - sec.yMin)) * (H - 2 * pad);
   const plot = (key: 's' | 't', title: string) => {

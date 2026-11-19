@@ -4,12 +4,14 @@ import { fmt } from './stress';
 
 const n = (v: number) => fmt(v, 3);
 
-export function sectionSteps(res: AnalysisResult, x: number, side: 'left' | 'right'): string[] {
+export type SectionSource = Pick<AnalysisResult, 'ok' | 'keyPoints' | 'actions' | 'distributed' | 'internalAt'>;
+
+export function sectionSteps(res: SectionSource, x: number, side: 'left' | 'right', origin = 'đầu trái'): string[] {
   if (!res.ok) return [];
   const tol = 1e-9 * Math.max(1, res.keyPoints[res.keyPoints.length - 1]);
   const lines: string[] = [];
-  lines.push(`Xét phần thanh bên trái mặt cắt x = ${n(x)} m${side === 'left' ? ' (sát bên trái, x⁻)' : ' (sát bên phải, x⁺)'}.`);
-  lines.push('Quy ước: N kéo dương; Q dương khi làm phần tố quay thuận chiều kim đồng hồ; M dương khi căng thớ dưới.');
+  lines.push(`Xét phần thanh phía ${origin} mặt cắt, cách ${origin} x = ${n(x)} m${side === 'left' ? ' (sát bên trái, x⁻)' : ' (sát bên phải, x⁺)'}.`);
+  lines.push('Quy ước: N kéo dương; Q dương khi làm phân tố quay thuận chiều kim đồng hồ; M dương khi căng thớ dưới.');
   for (const a of res.actions) {
     const inc = a.x < x - tol || (side === 'right' && Math.abs(a.x - x) <= tol);
     if (!inc) continue;
