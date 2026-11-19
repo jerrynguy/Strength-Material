@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { analyze } from './core/analysis';
 import { classify } from './core/classify';
 import { PRESETS, defaultModel } from './core/presets';
@@ -12,6 +12,7 @@ import { BeamStabilityCard, type StabOpenRequest } from './ui/stability/Stabilit
 import { BeamBeamColumnCard } from './ui/stability/BeamColumnCards';
 import { LtbCard, defaultLtbOptions } from './ui/stability/LtbCard';
 import { LocalCard } from './ui/stability/LocalCard';
+import { ReportShell } from './ui/report/ReportShell';
 import type { LtbOptions } from './core/ltb';
 import type { Model } from './core/types';
 import { BeamView } from './ui/BeamView';
@@ -62,6 +63,8 @@ export default function App() {
 
   const [so, setSo] = useState(false);
   const [ltbOpt, setLtbOpt] = useState<LtbOptions>(defaultLtbOptions);
+  const [reportOpen, setReportOpen] = useState(false);
+  const closeReport = useCallback(() => setReportOpen(false), []);
   const res1 = useMemo(() => analyze(model), [model]);
   const resSO = useMemo(() => (so ? analyze(model, { secondOrder: true }) : null), [model, so]);
   const res = resSO && resSO.ok ? resSO : res1;
@@ -156,6 +159,7 @@ export default function App() {
             <option value="">Mở bài mẫu…</option>
             {(mode === 'beam' ? PRESETS : mode === 'frame' ? FRAME_PRESETS : STAB_PRESETS).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
+          <button className="primary" onClick={() => setReportOpen(true)}>Xuất báo cáo PDF</button>
           <button onClick={exportJson}>Lưu (.json)</button>
           <button onClick={() => fileRef.current?.click()}>Mở tệp…</button>
           <input ref={fileRef} type="file" accept="application/json,.json" hidden
@@ -238,6 +242,12 @@ export default function App() {
           <StressCard res={res} model={model} x={pickX} setX={setPickX} />
         </div>
       </main>
+      )}
+      {reportOpen && (
+        <ReportShell
+          onClose={closeReport}
+          input={mode === 'beam' ? { mode, model, ltb: ltbOpt } : mode === 'frame' ? { mode, model: frame } : { mode, model: stab }}
+        />
       )}
       <footer className="foot muted">
         Phương pháp: phân tích cấu tạo hình học bằng hạng ma trận liên kết · phản lực bằng phương pháp ma trận độ cứng (dầm Euler–Bernoulli) ·

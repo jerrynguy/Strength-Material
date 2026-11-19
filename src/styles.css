@@ -260,3 +260,65 @@ button.linkish { border: 0; background: none; color: var(--accent); padding: 4px
 
 .sub-title { font-size: 14px; margin: 12px 0 4px; }
 .small { font-size: 11.5px; }
+
+/* ───── Báo cáo ───── */
+.report-overlay { position: fixed; inset: 0; z-index: 100; overflow: auto; background: #d9dde3; }
+.report-toolbar {
+  position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+  padding: 10px 16px; background: var(--panel); color: var(--ink); border-bottom: 1px solid var(--line);
+}
+.report-parts { display: flex; flex-wrap: wrap; gap: 6px 12px; flex: 1 1 400px; }
+.report-actions { display: flex; gap: 8px; }
+.report-tip { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
+.r-author { border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; width: 160px; background: var(--panel); }
+.report-page {
+  /* bảng màu sáng cố định cho trang in */
+  --bg: #fff; --panel: #fff; --ink: #111; --muted: #555; --line: #c9ced6; --soft: #f1f3f6; --accent: #1f5fbf; --accent-soft: #e3ecfa;
+  --load: #b5400b; --support: #333; --tone-a: #1f5fbf; --tone-b: #b4235a; --tone-c: #0f7a5a; --tone-d: #6b45b5; --ok: #0f6a32; --err: #b42318;
+  color-scheme: light;
+  background: #fff; color: #111; width: 210mm; max-width: calc(100% - 16px); margin: 16px auto 40px; padding: 14mm 14mm;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18); font-size: 10.5pt; line-height: 1.4;
+}
+.r-head { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 10px; }
+.r-brand { font-size: 8.5pt; letter-spacing: 0.08em; color: #555; }
+.r-head h1 { font-size: 17pt; margin: 4px 0 2px; }
+.r-title { font-size: 12pt; font-weight: 600; margin-bottom: 6px; }
+.r-meta { width: 100%; border-collapse: collapse; font-size: 9pt; }
+.r-meta th { text-align: left; color: #555; font-weight: 500; padding: 1px 6px 1px 0; white-space: nowrap; }
+.r-meta td { padding: 1px 12px 1px 0; }
+.r-sec { margin-top: 12px; }
+.r-sec > h2 { font-size: 12.5pt; margin: 0 0 6px; padding-bottom: 2px; border-bottom: 1px solid #c9ced6; break-after: avoid; }
+.r-sub { margin: 8px 0; }
+.r-sub h3 { font-size: 10.5pt; margin: 6px 0 4px; break-after: avoid; }
+.r-block { margin: 6px 0; break-inside: avoid; }
+.r-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+.r-table th, .r-table td { border: 1px solid #c9ced6; padding: 2px 5px; text-align: left; vertical-align: top; }
+.r-table th { background: #f1f3f6; font-weight: 600; }
+.r-kv { border-collapse: collapse; font-size: 9.5pt; }
+.r-kv th { text-align: left; font-weight: 500; color: #444; padding: 1px 12px 1px 0; vertical-align: top; }
+.r-kv td { padding: 1px 0; }
+.r-note { font-size: 8.5pt; color: #555; margin: 3px 0; }
+.r-steps { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 8.3pt; margin: 4px 0 8px; padding-left: 20px; }
+.r-steps li { margin: 1px 0; break-inside: avoid; }
+.r-fig { margin: 6px 0; break-inside: avoid; }
+.r-fig figcaption { font-size: 8.5pt; color: #444; text-align: center; font-style: italic; }
+.r-fig .diagram figcaption { display: none; }
+.r-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; break-inside: avoid; }
+.r-row > .r-fig { flex: 1 1 260px; }
+.r-ok { color: #0f6a32; font-weight: 600; }
+.r-bad { color: #b42318; font-weight: 600; }
+.r-concl td:last-child { white-space: nowrap; }
+.r-foot { margin-top: 16px; padding-top: 6px; border-top: 1px solid #c9ced6; font-size: 7.8pt; color: #555; }
+.report-page .bchart svg, .report-page .section-svg { background: #f6f7f9; }
+.report-page .frame-svg { max-height: 88mm; }
+.report-page .beam-svg { max-height: 60mm; }
+
+@media print {
+  @page { size: A4; margin: 12mm 11mm; }
+  body.report-open #root { display: none !important; }
+  body.report-open { background: #fff; }
+  .report-overlay { position: static; overflow: visible; background: #fff; }
+  .report-toolbar { display: none; }
+  .report-page { width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; }
+  .report-page * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

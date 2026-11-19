@@ -168,7 +168,7 @@ export function SummaryCard({ res, model }: { res: AnalysisResult; model: Model 
   );
 }
 
-function quickPoints(s: SectionSpec, sec: SectionProps): { label: string; y: number; z: number }[] {
+export function quickPoints(s: SectionSpec, sec: SectionProps): { label: string; y: number; z: number }[] {
   const pts = [
     { label: 'Thớ trên', y: sec.yMax, z: 0 },
     { label: 'Trọng tâm / trục trung hoà', y: 0, z: 0 },

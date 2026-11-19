@@ -109,6 +109,23 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - IPE 600 chịu nén là loại 4.
   - Các hệ số k_σ = 4 / 23,9 / 0,43; k_τ = 9,34 khi a = h_w; λ̄_w khớp công thức EN.
 
+## Xuất báo cáo PDF
+
+Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, rồi bấm **In / Lưu PDF** và chọn “Lưu dưới dạng PDF”. App xuất qua chức năng in của trình duyệt: tiếng Việt hiển thị đúng, hình vẽ dạng vector, chữ trong PDF chọn và tìm kiếm được, không cần thư viện ngoài.
+
+- **Khung báo cáo chung:** đầu báo cáo (tên bài toán, loại bài toán, ngày, người lập), mục kết luận chung dạng ĐẠT / KHÔNG ĐẠT, và phần ghi phương pháp, quy ước dấu ở cuối.
+- **Thanh thẳng:**
+  - Sơ đồ tính, vật liệu, mặt cắt, liên kết, tải trọng.
+  - Cấu tạo hình học, phản lực kèm kiểm tra cân bằng, dạng chịu lực, biểu đồ nội lực, chuyển vị.
+  - Ứng suất tại điểm nguy hiểm nhất, và tại chỗ tiếp giáp bụng – cánh theo thuyết bền 4.
+  - Ổn định nén, nén – uốn, uốn – xoắn, ổn định cục bộ.
+- **Khung:**
+  - Dữ liệu nút, thanh, tiết diện, gối, tải.
+  - Phản lực, nội lực đầu thanh, biểu đồ N/Q/M trên khung, biến dạng, bền từng thanh.
+  - Hệ số tới hạn α_th và dạng mất ổn định; ổn định, nén – uốn, cục bộ từng thanh.
+- **Ổn định:** dữ liệu, kết quả, đồ thị φ(λ) và σ_th(λ), lời giải, ổn định cục bộ.
+- **Bật/tắt từng phần:** dữ liệu đầu vào, biểu đồ, ứng suất, ổn định, lời giải từng bước.
+
 ## Phương pháp
 
 1. **Cấu tạo hình học:** mỗi đoạn giữa các khớp nối được coi là cứng tuyệt đối. Ma trận liên kết có hạng bằng số bậc tự do thì hệ bất biến hình; bậc siêu tĩnh = số liên kết − hạng.
@@ -176,4 +193,4 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [x] Ổn định cục bộ bản cánh / bản bụng, phân loại tiết diện, ổn định bụng chịu cắt
 - [ ] Tiết diện hữu hiệu đầy đủ cho loại 4, sườn dọc
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
-- [ ] Xuất báo cáo PDF
+- [x] Xuất báo cáo PDF (thanh thẳng, khung, ổn định)

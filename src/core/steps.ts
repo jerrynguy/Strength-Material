@@ -60,6 +60,10 @@ export function equilibriumSteps(res: AnalysisResult): string[] {
     if (d.dir === 'y') { Y += R; M0 += R * xc; }
     if (d.dir === 'z') Z += R;
   }
+  let scale = 1e-9;
+  for (const a of res.actions) scale = Math.max(scale, Math.abs(a.Fx), Math.abs(a.Fy), Math.abs(a.Fz), Math.abs(a.Mz), Math.abs(a.Mx));
+  const z = (v: number) => (Math.abs(v) < 1e-7 * scale * 10 ? 0 : v);
+  X = z(X); Y = z(Y); Z = z(Z); M0 = z(M0); Mx = z(Mx);
   const lines = [
     'Kiểm tra cân bằng toàn thanh (tải + phản lực):',
     `ΣX = ${n(X)} kN`,
