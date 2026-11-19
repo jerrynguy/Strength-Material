@@ -44,21 +44,36 @@ describe('Chọn số hiệu thép', () => {
     supports: [support('A', 0, 'pin'), support('B', 6, 'roller')], hinges: [], loads: [dist('q', 0, 6, -10)],
   };
   it('dầm đơn giản q = 10 kN/m, L = 6 m, [σ] = 160 MPa → I24 (W cần ≥ 281 cm³)', () => {
-    const c = designBeam(beam, { family: 'I_GOST', rotate: false, deflRatio: 0, selfWeight: false });
+    const c = designBeam(beam, { family: 'I_GOST', rotate: false, deflRatio: 0, selfWeight: false, stability: false, mu: 1 });
     const best = c.find((x) => x.ok)!;
     expect(best.name).toBe('I24');
     expect(c.find((x) => x.name === 'I22')!.ok).toBe(false);
   });
   it('thêm điều kiện độ võng L/250 và trọng lượng bản thân → tiết diện lớn hơn', () => {
-    const c = designBeam(beam, { family: 'I_GOST', rotate: false, deflRatio: 250, selfWeight: true });
+    const c = designBeam(beam, { family: 'I_GOST', rotate: false, deflRatio: 250, selfWeight: true, stability: false, mu: 1 });
     const best = c.find((x) => x.ok)!;
     expect(['I27', 'I30']).toContain(best.name);
     expect(best.defl).toBeLessThanOrEqual(best.deflLimit);
   });
   it('khung: chọn tiết diện cột cho khung cổng', () => {
     const m = FRAME_PRESETS.find((p) => p.key === 'portal-fixed')!.build();
-    const c = designFrame(m, m.sections[0].id, { family: 'H_JIS', rotate: false, deflRatio: 0, selfWeight: false });
+    const c = designFrame(m, m.sections[0].id, { family: 'H_JIS', rotate: false, deflRatio: 0, selfWeight: false, stability: false, mu: 1 });
     expect(c.some((x) => x.ok)).toBe(true);
     expect(c[0].mass).toBeLessThan(c[c.length - 1].mass);
+  });
+});
+
+describe('Chọn tiết diện có kể ổn định', () => {
+  it('cột công-xôn chịu nén: điều kiện ổn định quyết định tiết diện', () => {
+    const col: Model = {
+      title: '', length: 4, material: { ...STEEL }, section: { kind: 'rect', b: 100, h: 200 },
+      supports: [support('A', 0, 'fixed')], hinges: [], loads: [{ id: 'p', type: 'force', name: 'P', x: 4, Fx: -200, Fy: 0, Fz: 0 }],
+    };
+    const o = { family: 'CHS', rotate: false, deflRatio: 0, selfWeight: false, mu: 2 };
+    const noStab = designBeam(col, { ...o, stability: false }).find((x) => x.ok)!;
+    const stab = designBeam(col, { ...o, stability: true }).find((x) => x.ok)!;
+    expect(stab.mass).toBeGreaterThan(noStab.mass * 1.5);
+    expect(stab.stabUtil).toBeLessThanOrEqual(1);
+    expect(stab.lambda).toBeGreaterThan(0);
   });
 });

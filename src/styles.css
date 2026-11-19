@@ -240,3 +240,20 @@ details.item > summary { cursor: pointer; padding-bottom: 6px; color: var(--ink)
 td.good { color: var(--ok); font-weight: 600; }
 td.bad { color: var(--err); }
 button.linkish { border: 0; background: none; color: var(--accent); padding: 4px 0; margin-top: 4px; }
+
+/* ───── Ổn định ───── */
+.charts { display: flex; flex-wrap: wrap; gap: 16px; }
+.bchart { margin: 0; flex: 1 1 320px; min-width: 0; }
+.bchart figcaption { font-size: 13px; margin-bottom: 4px; }
+.bchart svg { width: 100%; height: auto; display: block; background: var(--soft); border-radius: 8px; }
+.bchart.tone-a { --tone: var(--tone-a); }
+.bchart.tone-b { --tone: var(--tone-b); }
+.bc-grid { stroke: var(--line); stroke-width: 1; }
+.bc-axis { stroke: var(--muted); stroke-width: 1; }
+.bc-tick { fill: var(--muted); font-size: 11px; }
+.bc-mark { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.bc-line { fill: none; stroke: var(--tone); stroke-width: 2; }
+.bc-point { fill: var(--load); stroke: var(--panel); stroke-width: 2; }
+.bc-label { fill: var(--ink); font-size: 12px; font-weight: 600; }
+.bc-hover { fill: var(--tone); stroke: var(--panel); stroke-width: 2; }
+.bc-tip { fill: var(--panel); stroke: var(--line); }

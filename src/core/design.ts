@@ -4,12 +4,14 @@
  *  - Bền theo ứng suất pháp: |σ|max ≤ [σ]
  *  - Bền theo ứng suất tiếp: τmax ≤ [τ] = [σ]/√3 (thuyết bền 4)
  *  - Độ cứng: độ võng lớn nhất ≤ L/n (nếu có yêu cầu)
- * Chưa kiểm tra ổn định (mất ổn định tổng thể / cục bộ) — cần kiểm tra riêng với cấu kiện chịu nén.
+ *  - Ổn định thanh chịu nén (tuỳ chọn): σ_nén = N/A ≤ φ[σ] (bảng φ thép CT3, chiều dài tính toán μL)
+ * Chưa xét ổn định cục bộ bản cánh/bụng và mất ổn định uốn–xoắn của dầm.
  */
 import { analyze } from './analysis';
 import { analyzeFrame, type FrameModel } from './frame';
 import { computeSection, type SectionProps } from './section';
 import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
+import { BUCKLING_MATERIALS, checkStability } from './stability';
 import { maxNormalOnSection, stressAt } from './stress';
 import type { InternalForces, Model, SectionSpec } from './types';
 
@@ -20,6 +22,12 @@ export interface DesignOptions {
   deflRatio: number;
   /** Kể đến trọng lượng bản thân */
   selfWeight: boolean;
+  /** Kiểm tra ổn định thanh chịu nén theo φ (thép CT3) */
+  stability: boolean;
+  /** Hệ số chiều dài tính toán μ (dầm/cột); với khung: μ mặc định cho mọi thanh */
+  mu: number;
+  /** μ riêng cho từng thanh khung */
+  memberMu?: Record<string, number>;
 }
 
 export interface Candidate {
@@ -31,6 +39,9 @@ export interface Candidate {
   tau: number; // MPa
   defl: number; // mm
   deflLimit: number; // mm (0 nếu không kiểm tra)
+  /** Tỉ số σ_nén / (φ[σ]) lớn nhất; 0 nếu không kiểm tra / không có nén */
+  stabUtil: number;
+  lambda: number;
   /** Hệ số sử dụng lớn nhất (≤ 1 là đạt) */
   util: number;
   ok: boolean;
@@ -47,9 +58,16 @@ function tauMax(sec: SectionProps, F: InternalForces, mat: Model['material']): n
   return tq + (Number.isFinite(tt) ? tt : 0);
 }
 
+/** Hệ số sử dụng theo ổn định cho lực nén Nc (kN, dương) */
+function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number, E: number, allowable: number): { util: number; lambda: number } {
+  if (!(Nc > 0)) return { util: 0, lambda: 0 };
+  const r = checkStability(sec, { N: Nc, Lz: L, Ly: L, muZ: mu, muY: mu, E, allowable, params: BUCKLING_MATERIALS.CT3, nRequired: 1 });
+  return { util: r.phi === null ? Infinity : r.sigma / r.allowPhi, lambda: r.lambdaMax };
+}
+
 function finish(c: Omit<Candidate, 'util' | 'ok'>, allowable: number): Candidate {
   const tauAllow = allowable / Math.sqrt(3);
-  const util = Math.max(Math.abs(c.sigma) / allowable, c.tau / tauAllow, c.deflLimit > 0 ? c.defl / c.deflLimit : 0);
+  const util = Math.max(Math.abs(c.sigma) / allowable, c.tau / tauAllow, c.deflLimit > 0 ? c.defl / c.deflLimit : 0, c.stabUtil);
   return { ...c, util, ok: !c.error && util <= 1 };
 }
 
@@ -66,11 +84,12 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     const res = analyze({ ...model, section: spec, loads });
     const base = { name: p.name, spec, A: sec.A, mass: massOf(sec) };
     if (!res.ok) {
-      out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, error: res.errors[0] }, model.material.allowable));
+      out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, error: res.errors[0] }, model.material.allowable));
       continue;
     }
-    let sigma = 0, tau = 0;
+    let sigma = 0, tau = 0, Nc = 0;
     for (const s of res.forceSamples) {
+      Nc = Math.max(Nc, -s.N);
       const m = maxNormalOnSection(sec, s);
       const v = Math.abs(m.max) > Math.abs(m.min) ? m.max : m.min;
       if (Math.abs(v) > Math.abs(sigma)) sigma = v;
@@ -79,7 +98,8 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     let defl = 0;
     for (const d of res.dispSamples) defl = Math.max(defl, Math.hypot(d.v, d.w));
     const deflLimit = opt.deflRatio > 0 ? (model.length * 1e3) / opt.deflRatio : 0;
-    out.push(finish({ ...base, sigma, tau, defl, deflLimit }, model.material.allowable));
+    const st = opt.stability ? stabUtilOf(sec, Nc, model.length, opt.mu, model.material.E, model.material.allowable) : { util: 0, lambda: 0 };
+    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil: st.util, lambda: st.lambda }, model.material.allowable));
   }
   return out.sort((a, b) => a.mass - b.mass);
 }
@@ -107,12 +127,18 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
     const sec = computeSection(spec);
     const base = { name: p.name, spec, A: sec.A, mass: massOf(sec) };
     if (!res.ok) {
-      out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, error: res.errors[0] }, model.material.allowable));
+      out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, error: res.errors[0] }, model.material.allowable));
       continue;
     }
-    let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0;
+    let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0, stabUtil = 0, lambda = 0;
     for (const mr of res.members) {
       if (!memberIds.has(mr.id)) continue;
+      if (opt.stability) {
+        let Nc = 0;
+        for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
+        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable);
+        if (st.util > stabUtil) { stabUtil = st.util; lambda = st.lambda; }
+      }
       for (const s of mr.samples) {
         const F: InternalForces = { N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 };
         const m = maxNormalOnSection(sec, F);
@@ -133,7 +159,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
         }
       }
     }
-    out.push(finish({ ...base, sigma, tau, defl, deflLimit }, model.material.allowable));
+    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil, lambda }, model.material.allowable));
   }
   return out.sort((a, b) => a.mass - b.mass);
 }

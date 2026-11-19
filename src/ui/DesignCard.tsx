@@ -12,8 +12,10 @@ export function DesignCard(props: {
   apply: (spec: SectionSpec) => void;
   extraControls?: ReactNode;
   note?: string;
+  /** Hiện ô nhập μ chung (dầm/cột). Khung dùng μ riêng từng thanh. */
+  showMu?: boolean;
 }) {
-  const [opt, setOpt] = useState<DesignOptions>({ family: 'I_GOST', rotate: false, deflRatio: 250, selfWeight: true });
+  const [opt, setOpt] = useState<DesignOptions>({ family: 'I_GOST', rotate: false, deflRatio: 250, selfWeight: true, stability: true, mu: 1 });
   const [rows, setRows] = useState<Candidate[] | null>(null);
   const [showAll, setShowAll] = useState(false);
   const best = rows?.find((r) => r.ok);
@@ -30,6 +32,10 @@ export function DesignCard(props: {
       </div>
       <div className="row checks">
         <label className="check"><input type="checkbox" checked={opt.selfWeight} onChange={(e) => { setOpt({ ...opt, selfWeight: e.target.checked }); setRows(null); }} />kể trọng lượng bản thân</label>
+        <label className="check"><input type="checkbox" checked={opt.stability} onChange={(e) => { setOpt({ ...opt, stability: e.target.checked }); setRows(null); }} />kiểm tra ổn định (φ, thép CT3)</label>
+        {opt.stability && props.showMu !== false && (
+          <NumField label="μ" value={opt.mu} width={70} onChange={(v) => { setOpt({ ...opt, mu: v }); setRows(null); }} title="Hệ số chiều dài tính toán" />
+        )}
         <label className="check"><input type="checkbox" checked={opt.rotate} onChange={(e) => { setOpt({ ...opt, rotate: e.target.checked }); setRows(null); }} />xoay 90° (uốn quanh trục yếu)</label>
         <button className="primary" onClick={() => setRows(props.run(opt))}>Tìm tiết diện</button>
       </div>
@@ -46,7 +52,7 @@ export function DesignCard(props: {
           <div className="table-scroll">
             <table className="grid">
               <thead>
-                <tr><th>Số hiệu</th><th>kg/m</th><th>|σ|max (MPa)</th><th>τmax (MPa)</th><th>f / [f] (mm)</th><th>Sử dụng</th><th /></tr>
+                <tr><th>Số hiệu</th><th>kg/m</th><th>|σ|max (MPa)</th><th>τmax (MPa)</th><th>f / [f] (mm)</th>{opt.stability && <th>λ · ổn định</th>}<th>Sử dụng</th><th /></tr>
               </thead>
               <tbody>
                 {shown.map((r) => (
@@ -56,6 +62,7 @@ export function DesignCard(props: {
                     <td>{r.error ? '—' : fmt(Math.abs(r.sigma), 1)}</td>
                     <td>{r.error ? '—' : fmt(r.tau, 1)}</td>
                     <td>{r.deflLimit ? `${fmt(r.defl, 2)} / ${fmt(r.deflLimit, 1)}` : fmt(r.defl, 2)}</td>
+                    {opt.stability && <td>{r.lambda ? `${fmt(r.lambda, 0)} · ${fmt(r.stabUtil * 100, 0)}%` : '—'}</td>}
                     <td className={r.ok ? 'good' : 'bad'}>{r.error ? r.error : `${fmt(r.util * 100, 1)}% ${r.ok ? '✓' : '✗'}`}</td>
                     <td><button onClick={() => props.apply(r.spec)}>Dùng</button></td>
                   </tr>
@@ -67,8 +74,8 @@ export function DesignCard(props: {
         </>
       )}
       <p className="hint">
-        Điều kiện: |σ|max ≤ [σ] = {fmt(props.allowable)} MPa; τmax ≤ [σ]/√3; độ võng ≤ L/n. Kết cấu được tính lại với từng tiết diện
-        (đúng cả với hệ siêu tĩnh). {props.note ?? ''} Chưa kiểm tra ổn định — cấu kiện chịu nén cần kiểm tra riêng.
+        Điều kiện: |σ|max ≤ [σ] = {fmt(props.allowable)} MPa; τmax ≤ [σ]/√3; độ võng ≤ L/n; ổn định σ_nén ≤ φ[σ] với chiều dài tính toán μL. Kết cấu được tính lại với từng tiết diện
+        (đúng cả với hệ siêu tĩnh). {props.note ?? ''} Chưa xét ổn định cục bộ và mất ổn định uốn–xoắn của dầm.
       </p>
     </Card>
   );

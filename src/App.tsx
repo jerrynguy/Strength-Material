@@ -7,6 +7,8 @@ import { FRAME_PRESETS } from './core/framePresets';
 import { FrameApp } from './ui/frame/FrameApp';
 import { designBeam } from './core/design';
 import { DesignCard } from './ui/DesignCard';
+import { STAB_PRESETS, StabilityApp, defaultStabModel, type StabModel } from './ui/stability/StabilityApp';
+import { BeamStabilityCard, type StabOpenRequest } from './ui/stability/StabilityChecks';
 import type { Model } from './core/types';
 import { BeamView } from './ui/BeamView';
 import { Diagram } from './ui/Diagram';
@@ -17,8 +19,9 @@ import { ClassificationCard, DeterminacyCard, ReactionsCard, StressCard, Summary
 const STORE_KEY = 'strength-material:model:v1';
 const FRAME_KEY = 'strength-material:frame:v1';
 const MODE_KEY = 'strength-material:mode';
+const STAB_KEY = 'strength-material:stab:v1';
 
-type Mode = 'beam' | 'frame';
+type Mode = 'beam' | 'frame' | 'stab';
 
 function load<T>(key: string, fallback: () => T): T {
   try {
@@ -41,6 +44,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>(() => load<Mode>(MODE_KEY, () => 'beam'));
   const [model, setModel] = useState<Model>(() => load(STORE_KEY, defaultModel));
   const [frame, setFrame] = useState<FrameModel>(() => load(FRAME_KEY, () => FRAME_PRESETS[0].build()));
+  const [stab, setStab] = useState<StabModel>(() => load(STAB_KEY, defaultStabModel));
   const [version, setVersion] = useState(0);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [pickX, setPickX] = useState(() => model.length / 2);
@@ -50,6 +54,7 @@ export default function App() {
   useEffect(() => save(STORE_KEY, model), [model]);
   useEffect(() => save(FRAME_KEY, frame), [frame]);
   useEffect(() => save(MODE_KEY, mode), [mode]);
+  useEffect(() => save(STAB_KEY, stab), [stab]);
 
   const res = useMemo(() => analyze(model), [model]);
   const cls = useMemo(() => classify(res), [res]);
@@ -57,6 +62,15 @@ export default function App() {
   const replaceFrame = (m: FrameModel) => {
     setFrame(m);
     setVersion((v) => v + 1);
+  };
+  const replaceStab = (m: StabModel) => {
+    setStab(m);
+    setVersion((v) => v + 1);
+  };
+  const openStab = (r: StabOpenRequest) => {
+    replaceStab({ ...defaultStabModel(), title: `Ổn định: ${r.title}`, N: Math.round(r.N * 1000) / 1000, L: r.L, Ly: r.L, muZ: r.mu, muY: r.mu, section: r.section, material: { ...r.material } });
+    setMode('stab');
+    window.scrollTo(0, 0);
   };
   const replace = (m: Model) => {
     setModel(m);
@@ -66,11 +80,11 @@ export default function App() {
   const set = (fn: (m: Model) => Model) => setModel((m) => fn(m));
 
   const exportJson = () => {
-    const data = mode === 'beam' ? { kind: 'beam', ...model } : { kind: 'frame', ...frame };
+    const data = mode === 'beam' ? { kind: 'beam', ...model } : mode === 'frame' ? { kind: 'frame', ...frame } : { kind: 'stab', ...stab };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    const title = mode === 'beam' ? model.title : frame.title;
+    const title = mode === 'beam' ? model.title : mode === 'frame' ? frame.title : stab.title;
     a.download = `${title.replace(/[^\p{L}\p{N}]+/gu, '_') || 'bai_toan'}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
@@ -78,7 +92,11 @@ export default function App() {
   const importJson = async (f: File) => {
     try {
       const m = JSON.parse(await f.text());
-      if (m.kind === 'frame' || (Array.isArray(m.nodes) && Array.isArray(m.members))) {
+      if (m.kind === 'stab') {
+        if (typeof m.N !== 'number' || !m.section) throw new Error();
+        replaceStab({ ...defaultStabModel(), ...m });
+        setMode('stab');
+      } else if (m.kind === 'frame' || (Array.isArray(m.nodes) && Array.isArray(m.members))) {
         if (!Array.isArray(m.nodes) || !Array.isArray(m.members)) throw new Error();
         replaceFrame(m as FrameModel);
         setMode('frame');
@@ -110,6 +128,7 @@ export default function App() {
           <div className="seg mode">
             <button className={mode === 'beam' ? 'on' : ''} onClick={() => setMode('beam')}>Thanh thẳng (dầm, trục, cột)</button>
             <button className={mode === 'frame' ? 'on' : ''} onClick={() => setMode('frame')}>Khung phẳng / dầm nghiêng</button>
+            <button className={mode === 'stab' ? 'on' : ''} onClick={() => setMode('stab')}>Ổn định thanh nén</button>
           </div>
           <select
             value=""
@@ -117,14 +136,17 @@ export default function App() {
               if (mode === 'beam') {
                 const p = PRESETS.find((x) => x.key === e.target.value);
                 if (p) replace(p.build());
-              } else {
+              } else if (mode === 'frame') {
                 const p = FRAME_PRESETS.find((x) => x.key === e.target.value);
                 if (p) replaceFrame(p.build());
+              } else {
+                const p = STAB_PRESETS.find((x) => x.key === e.target.value);
+                if (p) replaceStab(p.build());
               }
             }}
           >
             <option value="">Mở bài mẫu…</option>
-            {(mode === 'beam' ? PRESETS : FRAME_PRESETS).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+            {(mode === 'beam' ? PRESETS : mode === 'frame' ? FRAME_PRESETS : STAB_PRESETS).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
           <button onClick={exportJson}>Lưu (.json)</button>
           <button onClick={() => fileRef.current?.click()}>Mở tệp…</button>
@@ -133,7 +155,9 @@ export default function App() {
         </div>
       </header>
 
-      {mode === 'frame' ? (
+      {mode === 'stab' ? (
+        <StabilityApp key={version} model={stab} setModel={(fn) => setStab((m) => fn(m))} />
+      ) : mode === 'frame' ? (
         <FrameApp key={version} model={frame} setModel={(fn) => setFrame((m) => fn(m))} replace={replaceFrame} />
       ) : (
       <main className="layout" key={version}>
@@ -187,6 +211,7 @@ export default function App() {
                 {!['v', 'w', 'u', 'phi'].some((k) => anyD(k as 'v')) && <p className="muted">Không có chuyển vị.</p>}
               </Card>
               <SummaryCard res={res} model={model} />
+              <BeamStabilityCard key={'st' + version} res={res} model={model} onOpen={openStab} />
               <DesignCard allowable={model.material.allowable} run={(o) => designBeam(model, o)}
                 apply={(spec) => { set((m) => ({ ...m, section: spec })); setVersion((v) => v + 1); }} />
             </>

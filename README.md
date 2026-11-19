@@ -44,7 +44,22 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
 - **Kiểm chứng:** A và Iₓ tính được sai lệch < 1% so với bảng tra cho toàn bộ hơn 120 số hiệu có số liệu đối chiếu (`tests/steel.test.ts`).
 - **Xoay 90°:** cho trường hợp uốn quanh trục yếu.
 - **Chọn số hiệu thép:** duyệt cả họ thép, tính lại kết cấu với từng tiết diện (đúng cả cho hệ siêu tĩnh) rồi chọn tiết diện nhẹ nhất thoả cả ba điều kiện |σ| ≤ [σ], τ ≤ [σ]/√3, f ≤ L/n. Có tuỳ chọn kể trọng lượng bản thân. Dùng được cho dầm và cho từng nhóm tiết diện trong khung.
-- **Chưa kiểm tra ổn định:** chưa có kiểm tra ổn định tổng thể và cục bộ. Kích thước lấy theo tiêu chuẩn, nên cần đối chiếu catalogue của nhà sản xuất khi lập hồ sơ thiết kế.
+- **Chọn số hiệu có kể ổn định:** khi chọn số hiệu thép có thể bật kiểm tra ổn định thanh nén (φ, μL). Chưa xét ổn định cục bộ và mất ổn định uốn–xoắn. Kích thước lấy theo tiêu chuẩn, nên cần đối chiếu catalogue của nhà sản xuất khi lập hồ sơ thiết kế.
+
+## Ổn định thanh chịu nén
+
+- **Độ mảnh:** λ = μL/i theo hai mặt phẳng. Mỗi phương có thể có liên kết (μ) và chiều dài khác nhau, ví dụ cột có giằng theo phương yếu. Với thép góc (mặt cắt không đối xứng), dùng **trục quán tính chính** (i_min).
+- **Ứng suất tới hạn:** λ ≥ λ₀ dùng Euler σ_th = π²E/λ²; λ₁ ≤ λ < λ₀ dùng Iasinski σ_th = a − bλ (+ cλ² với gang); λ < λ₁ là thanh ngắn, σ_th = σ_ch.
+- **Hai điều kiện kiểm tra:**
+  - Theo hệ số an toàn: n_ôđ = P_th/N ≥ [n_ôđ].
+  - Theo hệ số giảm ứng suất: σ = N/A ≤ φ[σ], với φ(λ) tra bảng có nội suy (thép CT3, gang, gỗ — theo bảng giáo trình SBVL, tham khảo; λ₀, a, b, c, σ_ch sửa được trên giao diện).
+- **Chọn tiết diện theo phương pháp thử dần:** bắt đầu với φ₀ = 0.5 → A_yc → chọn số hiệu → tính λ, tra φ′ → lặp với φ₁ = (φ₀ + φ′)/2, rồi kiểm tra lại. App hiện lời giải từng lần thử.
+- **Đồ thị** φ(λ) và σ_th(λ), đánh dấu điểm đang xét.
+- **Tích hợp sẵn:**
+  - Chế độ dầm/cột tự kiểm tra khi có lực nén, μ đoán từ liên kết hai đầu.
+  - Chế độ khung kiểm tra từng thanh chịu nén, μ nhập riêng cho từng thanh.
+  - Chọn số hiệu thép có thể kể thêm điều kiện ổn định.
+- **Giới hạn:** chỉ xét nén đúng tâm. Thanh chịu nén – uốn đồng thời, ổn định cục bộ và ổn định uốn – xoắn chưa được kiểm tra.
 
 ## Phương pháp
 
@@ -94,11 +109,20 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - Dàn tam giác.
 - Phát hiện biến hình và biến hình tức thời (ba khớp thẳng hàng).
 
+`tests/stability.test.ts`:
+
+- Euler: P_th = π²EI/(μL)².
+- Iasinski CT3 liên tục với đường Euler tại λ₀.
+- Nội suy bảng φ.
+- Thép góc dùng trục chính: i_min của L100×10 ≈ 1,96 cm, khớp bảng GOST.
+- Thử dần chọn tiết diện.
+
 ## Lộ trình
 
 - [x] Khung phẳng / dầm nghiêng, dàn
 - [ ] Lực nhiệt / lún gối cho khung
 - [x] Bảng thép hình tiêu chuẩn (GOST, JIS, EN) + chọn số hiệu thép
-- [ ] Ổn định thanh chịu nén (Euler, hệ số φ)
+- [x] Ổn định thanh chịu nén (Euler, Iasinski, hệ số φ)
+- [ ] Nén – uốn đồng thời, ổn định uốn – xoắn của dầm
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [ ] Xuất báo cáo PDF
