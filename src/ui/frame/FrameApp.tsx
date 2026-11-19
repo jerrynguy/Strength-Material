@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { labelFor } from '../../core/classify';
-import { analyzeFrame, type FrameModel, type FrameResult, type MemberResult } from '../../core/frame';
+import { analyzeFrame, memberLocal, type FrameModel, type FrameResult, type MemberResult } from '../../core/frame';
 import { sectionSteps } from '../../core/steps';
 import { fmt } from '../../core/stress';
 import type { InternalForces } from '../../core/types';
@@ -100,15 +100,31 @@ export function FrameApp({ model, setModel, replace, local, setLocal }: {
               if (!lm) return null;
               return (
                 <LocalCard
-                  key={lm.id}
+                  key={`local-${lm.id}`}
                   title={`Ổn định cục bộ bản cánh, bản bụng — thanh ${lm.name}`}
+                  aLabel={`a sườn ngang của ${lm.name}${model.members.find((x) => x.id === lm.id)?.stiffenerSpacing !== undefined ? ' (riêng)' : ' (= chung)'}`}
                   spec={lm.sectionSpec}
                   material={model.material}
-                  opt={local}
-                  setOpt={setLocal}
+                  opt={memberLocal(local, model.members.find((x) => x.id === lm.id))}
+                  setOpt={(o) => {
+                    if (o.fy !== local.fy) setLocal({ ...local, fy: o.fy });
+                    const cur = memberLocal(local, model.members.find((x) => x.id === lm.id)).stiffenerSpacing;
+                    if (o.stiffenerSpacing !== cur) set((m) => ({ ...m, members: m.members.map((x) => (x.id === lm.id ? { ...x, stiffenerSpacing: o.stiffenerSpacing } : x)) }));
+                  }}
                   forces={lm.samples.map((sm) => ({ x: sm.s, N: sm.N, Qy: sm.Q, Qz: 0, T: 0, Mz: sm.M, My: 0 }))}
-                  controls={<Select label="Thanh" value={lm.id} onChange={setLocalMem}
-                    options={res1.members.map((m) => ({ value: m.id, label: m.name }))} />}
+                  controls={
+                    <>
+                      <Select label="Thanh" value={lm.id} onChange={setLocalMem}
+                        options={res1.members.map((m) => ({ value: m.id, label: m.name }))} />
+                      <NumField label="a chung của khung" unit="mm" value={local.stiffenerSpacing} width={120}
+                        onChange={(v) => setLocal({ ...local, stiffenerSpacing: v })} title="Dùng cho các thanh không đặt giá trị riêng" />
+                      {model.members.find((x) => x.id === lm.id)?.stiffenerSpacing !== undefined && (
+                        <button onClick={() => set((m) => ({ ...m, members: m.members.map((x) => (x.id === lm.id ? { ...x, stiffenerSpacing: undefined } : x)) }))}>
+                          Bỏ a riêng của {lm.name}
+                        </button>
+                      )}
+                    </>
+                  }
                 />
               );
             })()}
@@ -129,7 +145,7 @@ export function FrameApp({ model, setModel, replace, local, setLocal }: {
             })()}
             {mr && (
               <StressPanel
-                key={mr.id}
+                key={`stress-${mr.id}`}
                 title={`Ứng suất tại mặt cắt trên thanh ${mr.name}`}
                 sec={mr.section}
                 spec={mr.sectionSpec}

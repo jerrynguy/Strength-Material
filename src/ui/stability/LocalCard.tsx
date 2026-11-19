@@ -30,6 +30,8 @@ export function LocalCard(props: {
   /** Thông số dùng chung với báo cáo / chọn tiết diện (nếu không truyền thì dùng trạng thái riêng) */
   opt?: LocalOptions;
   setOpt?: (o: LocalOptions) => void;
+  /** Nhãn ô khoảng cách sườn ngang */
+  aLabel?: string;
 }) {
   const [own, setOwn] = useState<LocalOptions>(DEFAULT_LOCAL);
   const cur = props.opt ?? own;
@@ -44,7 +46,7 @@ export function LocalCard(props: {
       <div className="row">
         {props.controls}
         <NumField label="f_y" unit="MPa" value={fy} width={100} onChange={setFy} />
-        <NumField label="Khoảng cách sườn ngang a" unit="mm" value={a} width={130} onChange={setA} title="0 = không có sườn" />
+        <NumField label={props.aLabel ?? 'Khoảng cách sườn ngang a'} unit="mm" value={a} width={130} onChange={setA} title="0 = không có sườn" />
       </div>
       {!r.applicable ? (
         <p className="muted">{r.reason}</p>

@@ -85,3 +85,45 @@ describe('Khoảng cách sườn ngang a', () => {
     expect(r1.sigmaInter!).toBeLessThan(r0.sigmaInter!);
   });
 });
+
+import { memberLocal, type FrameModel } from '../src/core/frame';
+import { designFrame } from '../src/core/design';
+import { fmember, fnode, fnodeLoad, fsupport, fdist } from '../src/core/framePresets';
+import { checkFrameMember, frameAnalyses } from '../src/core/beamColumn';
+
+describe('Khoảng cách sườn ngang riêng từng thanh khung', () => {
+  it('memberLocal: bỏ trống → dùng giá trị chung; 0 → không có sườn ngang', () => {
+    const g = { fy: 235, stiffenerSpacing: 1500 };
+    expect(memberLocal(g, {}).stiffenerSpacing).toBe(1500);
+    expect(memberLocal(g, { stiffenerSpacing: 0 }).stiffenerSpacing).toBe(0);
+    expect(memberLocal(g, { stiffenerSpacing: 900 })).toEqual({ fy: 235, stiffenerSpacing: 900 });
+  });
+  const frame = (aAC?: number): FrameModel => {
+    const A = fnode('A', 0, 0), C = fnode('C', 0, 6), D = fnode('D', 10, 6), B = fnode('B', 10, 0);
+    const col = { id: 'c', name: 'Cột', spec: { kind: 'I', bt: 300, tt: 16, hw: 1000, tw: 6, bb: 300, tb: 16, stiffeners: [{ pos: 500, b: 80, t: 8, sides: 2 }] } as SectionSpec };
+    const beam = { id: 'd', name: 'Dầm', spec: { kind: 'catalog', family: 'H_JIS', name: 'H500×200×10×16', rotate: false } as SectionSpec };
+    const ac = { ...fmember('AC', A, C, 'c'), stiffenerSpacing: aAC };
+    const cd = fmember('CD', C, D, 'd');
+    return {
+      title: '', material: { ...STEEL }, sections: [col, beam], nodes: [A, C, D, B],
+      members: [ac, cd, fmember('BD', B, D, 'c')],
+      supports: [fsupport(A, 'fixed'), fsupport(B, 'fixed')],
+      loads: [fdist('q', cd, 0, 10, -80), fnodeLoad('W', C, 20, 0)],
+    };
+  };
+  it('thanh có a riêng nhỏ cho kết quả nén – uốn tốt hơn thanh dùng a chung = ∞', () => {
+    const m = frame(1000);
+    const a = frameAnalyses(m, 1.5);
+    const g = { fy: 235, stiffenerSpacing: 0 };
+    const ac = m.members[0], bd = m.members[2];
+    const rAC = checkFrameMember(a, ac.id, 1, m, BUCKLING_MATERIALS.CT3, memberLocal(g, ac))!;
+    const rACinf = checkFrameMember(a, ac.id, 1, m, BUCKLING_MATERIALS.CT3, memberLocal(g, bd))!;
+    expect(rAC.sigmaInter!).toBeLessThan(rACinf.sigmaInter!);
+  });
+  it('chọn tiết diện khung dùng a riêng của từng thanh', () => {
+    const opt = { family: 'H_JIS', rotate: false, deflRatio: 0, selfWeight: false, stability: false, mu: 1, local: { fy: 235, stiffenerSpacing: 0 } };
+    const m0 = frame(undefined), m1 = frame(1000);
+    // đổi tiết diện dầm, cột giữ nguyên → chỉ so sánh để đảm bảo chạy được với a riêng
+    expect(designFrame(m1, 'd', opt).length).toBe(designFrame(m0, 'd', opt).length);
+  });
+});

@@ -119,6 +119,13 @@ export function FrameGeometry({ model, set }: { model: FrameModel; set: Setter }
                 <span className="muted">L = {fmt(lenOf(b.i, b.j), 4)} m</span>
                 <label className="check"><input type="checkbox" checked={b.releaseI} onChange={(e) => upd({ releaseI: e.target.checked })} />khớp đầu i</label>
                 <label className="check"><input type="checkbox" checked={b.releaseJ} onChange={(e) => upd({ releaseJ: e.target.checked })} />khớp đầu j</label>
+                <label className="check" title="Khoảng cách sườn ngang riêng của thanh — dùng cho ổn định cục bộ, tiết diện hữu hiệu">
+                  <input type="checkbox" checked={b.stiffenerSpacing !== undefined}
+                    onChange={(e) => upd({ stiffenerSpacing: e.target.checked ? 0 : undefined })} />a sườn ngang riêng
+                </label>
+                {b.stiffenerSpacing !== undefined && (
+                  <NumField value={b.stiffenerSpacing} unit="mm" width={110} onChange={(v) => upd({ stiffenerSpacing: v })} title="0 = không có sườn ngang" />
+                )}
               </div>
             </div>
           );

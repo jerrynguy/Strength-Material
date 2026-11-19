@@ -49,6 +49,13 @@ export interface FMember {
   /** Khớp (giải phóng mô men) ở đầu i / đầu j */
   releaseI: boolean;
   releaseJ: boolean;
+  /** Khoảng cách sườn ngang riêng của thanh (mm); bỏ trống = dùng giá trị chung của khung; 0 = không có sườn ngang */
+  stiffenerSpacing?: number;
+}
+
+/** Thông số ổn định cục bộ áp cho một thanh: f_y chung, khoảng cách sườn ngang riêng (nếu có). */
+export function memberLocal(local: { fy: number; stiffenerSpacing: number }, m?: { stiffenerSpacing?: number } | null): { fy: number; stiffenerSpacing: number } {
+  return { fy: local.fy, stiffenerSpacing: m && m.stiffenerSpacing !== undefined && m.stiffenerSpacing !== null ? m.stiffenerSpacing : local.stiffenerSpacing };
 }
 
 export interface FSection {

@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { checkBeamColumn, checkFrameMember, frameAnalyses, type BeamColumnResult } from '../../core/beamColumn';
-import type { FrameModel, FrameResult } from '../../core/frame';
+import { memberLocal, type FrameModel, type FrameResult } from '../../core/frame';
 import { BUCKLING_MATERIALS, type BucklingMaterial } from '../../core/stability';
 import { fmt } from '../../core/stress';
 import type { Model } from '../../core/types';
@@ -110,7 +110,7 @@ export function FrameBeamColumnCard({ model, res, muOut, setMuOut, local }: {
   const [open, setOpen] = useState<string | null>(null);
   const a = useMemo(() => frameAnalyses(model, n), [model, n]);
   const rows = res.members
-    .map((mr) => ({ mr, r: checkFrameMember(a, mr.id, muOut[mr.id] ?? 1, model, BUCKLING_MATERIALS[mat], local) }))
+    .map((mr) => ({ mr, r: checkFrameMember(a, mr.id, muOut[mr.id] ?? 1, model, BUCKLING_MATERIALS[mat], local ? memberLocal(local, model.members.find((x) => x.id === mr.id)) : undefined) }))
     .filter((x) => x.r !== null) as { mr: FrameResult['members'][number]; r: BeamColumnResult }[];
   if (!rows.length) return null;
   const sel = rows.find((x) => x.mr.id === open);

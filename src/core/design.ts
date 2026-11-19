@@ -8,7 +8,7 @@
  * Chưa xét ổn định cục bộ bản cánh/bụng và mất ổn định uốn–xoắn của dầm.
  */
 import { analyze } from './analysis';
-import { analyzeFrame, type FrameModel } from './frame';
+import { analyzeFrame, memberLocal, type FrameModel } from './frame';
 import { computeSection, type SectionProps } from './section';
 import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
 import { aeffIfClass4, checkEffective, effectiveSection } from './effective';
@@ -123,7 +123,7 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
         sectionClass = lc.sectionClass;
         localUtil = lc.shear ? lc.shear.util : 0;
         if (lc.sectionClass === 4) {
-          const ec = checkEffective(effectiveSection(spec, model.material, opt.local.fy), res.forceSamples, model.material.allowable);
+          const ec = checkEffective(effectiveSection(spec, model.material, opt.local.fy, opt.local.stiffenerSpacing), res.forceSamples, model.material.allowable);
           if (ec) localUtil = Math.max(localUtil, ec.util);
         }
       }
@@ -162,13 +162,14 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
     let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0, stabUtil = 0, lambda = 0, localUtil = 0, sectionClass = 0;
     for (const mr of res.members) {
       if (!memberIds.has(mr.id)) continue;
+      const mloc = opt.local ? memberLocal(opt.local, model.members.find((x) => x.id === mr.id)) : null;
       if (opt.local) {
-        const lc = checkLocal(spec, model.material, mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), opt.local);
+        const lc = checkLocal(spec, model.material, mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), mloc!);
         if (lc.applicable) {
           sectionClass = Math.max(sectionClass, lc.sectionClass);
           localUtil = Math.max(localUtil, lc.shear ? lc.shear.util : 0);
           if (lc.sectionClass === 4) {
-            const ec = checkEffective(effectiveSection(spec, model.material, opt.local.fy), mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), model.material.allowable);
+            const ec = checkEffective(effectiveSection(spec, model.material, mloc!.fy, mloc!.stiffenerSpacing), mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), model.material.allowable);
             if (ec) localUtil = Math.max(localUtil, ec.util);
           }
         }
@@ -176,7 +177,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
       if (opt.stability) {
         let Nc = 0;
         for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
-        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240, opt.local?.stiffenerSpacing ?? 0) : undefined);
+        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, mloc?.fy ?? 240, mloc?.stiffenerSpacing ?? 0) : undefined);
         if (st.util > stabUtil) { stabUtil = st.util; lambda = st.lambda; }
       }
       for (const s of mr.samples) {
