@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { checkLocal, type PlateResult } from '../../core/localBuckling';
+import { checkLocal, DEFAULT_LOCAL, type LocalOptions, type PlateResult } from '../../core/localBuckling';
 import { fmt } from '../../core/stress';
 import type { InternalForces, Material, SectionSpec } from '../../core/types';
 import { Card, NumField } from '../fields';
@@ -27,9 +27,16 @@ export function LocalCard(props: {
   title?: string;
   controls?: ReactNode;
   xLabel?: string;
+  /** Thông số dùng chung với báo cáo / chọn tiết diện (nếu không truyền thì dùng trạng thái riêng) */
+  opt?: LocalOptions;
+  setOpt?: (o: LocalOptions) => void;
 }) {
-  const [fy, setFy] = useState(240);
-  const [a, setA] = useState(0);
+  const [own, setOwn] = useState<LocalOptions>(DEFAULT_LOCAL);
+  const cur = props.opt ?? own;
+  const setCur = props.setOpt ?? setOwn;
+  const fy = cur.fy, a = cur.stiffenerSpacing;
+  const setFy = (v: number) => setCur({ ...cur, fy: v });
+  const setA = (v: number) => setCur({ ...cur, stiffenerSpacing: v });
   const r = useMemo(() => checkLocal(props.spec, props.material, props.forces, { fy, stiffenerSpacing: a }), [props.spec, props.material, props.forces, fy, a]);
   const rows = merge(r.plates);
   return (

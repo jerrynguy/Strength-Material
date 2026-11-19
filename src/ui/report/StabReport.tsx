@@ -1,5 +1,5 @@
 import { aeffIfClass4 } from '../../core/effective';
-import { checkLocal } from '../../core/localBuckling';
+import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { computeSection, validateSection } from '../../core/section';
 import { checkStability, criticalStress, lambda1 } from '../../core/stability';
 import { fmt } from '../../core/stress';
@@ -10,16 +10,16 @@ import { sectionRows } from './BeamReport';
 import { StiffenerChecks, StiffenerInputs } from './StiffenerReport';
 import { RConclusion, RFig, RKV, RSection, RSteps, RTable, Verdict, type ReportParts } from './primitives';
 
-export function StabReport({ model, parts }: { model: StabModel; parts: ReportParts }) {
+export function StabReport({ model, parts, local: lopt }: { model: StabModel; parts: ReportParts; local: LocalOptions }) {
   const err = validateSection(model.section);
   if (err) return <RSection n="1" title="Kết quả"><p className="r-bad">Tiết diện chưa hợp lệ: {err}</p></RSection>;
   const sec = computeSection(model.section);
   const r = checkStability(sec, {
     N: model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
     E: model.material.E, allowable: model.material.allowable, params: model.params, nRequired: model.nReq,
-    Aeff: aeffIfClass4(model.section, model.material, 240),
+    Aeff: aeffIfClass4(model.section, model.material, lopt.fy, lopt.stiffenerSpacing),
   });
-  const local = checkLocal(model.section, model.material, [{ N: -model.N, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }], { fy: 240, stiffenerSpacing: 0 });
+  const local = checkLocal(model.section, model.material, [{ N: -model.N, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }], lopt);
   const E = model.material.E * 1e3;
   const xMax = Math.max(200, Math.ceil(r.lambdaMax / 50) * 50);
   const sig: [number, number][] = [];
@@ -76,7 +76,7 @@ export function StabReport({ model, parts }: { model: StabModel; parts: ReportPa
           <RTable head={['Tấm', 'c/t', 'Giới hạn 1/2/3', 'σ_cr (MPa)', 'Loại']}
             rows={local.plates.filter((p, i, a) => a.findIndex((q) => q.name.replace(/ – (trái|phải)$/, '') === p.name.replace(/ – (trái|phải)$/, '')) === i)
               .map((p) => [p.name.replace(/ – (trái|phải)$/, ''), fmt(p.ct, 1), p.limits.map((l) => fmt(l, 1)).join(' / '), fmt(p.sigmaCr, 0), String(p.cls)])}
-            note={`Ổn định cục bộ (f_y = 240 MPa): tiết diện loại ${local.sectionClass}.`} />
+            note={`Ổn định cục bộ (f_y = ${lopt.fy} MPa; ${lopt.stiffenerSpacing > 0 ? `sườn ngang a = ${lopt.stiffenerSpacing} mm` : 'không có sườn ngang'}): tiết diện loại ${local.sectionClass}.`} />
         )}
         {local.effective?.applicable && local.effective.N && local.sectionClass === 4 && (
           <p>Tiết diện loại 4 khi nén: A_eff = {fmt(local.effective.N.Aeff, 1)} mm² ({fmt((local.effective.N.Aeff / sec.A) * 100, 1)}% A); kiểm tra ổn định dùng σ = N/A_eff.</p>

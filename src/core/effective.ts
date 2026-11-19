@@ -383,19 +383,19 @@ export function checkEffective(eff: EffectiveResult, forces: ({ x?: number } & I
 }
 
 /** A_eff khi tiết diện là loại 4 lúc chịu nén đều; undefined nếu không phải loại 4. */
-export function aeffIfClass4(spec: SectionSpec, mat: Material, fy: number): number | undefined {
+export function aeffIfClass4(spec: SectionSpec, mat: Material, fy: number, aSpacing = 0): number | undefined {
   const geo = geometry(spec);
   if (!geo || !geo.plates.length) return undefined;
-  const st = iterate(spec, { N: -1, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }, mat, fy);
+  const st = iterate(spec, { N: -1, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }, mat, fy, aSpacing);
   if (!st || (!st.plates.some((p) => p.removed) && !((st.rhoC ?? 1) < 1))) return undefined;
   return st.sec.A;
 }
 
 /** W_eff,z theo chiều mô men nếu có tấm bị khoét khi uốn; undefined nếu toàn bộ hữu hiệu. */
-export function weffZ(spec: SectionSpec, mat: Material, fy: number, sign: number): number | undefined {
+export function weffZ(spec: SectionSpec, mat: Material, fy: number, sign: number, aSpacing = 0): number | undefined {
   const geo = geometry(spec);
   if (!geo || !geo.plates.length) return undefined;
-  const st = iterate(spec, { N: 0, Qy: 0, Qz: 0, T: 0, Mz: sign >= 0 ? 1 : -1, My: 0 }, mat, fy);
+  const st = iterate(spec, { N: 0, Qy: 0, Qz: 0, T: 0, Mz: sign >= 0 ? 1 : -1, My: 0 }, mat, fy, aSpacing);
   if (!st || (!st.plates.some((p) => p.removed) && !((st.rhoC ?? 1) < 1))) return undefined;
   return W(st.sec, 'z');
 }

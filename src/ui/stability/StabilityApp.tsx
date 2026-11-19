@@ -9,6 +9,7 @@ import { fmt } from '../../core/stress';
 import type { Material, SectionSpec } from '../../core/types';
 import { MaterialRow, SectionSpecEditor } from '../editors';
 import { aeffIfClass4 } from '../../core/effective';
+import type { LocalOptions } from '../../core/localBuckling';
 import { Card, NumField, Select, TextField } from '../fields';
 import { BucklingChart } from './BucklingChart';
 import { LocalCard } from './LocalCard';
@@ -77,14 +78,14 @@ function MuSelect({ label, mu, onChange }: { label: string; mu: number; onChange
   );
 }
 
-export function StabilityApp({ model, setModel }: { model: StabModel; setModel: (fn: (m: StabModel) => StabModel) => void }) {
+export function StabilityApp({ model, setModel, local, setLocal }: { model: StabModel; setModel: (fn: (m: StabModel) => StabModel) => void; local: LocalOptions; setLocal: (o: LocalOptions) => void }) {
   const set = (p: Partial<StabModel>) => setModel((m) => ({ ...m, ...p }));
   const err = validateSection(model.section);
   const sec = useMemo(() => (err ? null : computeSection(model.section)), [model.section, err]);
   const inp = {
     N: model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
     E: model.material.E, allowable: model.material.allowable, params: model.params, nRequired: model.nReq,
-    Aeff: sec ? aeffIfClass4(model.section, model.material, 240) : undefined,
+    Aeff: sec ? aeffIfClass4(model.section, model.material, local.fy, local.stiffenerSpacing) : undefined,
   };
   const r = sec ? checkStability(sec, inp) : null;
   return (
@@ -136,7 +137,7 @@ export function StabilityApp({ model, setModel }: { model: StabModel; setModel: 
         {r && sec ? (
           <>
             <ResultCard r={r} model={model} />
-            <LocalCard spec={model.section} material={model.material} forces={[{ N: -model.N, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }]} title="Ổn định cục bộ bản cánh, bản bụng (nén đúng tâm)" />
+            <LocalCard spec={model.section} material={model.material} forces={[{ N: -model.N, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }]} title="Ổn định cục bộ bản cánh, bản bụng (nén đúng tâm)" opt={local} setOpt={setLocal} />
             <Card title="Đồ thị φ(λ) và σ_th(λ)">
               <Charts r={r} model={model} />
             </Card>

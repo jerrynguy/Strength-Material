@@ -39,6 +39,8 @@ export interface LtbOptions {
   braces: LtbBrace[];
   fy: number; // MPa
   curve: 'auto' | LtbCurve;
+  /** khoảng cách sườn ngang (chỉ dùng cho tiết diện hữu hiệu có sườn dọc) */
+  stiffenerSpacing?: number;
 }
 
 export interface LtbResult {
@@ -108,7 +110,7 @@ export function checkLTB(model: Model, res: AnalysisResult, opt: LtbOptions): Lt
     return NA('Dầm uốn quanh trục yếu (I_z ≤ I_y): không xảy ra mất ổn định uốn – xoắn.');
   }
   const Wel = sec.Iz / Math.max(sec.yMax, -sec.yMin);
-  const Weff = weffZ(model.section, model.material, opt.fy, Math.sign(Mmax) || 1);
+  const Weff = weffZ(model.section, model.material, opt.fy, Math.sign(Mmax) || 1, opt.stiffenerSpacing ?? 0);
   const W = Weff && Weff < Wel ? Weff : Wel;
   const L = model.length;
   const E = model.material.E * 1e9;

@@ -11,6 +11,7 @@ import { DesignCard } from '../DesignCard';
 import { FrameStabilityCard } from '../stability/StabilityChecks';
 import { FrameBeamColumnCard } from '../stability/BeamColumnCards';
 import { LocalCard } from '../stability/LocalCard';
+import type { LocalOptions } from '../../core/localBuckling';
 import { FrameGeneral, FrameGeometry, FrameLoads } from './FrameEditor';
 import { FrameView, type FrameViewMode } from './FrameView';
 
@@ -28,7 +29,9 @@ export function memberClass(mr: MemberResult) {
   return labelFor({ N: n, Qy: q, Qz: 0, T: 0, Mz: mm, My: 0 }, 1e-7 * scale, 1e-7 * scale, Math.sign(nSigned));
 }
 
-export function FrameApp({ model, setModel, replace }: {
+export function FrameApp({ model, setModel, replace, local, setLocal }: {
+  local: LocalOptions;
+  setLocal: (o: LocalOptions) => void;
   model: FrameModel;
   setModel: (fn: (m: FrameModel) => FrameModel) => void;
   replace: (m: FrameModel) => void;
@@ -90,8 +93,8 @@ export function FrameApp({ model, setModel, replace }: {
             <FrameReactions res={res} model={model} />
             <FrameMembers res={res} />
             <FrameDisp res={res} />
-            <FrameStabilityCard res={res1} model={model} mu={memberMu} setMu={setMemberMu} />
-            <FrameBeamColumnCard model={model} res={res1} muOut={muOut} setMuOut={setMuOut} />
+            <FrameStabilityCard res={res1} model={model} mu={memberMu} setMu={setMemberMu} local={local} />
+            <FrameBeamColumnCard model={model} res={res1} muOut={muOut} setMuOut={setMuOut} local={local} />
             {(() => {
               const lm = res1.members.find((m) => m.id === localMem) ?? res1.members[0];
               if (!lm) return null;
@@ -101,6 +104,8 @@ export function FrameApp({ model, setModel, replace }: {
                   title={`Ổn định cục bộ bản cánh, bản bụng — thanh ${lm.name}`}
                   spec={lm.sectionSpec}
                   material={model.material}
+                  opt={local}
+                  setOpt={setLocal}
                   forces={lm.samples.map((sm) => ({ x: sm.s, N: sm.N, Qy: sm.Q, Qz: 0, T: 0, Mz: sm.M, My: 0 }))}
                   controls={<Select label="Thanh" value={lm.id} onChange={setLocalMem}
                     options={res1.members.map((m) => ({ value: m.id, label: m.name }))} />}
@@ -114,6 +119,7 @@ export function FrameApp({ model, setModel, replace }: {
                   allowable={model.material.allowable}
                   run={(o) => designFrame(model, sid, { ...o, memberMu })}
                   showMu={false}
+                  localOpt={local}
                   apply={(spec) => set((m) => ({ ...m, sections: m.sections.map((x) => (x.id === sid ? { ...x, spec } : x)) }))}
                   extraControls={<Select label="Tiết diện cần chọn" value={sid} onChange={setDesignSec}
                     options={model.sections.map((x) => ({ value: x.id, label: `${x.name} (${model.members.filter((b) => b.sectionId === x.id).map((b) => b.name).join(', ')})` }))} />}

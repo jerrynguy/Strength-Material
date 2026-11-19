@@ -3,7 +3,7 @@ import { analyze } from '../../core/analysis';
 import { checkBeamColumn } from '../../core/beamColumn';
 import { classify } from '../../core/classify';
 import { aeffIfClass4 } from '../../core/effective';
-import { checkLocal } from '../../core/localBuckling';
+import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { checkLTB, type LtbOptions } from '../../core/ltb';
 import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
 import { equilibriumSteps, sectionSteps } from '../../core/steps';
@@ -29,7 +29,7 @@ export function sectionRows(sec: NonNullable<ReturnType<typeof analyze>['section
   ];
 }
 
-export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: ReportParts; ltbOpt: LtbOptions }) {
+export function BeamReport({ model, parts, ltbOpt, local: lopt }: { model: Model; parts: ReportParts; ltbOpt: LtbOptions; local: LocalOptions }) {
   const res = analyze(model);
   const sec = res.section;
   let n = 0;
@@ -80,11 +80,11 @@ export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: Repo
   for (const s of res.forceSamples) Nc = Math.max(Nc, -s.N);
   const mu = guessMu(model);
   const axial = Nc > 0 ? checkStability(sec, {
-    N: Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 2, Aeff: aeffIfClass4(model.section, model.material, 240),
+    N: Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 2, Aeff: aeffIfClass4(model.section, model.material, lopt.fy, lopt.stiffenerSpacing),
   }) : null;
-  const bc = parts.stability && Nc > 0 ? checkBeamColumn(model, 1.5, BUCKLING_MATERIALS.CT3) : null;
+  const bc = parts.stability && Nc > 0 ? checkBeamColumn(model, 1.5, BUCKLING_MATERIALS.CT3, lopt) : null;
   const ltb = parts.stability ? checkLTB(model, res, ltbOpt) : null;
-  const local = parts.stability ? checkLocal(model.section, model.material, res.forceSamples, { fy: 240, stiffenerSpacing: 0 }) : null;
+  const local = parts.stability ? checkLocal(model.section, model.material, res.forceSamples, lopt) : null;
   if (axial) conclusions.push({ label: `Ổn định nén đúng tâm (μ = ${mu})`, ok: axial.okPhi, detail: `σ = ${fmt(axial.sigma, 2)} MPa so với φ[σ] = ${fmt(axial.allowPhi, 2)} MPa (λ = ${fmt(axial.lambdaMax, 1)})` });
   if (bc && bc.planes.some((p) => p.M1)) conclusions.push({ label: 'Nén – uốn đồng thời (bậc hai, giáo trình)', ok: bc.ok2 && bc.okN, detail: `σ_II = ${bc.sigma2 === null ? '—' : fmt(bc.sigma2, 2)} MPa; σ(n·tải) = ${bc.sigmaN === null ? '—' : fmt(bc.sigmaN, 2)} MPa${bc.sigmaInter !== null ? `; công thức tương tác ${fmt((bc.sigmaInter / allow) * 100, 1)}%${bc.okInter ? '' : ' (không đạt — thiên về an toàn)'}` : ''}` });
   if (ltb?.applicable) conclusions.push({ label: 'Ổn định uốn – xoắn', ok: ltb.ok, detail: `|M| = ${fmt(Math.abs(ltb.Mmax), 2)} kN·m so với χ_LT·W·[σ] = ${fmt(ltb.Mrd, 2)} kN·m (M_cr = ${fmt(ltb.Mcr, 2)})` });
@@ -230,7 +230,7 @@ export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: Repo
             </RSub>
           )}
           {local?.applicable && (
-            <RSub title={`Ổn định cục bộ (f_y = 240 MPa) — tiết diện loại ${local.sectionClass || '—'}`}>
+            <RSub title={`Ổn định cục bộ (f_y = ${lopt.fy} MPa; ${lopt.stiffenerSpacing > 0 ? `sườn ngang a = ${lopt.stiffenerSpacing} mm` : 'không có sườn ngang'}) — tiết diện loại ${local.sectionClass || '—'}`}>
               {local.tube && <p>Ống tròn: D/t = {fmt(local.tube.Dt, 1)}; giới hạn loại 1/2/3 = {local.tube.limits.map((l) => fmt(l, 1)).join(' / ')} → loại {local.tube.cls}.</p>}
               {local.plates.length > 0 && <RTable head={['Tấm', 'c/t', 'Giới hạn 1/2/3', 'ψ · k_σ', 'σ nén', 'σ_cr', 'Loại']}
                 rows={local.plates.filter((p, i, a) => a.findIndex((q) => q.name.replace(/ – (trái|phải)$/, '') === p.name.replace(/ – (trái|phải)$/, '') && q.s1 === p.s1) === i)

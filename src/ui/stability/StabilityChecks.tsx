@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { AnalysisResult } from '../../core/analysis';
 import type { FrameModel, FrameResult } from '../../core/frame';
 import { aeffIfClass4 } from '../../core/effective';
+import { DEFAULT_LOCAL, type LocalOptions } from '../../core/localBuckling';
 import { BUCKLING_MATERIALS, checkStability, type BucklingMaterial } from '../../core/stability';
 import { fmt } from '../../core/stress';
 import { effectiveRestraints, type Model, type SectionSpec } from '../../core/types';
@@ -35,7 +36,7 @@ export interface StabOpenRequest {
   title: string;
 }
 
-export function BeamStabilityCard({ res, model, onOpen }: { res: AnalysisResult; model: Model; onOpen: (r: StabOpenRequest) => void }) {
+export function BeamStabilityCard({ res, model, onOpen, local = DEFAULT_LOCAL }: { res: AnalysisResult; model: Model; onOpen: (r: StabOpenRequest) => void; local?: LocalOptions }) {
   const [mu, setMu] = useState(() => guessMu(model));
   const [mat, setMat] = useState<BucklingMaterial>('CT3');
   const [nReq, setNReq] = useState(2);
@@ -45,7 +46,7 @@ export function BeamStabilityCard({ res, model, onOpen }: { res: AnalysisResult;
   if (!(Nc > 0)) return null;
   const r = checkStability(res.section, {
     N: Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: model.material.allowable,
-    params: BUCKLING_MATERIALS[mat], nRequired: nReq, Aeff: aeffIfClass4(model.section, model.material, 240),
+    params: BUCKLING_MATERIALS[mat], nRequired: nReq, Aeff: aeffIfClass4(model.section, model.material, local.fy, local.stiffenerSpacing),
   });
   const ok = r.okPhi && r.okN;
   return (
@@ -77,7 +78,8 @@ export function BeamStabilityCard({ res, model, onOpen }: { res: AnalysisResult;
   );
 }
 
-export function FrameStabilityCard({ res, model, mu, setMu }: {
+export function FrameStabilityCard({ res, model, mu, setMu, local = DEFAULT_LOCAL }: {
+  local?: LocalOptions;
   res: FrameResult;
   model: FrameModel;
   mu: Record<string, number>;
@@ -116,7 +118,7 @@ export function FrameStabilityCard({ res, model, mu, setMu }: {
               const m = mu[mr.id] ?? 1;
               const r = checkStability(mr.section, {
                 N: Nc, Lz: mr.L, Ly: mr.L, muZ: m, muY: m, E: model.material.E, allowable: model.material.allowable,
-                params: BUCKLING_MATERIALS[mat], nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, 240),
+                params: BUCKLING_MATERIALS[mat], nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, local.fy, local.stiffenerSpacing),
               });
               return (
                 <tr key={mr.id}>

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { Candidate, DesignOptions } from '../core/design';
 import type { LtbOptions } from '../core/ltb';
+import { DEFAULT_LOCAL, type LocalOptions } from '../core/localBuckling';
 import { STEEL_FAMILIES } from '../core/steelTables';
 import { fmt } from '../core/stress';
 import type { SectionSpec } from '../core/types';
@@ -17,6 +18,8 @@ export function DesignCard(props: {
   showMu?: boolean;
   /** Thiết lập uốn – xoắn (chỉ dầm) */
   ltb?: LtbOptions;
+  /** f_y và khoảng cách sườn ngang dùng cho ổn định cục bộ */
+  localOpt?: LocalOptions;
 }) {
   const [opt, setOpt] = useState<DesignOptions>({ family: 'I_GOST', rotate: false, deflRatio: 250, selfWeight: true, stability: true, mu: 1 });
   const [rows, setRows] = useState<Candidate[] | null>(null);
@@ -45,9 +48,9 @@ export function DesignCard(props: {
         {props.ltb && (
           <label className="check"><input type="checkbox" checked={useLtb} onChange={(e) => { setUseLtb(e.target.checked); setRows(null); }} />kiểm tra uốn – xoắn (theo thẻ uốn – xoắn)</label>
         )}
-        <label className="check"><input type="checkbox" checked={useLocal} onChange={(e) => { setUseLocal(e.target.checked); setRows(null); }} />kiểm tra ổn định cục bộ (f_y = 240)</label>
+        <label className="check"><input type="checkbox" checked={useLocal} onChange={(e) => { setUseLocal(e.target.checked); setRows(null); }} />kiểm tra ổn định cục bộ (f_y = {(props.localOpt ?? DEFAULT_LOCAL).fy}{(props.localOpt?.stiffenerSpacing ?? 0) > 0 ? `, a = ${props.localOpt!.stiffenerSpacing} mm` : ''})</label>
         <label className="check"><input type="checkbox" checked={opt.rotate} onChange={(e) => { setOpt({ ...opt, rotate: e.target.checked }); setRows(null); }} />xoay 90° (uốn quanh trục yếu)</label>
-        <button className="primary" onClick={() => setRows(props.run({ ...opt, ltb: ltbOn ? props.ltb : null, local: useLocal ? { fy: 240, stiffenerSpacing: 0 } : null }))}>Tìm tiết diện</button>
+        <button className="primary" onClick={() => setRows(props.run({ ...opt, ltb: ltbOn ? props.ltb : null, local: useLocal ? (props.localOpt ?? DEFAULT_LOCAL) : null }))}>Tìm tiết diện</button>
       </div>
       {rows && (
         <>

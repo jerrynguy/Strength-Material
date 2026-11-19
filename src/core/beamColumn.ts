@@ -12,6 +12,7 @@
  */
 import { analyze } from './analysis';
 import { aeffIfClass4, weffZ } from './effective';
+import { DEFAULT_LOCAL, type LocalOptions } from './localBuckling';
 import { analyzeFrame, type FrameModel, type FrameResult } from './frame';
 import type { SectionProps } from './section';
 import { phiOf, type BucklingParams } from './stability';
@@ -125,7 +126,7 @@ function finish(c: CoreInput): BeamColumnResult {
 }
 
 /** Kiểm tra cho chế độ thanh thẳng */
-export function checkBeamColumn(model: Model, n: number, params: BucklingParams): BeamColumnResult | null {
+export function checkBeamColumn(model: Model, n: number, params: BucklingParams, local: LocalOptions = DEFAULT_LOCAL): BeamColumnResult | null {
   const r1 = analyze(model, { buckling: true });
   if (!r1.ok || !r1.section) return null;
   const sec = r1.section;
@@ -155,9 +156,9 @@ export function checkBeamColumn(model: Model, n: number, params: BucklingParams)
     mk('z', r1.buckling.bendY, EIz, sec.Iz, 'Mz'),
     mk('y', r1.buckling.bendZ, EIy, sec.Iy, 'My'),
   ];
-  const Aeff = aeffIfClass4(model.section, model.material, 240);
+  const Aeff = aeffIfClass4(model.section, model.material, local.fy, local.stiffenerSpacing);
   const Mz1 = maxAbs(r1.forceSamples.map((s) => s.Mz));
-  const Wz = weffZ(model.section, model.material, 240, Math.sign(Mz1) || 1);
+  const Wz = weffZ(model.section, model.material, local.fy, Math.sign(Mz1) || 1, local.stiffenerSpacing);
   if (Wz && Wz < planes[0].W) planes[0].W = Wz;
   return finish({
     sec, E: model.material.E, allowable: model.material.allowable, params, n, Nc, planes,
@@ -188,7 +189,7 @@ const toIF = (s: { N: number; Q: number; M: number }): InternalForces => ({ N: s
 
 /** Kiểm tra một thanh khung chịu nén – uốn. muOut: μ ngoài mặt phẳng khung. */
 export function checkFrameMember(
-  a: FrameBCAnalyses, memberId: string, muOut: number, model: FrameModel, params: BucklingParams,
+  a: FrameBCAnalyses, memberId: string, muOut: number, model: FrameModel, params: BucklingParams, local: LocalOptions = DEFAULT_LOCAL,
 ): BeamColumnResult | null {
   const m1 = a.r1.members.find((m) => m.id === memberId);
   if (!m1) return null;
@@ -216,10 +217,10 @@ export function checkFrameMember(
       W: W(sec.Iy, Math.max(sec.zMax, -sec.zMin)),
     },
   ];
-  const Wz = weffZ(m1.sectionSpec, model.material, 240, Math.sign(maxAbs(m1.samples.map((s) => s.M))) || 1);
+  const Wz = weffZ(m1.sectionSpec, model.material, local.fy, Math.sign(maxAbs(m1.samples.map((s) => s.M))) || 1, local.stiffenerSpacing);
   if (Wz && Wz < planes[0].W) planes[0].W = Wz;
   return finish({
-    Aeff: aeffIfClass4(m1.sectionSpec, model.material, 240),
+    Aeff: aeffIfClass4(m1.sectionSpec, model.material, local.fy, local.stiffenerSpacing),
     sec, E: model.material.E, allowable: model.material.allowable, params, n: a.n, Nc, planes,
     sigma1: sigmaMax(sec, m1.samples.map(toIF)),
     sigma2: m2 ? sigmaMax(sec, m2.samples.map(toIF)) : null,

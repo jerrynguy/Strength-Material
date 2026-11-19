@@ -60,3 +60,28 @@ describe('Sườn dọc bản bụng', () => {
     expect(r.effCheck).toBeTruthy();
   });
 });
+
+import { aeffIfClass4 } from '../src/core/effective';
+import { checkBeamColumn } from '../src/core/beamColumn';
+import { BUCKLING_MATERIALS } from '../src/core/stability';
+import { force, support } from '../src/core/presets';
+
+describe('Khoảng cách sườn ngang a', () => {
+  it('a nhỏ hơn a_c làm tăng σ_cr,sl và A_eff', () => {
+    const inf = aeffIfClass4(girder(true), STEEL, 235, 0)!;
+    const a1 = aeffIfClass4(girder(true), STEEL, 235, 1000)!;
+    expect(a1).toBeGreaterThan(inf);
+    const r = effectiveSection(girder(true), STEEL, 235, 1000);
+    expect(r.N!.columns![0].a).toBe(1000);
+    expect(r.N!.columns![0].sigmaCrSl).toBeGreaterThan(effectiveSection(girder(true), STEEL, 235, 0).N!.columns![0].sigmaCrSl);
+  });
+  it('thông số cục bộ được truyền vào kiểm tra nén – uốn', () => {
+    const m = {
+      title: '', length: 6, material: { ...STEEL }, section: girder(true),
+      supports: [support('A', 0, 'fixed')], hinges: [], loads: [force('P', 6, -20, -800)],
+    };
+    const r0 = checkBeamColumn(m, 1.5, BUCKLING_MATERIALS.CT3)!;
+    const r1 = checkBeamColumn(m, 1.5, BUCKLING_MATERIALS.CT3, { fy: 235, stiffenerSpacing: 1000 })!;
+    expect(r1.sigmaInter!).toBeLessThan(r0.sigmaInter!);
+  });
+});

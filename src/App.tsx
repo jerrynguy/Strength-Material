@@ -14,6 +14,7 @@ import { LtbCard, defaultLtbOptions } from './ui/stability/LtbCard';
 import { LocalCard } from './ui/stability/LocalCard';
 import { ReportShell } from './ui/report/ReportShell';
 import type { LtbOptions } from './core/ltb';
+import { DEFAULT_LOCAL, type LocalOptions } from './core/localBuckling';
 import type { Model } from './core/types';
 import { BeamView } from './ui/BeamView';
 import { Diagram } from './ui/Diagram';
@@ -25,6 +26,7 @@ const STORE_KEY = 'strength-material:model:v1';
 const FRAME_KEY = 'strength-material:frame:v1';
 const MODE_KEY = 'strength-material:mode';
 const STAB_KEY = 'strength-material:stab:v1';
+const LOCAL_KEY = 'strength-material:local:v1';
 
 type Mode = 'beam' | 'frame' | 'stab';
 
@@ -50,6 +52,9 @@ export default function App() {
   const [model, setModel] = useState<Model>(() => load(STORE_KEY, defaultModel));
   const [frame, setFrame] = useState<FrameModel>(() => load(FRAME_KEY, () => FRAME_PRESETS[0].build()));
   const [stab, setStab] = useState<StabModel>(() => load(STAB_KEY, defaultStabModel));
+  // f_y và khoảng cách sườn ngang cho ổn định cục bộ — riêng từng chế độ, dùng chung cho thẻ, báo cáo và chọn tiết diện
+  const [localOpts, setLocalOpts] = useState<Record<Mode, LocalOptions>>(() => load(LOCAL_KEY, () => ({ beam: DEFAULT_LOCAL, frame: DEFAULT_LOCAL, stab: DEFAULT_LOCAL })));
+  const setLocalFor = (m: Mode) => (o: LocalOptions) => setLocalOpts((p) => ({ ...p, [m]: o }));
   const [version, setVersion] = useState(0);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [pickX, setPickX] = useState(() => model.length / 2);
@@ -60,9 +65,11 @@ export default function App() {
   useEffect(() => save(FRAME_KEY, frame), [frame]);
   useEffect(() => save(MODE_KEY, mode), [mode]);
   useEffect(() => save(STAB_KEY, stab), [stab]);
+  useEffect(() => save(LOCAL_KEY, localOpts), [localOpts]);
 
   const [so, setSo] = useState(false);
   const [ltbOpt, setLtbOpt] = useState<LtbOptions>(defaultLtbOptions);
+  const ltbMerged = useMemo(() => ({ ...ltbOpt, stiffenerSpacing: localOpts.beam.stiffenerSpacing }), [ltbOpt, localOpts.beam.stiffenerSpacing]);
   const [reportOpen, setReportOpen] = useState(false);
   const closeReport = useCallback(() => setReportOpen(false), []);
   const res1 = useMemo(() => analyze(model), [model]);
@@ -168,9 +175,9 @@ export default function App() {
       </header>
 
       {mode === 'stab' ? (
-        <StabilityApp key={version} model={stab} setModel={(fn) => setStab((m) => fn(m))} />
+        <StabilityApp key={version} model={stab} setModel={(fn) => setStab((m) => fn(m))} local={localOpts.stab} setLocal={setLocalFor('stab')} />
       ) : mode === 'frame' ? (
-        <FrameApp key={version} model={frame} setModel={(fn) => setFrame((m) => fn(m))} replace={replaceFrame} />
+        <FrameApp key={version} model={frame} setModel={(fn) => setFrame((m) => fn(m))} replace={replaceFrame} local={localOpts.frame} setLocal={setLocalFor('frame')} />
       ) : (
       <main className="layout" key={version}>
         <div className="col-edit">
@@ -231,11 +238,11 @@ export default function App() {
                 {!['v', 'w', 'u', 'phi'].some((k) => anyD(k as 'v')) && <p className="muted">Không có chuyển vị.</p>}
               </Card>
               <SummaryCard res={res} model={model} />
-              <BeamStabilityCard key={'st' + version} res={res1} model={model} onOpen={openStab} />
-              <BeamBeamColumnCard model={model} />
-              <LtbCard model={model} res={res1} opt={ltbOpt} setOpt={setLtbOpt} />
-              <LocalCard spec={model.section} material={model.material} forces={res1.forceSamples} />
-              <DesignCard allowable={model.material.allowable} run={(o) => designBeam(model, o)} ltb={ltbOpt}
+              <BeamStabilityCard key={'st' + version} res={res1} model={model} onOpen={openStab} local={localOpts.beam} />
+              <BeamBeamColumnCard model={model} local={localOpts.beam} />
+              <LtbCard model={model} res={res1} opt={ltbMerged} setOpt={setLtbOpt} />
+              <LocalCard spec={model.section} material={model.material} forces={res1.forceSamples} opt={localOpts.beam} setOpt={setLocalFor('beam')} />
+              <DesignCard allowable={model.material.allowable} run={(o) => designBeam(model, o)} ltb={ltbMerged} localOpt={localOpts.beam}
                 apply={(spec) => { set((m) => ({ ...m, section: spec })); setVersion((v) => v + 1); }} />
             </>
           )}
@@ -246,7 +253,7 @@ export default function App() {
       {reportOpen && (
         <ReportShell
           onClose={closeReport}
-          input={mode === 'beam' ? { mode, model, ltb: ltbOpt } : mode === 'frame' ? { mode, model: frame } : { mode, model: stab }}
+          input={mode === 'beam' ? { mode, model, ltb: ltbMerged, local: localOpts.beam } : mode === 'frame' ? { mode, model: frame, local: localOpts.frame } : { mode, model: stab, local: localOpts.stab }}
         />
       )}
       <footer className="foot muted">

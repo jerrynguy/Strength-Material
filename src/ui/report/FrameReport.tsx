@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { checkFrameMember, frameAnalyses } from '../../core/beamColumn';
 import { analyzeFrame, DIST_DIR_LABELS, type FrameModel } from '../../core/frame';
 import { aeffIfClass4 } from '../../core/effective';
-import { checkLocal } from '../../core/localBuckling';
+import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
 import { sectionSteps } from '../../core/steps';
 import { fmt, maxNormalOnSection } from '../../core/stress';
@@ -17,7 +17,7 @@ const STATUS = { 'tinh-dinh': 'tĩnh định', 'sieu-tinh': 'siêu tĩnh', 'bien
 const SUP = { fixed: 'Ngàm', pin: 'Gối cố định', roller: 'Gối di động', custom: 'Tuỳ chỉnh' };
 const toIF = (s: { N: number; Q: number; M: number }): InternalForces => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 });
 
-export function FrameReport({ model, parts }: { model: FrameModel; parts: ReportParts }) {
+export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; parts: ReportParts; local: LocalOptions }) {
   const res = analyzeFrame(model, { buckling: true });
   let n = 0;
   const N = () => String(++n);
@@ -40,10 +40,10 @@ export function FrameReport({ model, parts }: { model: FrameModel; parts: Report
     for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
     const muIn = res.buckling && Nc > 0 ? (Math.PI / mr.L) * Math.sqrt((model.material.E * 1e9 * mr.section.Iz * 1e-12) / (res.buckling.alpha * Nc * 1e3)) : 1;
     const axial = Nc > 0 ? checkStability(mr.section, {
-      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, 240),
+      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, lopt.fy, lopt.stiffenerSpacing),
     }) : null;
-    const bc = a && Nc > 0 ? checkFrameMember(a, mr.id, 1, model, BUCKLING_MATERIALS.CT3) : null;
-    const local = parts.stability ? checkLocal(mr.sectionSpec, model.material, mr.samples.map(toIF), { fy: 240, stiffenerSpacing: 0 }) : null;
+    const bc = a && Nc > 0 ? checkFrameMember(a, mr.id, 1, model, BUCKLING_MATERIALS.CT3, lopt) : null;
+    const local = parts.stability ? checkLocal(mr.sectionSpec, model.material, mr.samples.map(toIF), lopt) : null;
     return { mr, sig, x, Nc, muIn, axial, bc, local };
   });
   const concl: { label: string; ok: boolean | null; detail: ReactNode }[] = [];
@@ -166,7 +166,7 @@ export function FrameReport({ model, parts }: { model: FrameModel; parts: Report
                   worst ? `${worst.name}: c/t = ${fmt(worst.ct, 1)} (loại ${worst.cls})` : '—',
                   r.local!.effCheck ? <Verdict ok={r.local!.effCheck.ok}>σ = {fmt(r.local!.effCheck.sigma, 1)} MPa</Verdict> : '—',
                   r.local!.shear ? <Verdict ok={r.local!.shear.ok}>{fmt(r.local!.shear.util * 100, 0)}%</Verdict> : '—'];
-              })} note="Ổn định cục bộ theo EN 1993-1-1 bảng 5.2, f_y = 240 MPa." />
+              })} note={`Ổn định cục bộ theo EN 1993-1-1 bảng 5.2, f_y = ${lopt.fy} MPa; ${lopt.stiffenerSpacing > 0 ? `sườn ngang a = ${lopt.stiffenerSpacing} mm` : 'không có sườn ngang (a = ∞)'}.`} />
           )}
           {locs.filter((r) => r.mr.sectionSpec.kind === 'I' && r.mr.sectionSpec.stiffeners?.length).map((r) => (
             <StiffenerChecks key={r.mr.id} local={r.local} steps={parts.steps} title={`Thanh ${r.mr.name} — bụng có sườn dọc (EN 1993-1-5 A.2, A.3)`} />

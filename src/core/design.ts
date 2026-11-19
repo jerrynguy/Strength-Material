@@ -110,7 +110,7 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     let defl = 0;
     for (const d of res.dispSamples) defl = Math.max(defl, Math.hypot(d.v, d.w));
     const deflLimit = opt.deflRatio > 0 ? (model.length * 1e3) / opt.deflRatio : 0;
-    const st = opt.stability ? stabUtilOf(sec, Nc, model.length, opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240) : undefined) : { util: 0, lambda: 0 };
+    const st = opt.stability ? stabUtilOf(sec, Nc, model.length, opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240, opt.local?.stiffenerSpacing ?? 0) : undefined) : { util: 0, lambda: 0 };
     let ltbUtil = 0;
     if (opt.ltb) {
       const l = checkLTB({ ...model, section: spec, loads }, res, opt.ltb);
@@ -176,7 +176,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
       if (opt.stability) {
         let Nc = 0;
         for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
-        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240) : undefined);
+        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240, opt.local?.stiffenerSpacing ?? 0) : undefined);
         if (st.util > stabUtil) { stabUtil = st.util; lambda = st.lambda; }
       }
       for (const s of mr.samples) {

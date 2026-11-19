@@ -156,6 +156,7 @@ Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, r�
   - Phần đầu vào: bảng sườn (vị trí, b_s × t_s, phía, diện tích) và cách chia ô bụng.
   - Phần ổn định: bảng thanh sườn (b1/b2, A_sl, I_sl, a_c, σ_cr,sl → σ_cr,c, λ̄_c, α_e, χ_c, ρ_c), ổn định cắt có sườn dọc (k_τ, τ_cr, χ_w), lời giải.
   - Báo cáo khung có phần riêng cho từng thanh có sườn.
+- **Thông số ổn định cục bộ trong báo cáo:** f_y và khoảng cách sườn ngang a lấy đúng theo giá trị đang nhập trong thẻ “Ổn định cục bộ” của từng chế độ (lưu trên trình duyệt). Các giá trị này cũng được dùng cho chọn số hiệu thép, tiết diện hữu hiệu trong kiểm tra ổn định nén, nén – uốn và uốn – xoắn.
 - **Bật/tắt từng phần:** dữ liệu đầu vào, biểu đồ, ứng suất, ổn định, lời giải từng bước.
 
 ## Phương pháp

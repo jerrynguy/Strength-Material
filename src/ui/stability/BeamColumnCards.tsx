@@ -4,6 +4,7 @@ import type { FrameModel, FrameResult } from '../../core/frame';
 import { BUCKLING_MATERIALS, type BucklingMaterial } from '../../core/stability';
 import { fmt } from '../../core/stress';
 import type { Model } from '../../core/types';
+import type { LocalOptions } from '../../core/localBuckling';
 import { Card, NumField, Select } from '../fields';
 
 function Verdict({ ok, children }: { ok: boolean; children: ReactNode }) {
@@ -79,10 +80,10 @@ const HINT = (
   </p>
 );
 
-export function BeamBeamColumnCard({ model }: { model: Model }) {
+export function BeamBeamColumnCard({ model, local }: { model: Model; local?: LocalOptions }) {
   const [n, setN] = useState(1.5);
   const [mat, setMat] = useState<BucklingMaterial>('CT3');
-  const r = useMemo(() => checkBeamColumn(model, n, BUCKLING_MATERIALS[mat]), [model, n, mat]);
+  const r = useMemo(() => checkBeamColumn(model, n, BUCKLING_MATERIALS[mat], local), [model, n, mat, local]);
   if (!r || r.planes.every((p) => !p.M1)) return null;
   const all = r.ok2 && r.okN && r.okInter;
   return (
@@ -97,7 +98,8 @@ export function BeamBeamColumnCard({ model }: { model: Model }) {
   );
 }
 
-export function FrameBeamColumnCard({ model, res, muOut, setMuOut }: {
+export function FrameBeamColumnCard({ model, res, muOut, setMuOut, local }: {
+  local?: LocalOptions;
   model: FrameModel;
   res: FrameResult;
   muOut: Record<string, number>;
@@ -108,7 +110,7 @@ export function FrameBeamColumnCard({ model, res, muOut, setMuOut }: {
   const [open, setOpen] = useState<string | null>(null);
   const a = useMemo(() => frameAnalyses(model, n), [model, n]);
   const rows = res.members
-    .map((mr) => ({ mr, r: checkFrameMember(a, mr.id, muOut[mr.id] ?? 1, model, BUCKLING_MATERIALS[mat]) }))
+    .map((mr) => ({ mr, r: checkFrameMember(a, mr.id, muOut[mr.id] ?? 1, model, BUCKLING_MATERIALS[mat], local) }))
     .filter((x) => x.r !== null) as { mr: FrameResult['members'][number]; r: BeamColumnResult }[];
   if (!rows.length) return null;
   const sel = rows.find((x) => x.mr.id === open);

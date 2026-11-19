@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { FrameModel } from '../../core/frame';
 import type { LtbOptions } from '../../core/ltb';
+import type { LocalOptions } from '../../core/localBuckling';
 import type { Model } from '../../core/types';
 import type { StabModel } from '../stability/StabilityApp';
 import { BeamReport } from './BeamReport';
@@ -10,9 +11,9 @@ import { PART_LABELS, type ReportParts } from './primitives';
 import { StabReport } from './StabReport';
 
 export type ReportInput =
-  | { mode: 'beam'; model: Model; ltb: LtbOptions }
-  | { mode: 'frame'; model: FrameModel }
-  | { mode: 'stab'; model: StabModel };
+  | { mode: 'beam'; model: Model; ltb: LtbOptions; local: LocalOptions }
+  | { mode: 'frame'; model: FrameModel; local: LocalOptions }
+  | { mode: 'stab'; model: StabModel; local: LocalOptions };
 
 const MODE_LABEL = { beam: 'Thanh thẳng (dầm, trục, cột)', frame: 'Khung phẳng / dầm nghiêng', stab: 'Ổn định thanh chịu nén' };
 
@@ -83,9 +84,9 @@ export function ReportShell({ input, onClose }: { input: ReportInput; onClose: (
             </tbody>
           </table>
         </header>
-        {input.mode === 'beam' && <BeamReport model={input.model} parts={parts} ltbOpt={input.ltb} />}
-        {input.mode === 'frame' && <FrameReport model={input.model} parts={parts} />}
-        {input.mode === 'stab' && <StabReport model={input.model} parts={parts} />}
+        {input.mode === 'beam' && <BeamReport model={input.model} parts={parts} ltbOpt={input.ltb} local={input.local} />}
+        {input.mode === 'frame' && <FrameReport model={input.model} parts={parts} local={input.local} />}
+        {input.mode === 'stab' && <StabReport model={input.model} parts={parts} local={input.local} />}
         <footer className="r-foot">
           Phương pháp: phân tích cấu tạo hình học bằng hạng ma trận; phương pháp ma trận độ cứng; nội lực bằng phương pháp mặt cắt; ứng suất theo
           Navier, Jurapxki, thuyết bền 3/4; ổn định theo Euler/Iasinski/bảng φ, EN 1993-1-1 &amp; 1-5. Quy ước dấu: N &gt; 0 kéo; Q &gt; 0 làm phân tố

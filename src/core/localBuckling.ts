@@ -280,6 +280,8 @@ export interface LocalResult {
   warnings: string[];
 }
 
+export const DEFAULT_LOCAL: LocalOptions = { fy: 240, stiffenerSpacing: 0 };
+
 export interface LocalOptions {
   fy: number;
   /** khoảng cách sườn ngang (mm); 0 = không có sườn */
