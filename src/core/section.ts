@@ -457,9 +457,17 @@ export function validateSection(s: SectionSpec): string | null {
     case 'tube':
       if (!pos(s.D, s.t)) return 'Kích thước phải dương';
       return 2 * s.t < s.D ? null : 'Chiều dày ống phải nhỏ hơn D/2';
-    case 'I':
+    case 'I': {
       if (!pos(s.bt, s.tt, s.hw, s.tw, s.bb, s.tb)) return 'Kích thước phải dương';
-      return s.tw <= Math.min(s.bt, s.bb) ? null : 'Bản bụng rộng hơn bản cánh';
+      if (s.tw > Math.min(s.bt, s.bb)) return 'Bản bụng rộng hơn bản cánh';
+      const st = [...(s.stiffeners ?? [])].sort((a, b) => a.pos - b.pos);
+      for (const k of st) {
+        if (!pos(k.b, k.t)) return 'Sườn dọc: kích thước phải dương';
+        if (!(k.pos - k.t / 2 > 0 && k.pos + k.t / 2 < s.hw)) return 'Sườn dọc phải nằm trong chiều cao bản bụng';
+      }
+      for (let i = 1; i < st.length; i++) if (st[i].pos - st[i - 1].pos < (st[i].t + st[i - 1].t) / 2) return 'Các sườn dọc chồng lên nhau';
+      return null;
+    }
     case 'T':
       if (!pos(s.b, s.tf, s.hw, s.tw)) return 'Kích thước phải dương';
       return s.tw <= s.b ? null : 'Bản bụng rộng hơn bản cánh';
@@ -519,10 +527,17 @@ function computeSectionBase(s: SectionSpec): SectionProps {
         [s.bt / 2, s.tb + s.hw], [s.bt / 2, H], [-s.bt / 2, H], [-s.bt / 2, s.tb + s.hw],
         [-s.tw / 2, s.tb + s.hw], [-s.tw / 2, s.tb], [-s.bb / 2, s.tb],
       ];
+      const st = s.stiffeners ?? [];
+      const rings: Ring[] = [{ pts, hole: false }];
+      for (const k of st) {
+        const y = s.tb + s.hw - k.pos;
+        rings.push({ pts: rect(s.tw / 2, y - k.t / 2, k.b, k.t), hole: false });
+        if (k.sides === 2) rings.push({ pts: rect(-s.tw / 2 - k.b, y - k.t / 2, k.b, k.t), hole: false });
+      }
       return polygonSection(
-        `Chữ I (cánh ${s.bt}×${s.tt}, bụng ${s.hw}×${s.tw}, cánh ${s.bb}×${s.tb} mm)`,
-        [{ pts, hole: false }],
-        openThinTorsion([[s.bt, s.tt], [s.bb, s.tb], [s.hw, s.tw]]),
+        `Chữ I (cánh ${s.bt}×${s.tt}, bụng ${s.hw}×${s.tw}, cánh ${s.bb}×${s.tb} mm${st.length ? `, ${st.length} sườn dọc` : ''})`,
+        rings,
+        openThinTorsion([[s.bt, s.tt], [s.bb, s.tb], [s.hw, s.tw], ...st.flatMap((k) => (k.sides === 2 ? [[k.b, k.t], [k.b, k.t]] : [[k.b, k.t]]) as [number, number][])]),
       );
     }
     case 'T': {

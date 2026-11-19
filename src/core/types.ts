@@ -96,13 +96,25 @@ export type SectionSpec =
   | { kind: 'box'; B: number; H: number; tw: number; tf: number }
   | { kind: 'circle'; D: number }
   | { kind: 'tube'; D: number; t: number }
-  | { kind: 'I'; bt: number; tt: number; hw: number; tw: number; bb: number; tb: number }
+  | { kind: 'I'; bt: number; tt: number; hw: number; tw: number; bb: number; tb: number; stiffeners?: WebStiffener[] }
   | { kind: 'T'; b: number; tf: number; hw: number; tw: number }
   | { kind: 'U'; h: number; b: number; tw: number; tf: number }
   | { kind: 'L'; b: number; h: number; t: number }
   | { kind: 'polygon'; outer: [number, number][]; holes: [number, number][][] }
   /** Thép hình tra bảng; rotate = xoay 90° (uốn quanh trục yếu) */
   | { kind: 'catalog'; family: string; name: string; rotate: boolean };
+
+/** Sườn dọc bản bụng (bản phẳng hàn vuông góc bụng) */
+export interface WebStiffener {
+  /** khoảng cách từ mép trên bản bụng đến tâm sườn (mm) */
+  pos: number;
+  /** bề rộng vươn ra của sườn (mm) */
+  b: number;
+  /** bề dày sườn (mm) */
+  t: number;
+  /** đặt một phía hay hai phía bụng */
+  sides: 1 | 2;
+}
 
 export interface Model {
   title: string;

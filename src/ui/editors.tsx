@@ -79,7 +79,7 @@ export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200 }: { s
       ) : s.kind !== 'polygon' ? (
         <div className="row">
           {Object.entries(s)
-            .filter(([k]) => k !== 'kind')
+            .filter(([k]) => k !== 'kind' && k !== 'stiffeners')
             .map(([k, v]) => (
               <NumField key={k} label={PARAM_LABELS[k] ?? k} unit="mm" value={v as number}
                 onChange={(nv) => setSec({ ...s, [k]: nv } as SectionSpec)} />
@@ -103,6 +103,7 @@ export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200 }: { s
           </label>
         </div>
       )}
+      {s.kind === 'I' && <StiffenerEditor spec={s} onChange={setSec} />}
       {err && <p className="error">{err}</p>}
       {props && (
         <div className="section-grid">
@@ -284,5 +285,36 @@ export function LoadsEditor({ model, set }: { model: Model; set: Setter }) {
         Dấu theo trục: Fy &lt; 0 và q &lt; 0 (phương y) là <b>hướng xuống</b>. Mz &gt; 0 là ngược chiều kim đồng hồ ↺. q₁ ≠ q₂ cho tải hình thang / tam giác.
       </p>
     </Card>
+  );
+}
+
+type ISpec = Extract<SectionSpec, { kind: 'I' }>;
+
+/** Sườn dọc bản bụng cho tiết diện chữ I tổ hợp hàn */
+function StiffenerEditor({ spec, onChange }: { spec: ISpec; onChange: (s: SectionSpec) => void }) {
+  const list = spec.stiffeners ?? [];
+  const set = (l: typeof list) => onChange({ ...spec, stiffeners: l });
+  return (
+    <div className="stiff-ed">
+      <div className="row checks">
+        <span className="muted">Sườn dọc bản bụng:</span>
+        <button onClick={() => set([...list, { pos: Math.round(0.2 * spec.hw), b: Math.round(Math.max(60, spec.hw / 10)), t: Math.max(spec.tw, 8), sides: 1 }])}>+ Sườn dọc</button>
+        {list.length === 0 && <span className="muted small">(chưa có — thường đặt cách mép nén 0.2 h_w khi bụng chịu uốn)</span>}
+      </div>
+      {list.map((k, i) => {
+        const upd = (p: Partial<typeof k>) => set(list.map((x, j) => (j === i ? { ...x, ...p } : x)));
+        return (
+          <div key={i} className="row checks">
+            <span className="tag">Sườn {i + 1}</span>
+            <NumField label="cách mép trên bụng" unit="mm" value={k.pos} width={120} onChange={(v) => upd({ pos: v })} />
+            <NumField label="b_s (vươn)" unit="mm" value={k.b} width={100} onChange={(v) => upd({ b: v })} />
+            <NumField label="t_s" unit="mm" value={k.t} width={90} onChange={(v) => upd({ t: v })} />
+            <Select label="Phía" value={String(k.sides) as '1' | '2'} onChange={(v) => upd({ sides: v === '2' ? 2 : 1 })}
+              options={[{ value: '1', label: 'một phía' }, { value: '2', label: 'hai phía' }]} />
+            <button className="del" onClick={() => set(list.filter((_, j) => j !== i))}>✕</button>
+          </div>
+        );
+      })}
+    </div>
   );
 }

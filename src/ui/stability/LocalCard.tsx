@@ -100,7 +100,7 @@ export function LocalCard(props: {
                   {r.shear.needCheck ? ' → cần kiểm tra' : ' → bụng không mất ổn định do cắt'}</td></tr>
                 {r.shear.needCheck && (
                   <>
-                    <tr><th>k_τ ({r.shear.a ? `a = ${r.shear.a} mm` : 'không có sườn'})</th><td>{fmt(r.shear.kTau, 3)}; τ_cr = {fmt(r.shear.tauCr, 1)} MPa</td></tr>
+                    <tr><th>k_τ ({r.shear.a ? `sườn ngang a = ${r.shear.a} mm` : 'không có sườn ngang'}{props.spec.kind === 'I' && props.spec.stiffeners?.length ? ', có sườn dọc' : ''})</th><td>{fmt(r.shear.kTau, 3)}; τ_cr = {fmt(r.shear.tauCr, 1)} MPa</td></tr>
                     <tr><th>λ̄_w = 0.76√(f_y/τ_cr) · χ_w</th><td>{fmt(r.shear.lambdaW, 3)} · {fmt(r.shear.chiW, 3)}</td></tr>
                   </>
                 )}
@@ -116,7 +116,7 @@ export function LocalCard(props: {
       )}
       <p className="hint">
         Đơn vị ứng suất MPa; n = σ_cr/σ là hệ số an toàn ổn định đàn hồi của tấm. Mỗi tấm lấy trạng thái bất lợi nhất dọc thanh. k_σ theo EN 1993-1-5 (bảng 4.1, 4.2) với ψ = σ₂/σ₁; phân loại theo EN 1993-1-1 bảng 5.2
-        (với tấm trong, α lấy theo phân bố đàn hồi — gần đúng). Tấm loại 4 kiểm tra gần đúng σ_nén ≤ ρ·[σ] thay cho tính tiết diện hữu hiệu.
+        (với tấm trong, α lấy theo phân bố đàn hồi — gần đúng). Tiết diện loại 4 (hoặc có sườn dọc) được kiểm tra bằng tiết diện hữu hiệu bên dưới; cột “loại 4 · %” trong bảng chỉ là ước lượng nhanh theo từng tấm.
         Thép cán: c tính trừ góc lượn; tiết diện hàn: bỏ qua đường hàn.
       </p>
     </Card>
@@ -134,7 +134,7 @@ export function EffectiveView({ eff, check, allow, xLabel }: { eff: EffectiveRes
   ];
   return (
     <div className="eff-block">
-      <h3 className="sub-title">Tiết diện hữu hiệu (EN 1993-1-5 §4.3)</h3>
+      <h3 className="sub-title">Tiết diện hữu hiệu (EN 1993-1-5 §4.3{eff.N?.columns?.length || eff.MzPos?.columns?.length ? ', §4.5' : ''})</h3>
       <div className="section-grid">
         {eff.N && (
           <figure className="eff-fig">
@@ -177,6 +177,39 @@ export function EffectiveView({ eff, check, allow, xLabel }: { eff: EffectiveRes
           </table>
         </div>
       )}
+      {(() => {
+        const cols = [
+          ...(eff.N?.columns ?? []).map((c) => ({ when: 'nén đều', c, rho: eff.N!.rhoC })),
+          ...(eff.MzPos?.columns ?? []).map((c) => ({ when: 'uốn M_z > 0', c, rho: eff.MzPos!.rhoC })),
+          ...(eff.MzNeg?.columns ?? []).map((c) => ({ when: 'uốn M_z < 0', c, rho: eff.MzNeg!.rhoC })),
+        ];
+        if (!cols.length) return null;
+        return (
+          <>
+            <h3 className="sub-title">Mất ổn định tổng thể của bụng có sườn dọc (EN 1993-1-5 A.2 — thanh trên nền đàn hồi)</h3>
+            <div className="table-scroll">
+              <table className="grid">
+                <thead><tr><th>Trường hợp</th><th>Sườn</th><th>b1 / b2 (mm)</th><th>A_sl (mm²)</th><th>I_sl (mm⁴)</th><th>a_c (mm)</th><th>σ_cr,sl → σ_cr,c</th><th>λ̄_c · α_e</th><th>χ_c</th></tr></thead>
+                <tbody>
+                  {cols.map(({ when, c }, i) => (
+                    <tr key={i}>
+                      <td>{when}</td><td>{c.name} <span className="muted">@{fmt(c.pos, 0)}</span></td><td>{fmt(c.b1, 0)} / {fmt(c.b2, 0)}</td>
+                      <td>{fmt(c.Asl, 0)}</td><td>{fmt(c.Isl, 0)}</td><td>{fmt(c.ac, 0)}{Number.isFinite(c.a) ? ` (a = ${fmt(c.a, 0)})` : ''}</td>
+                      <td>{fmt(c.sigmaCrSl, 1)} → {fmt(c.sigmaCrC, 1)}</td><td>{fmt(c.lambdaC, 3)} · {fmt(c.alphaE, 3)}</td>
+                      <td className={c.chiC < 1 ? 'bad' : 'good'}>{fmt(c.chiC, 4)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="hint">
+              Sườn cùng dải bụng hai bên (bề rộng góp theo phân bố b_eff) làm việc như thanh trên nền đàn hồi; ρ_c = χ_c nhỏ nhất được dùng để
+              giảm bề dày vùng nén của bụng (trừ dải biên sát cánh) và sườn — tô đỏ nhạt trên hình. Bỏ qua làm việc kiểu tấm (thiên về an toàn).
+              Khoảng cách sườn ngang a lấy theo ô “Khoảng cách sườn ngang”; a = 0 coi như không có sườn ngang (a ≥ a_c).
+            </p>
+          </>
+        );
+      })()}
       {check && <p className="hint">{check.terms}</p>}
       <details>
         <summary>Lời giải tiết diện hữu hiệu</summary>

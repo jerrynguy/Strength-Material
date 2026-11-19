@@ -32,8 +32,18 @@ export interface PlateDef {
   web?: boolean;
 }
 
-interface Geometry {
+export interface StiffenerGeo {
+  /** cao độ tâm sườn (toạ độ vẽ, mm) */
+  y: number;
+  b: number;
+  t: number;
+  sides: 1 | 2;
+}
+
+export interface Geometry {
   plates: PlateDef[];
+  /** Bản bụng có sườn dọc: mép dưới/trên bụng (toạ độ vẽ), bề dày bụng, danh sách sườn */
+  stiffened?: { yBot: number; yTop: number; tw: number; list: StiffenerGeo[] };
   /** Chiều cao bản bụng tính cắt h_w và bề dày (tổng các bụng) */
   shear?: { hw: number; tw: number; count: number };
   tube?: { D: number; t: number };
@@ -45,15 +55,34 @@ export function geometry(spec: SectionSpec): Geometry | null {
   switch (spec.kind) {
     case 'I': {
       const H = spec.tb + spec.hw + spec.tt;
+      const yTop = spec.tb + spec.hw;
+      const st = [...(spec.stiffeners ?? [])].sort((a, b) => a.pos - b.pos);
+      const ys = st.map((k) => yTop - k.pos);
+      const bounds = [yTop, ...ys, spec.tb];
+      const webPlates: PlateDef[] = [];
+      for (let i = 0; i + 1 < bounds.length; i++) {
+        webPlates.push({
+          name: st.length ? `Bụng – ô ${i + 1}` : 'Bản bụng', kind: 'internal', c: bounds[i] - bounds[i + 1], t: spec.tw,
+          p1: [0, bounds[i + 1]], p2: [0, bounds[i]], web: true,
+        });
+      }
+      const stiffPlates: PlateDef[] = st.flatMap((k, i) => {
+        const y = ys[i];
+        const right: PlateDef = { name: `Sườn dọc ${i + 1}${k.sides === 2 ? ' – phải' : ''}`, kind: 'outstand', c: k.b, t: k.t, p1: [spec.tw / 2, y], p2: [spec.tw / 2 + k.b, y] };
+        const left: PlateDef = { name: `Sườn dọc ${i + 1} – trái`, kind: 'outstand', c: k.b, t: k.t, p1: [-spec.tw / 2, y], p2: [-spec.tw / 2 - k.b, y] };
+        return k.sides === 2 ? [right, left] : [right];
+      });
       return {
         plates: [
           { name: 'Cánh trên – phải', kind: 'outstand', c: (spec.bt - spec.tw) / 2, t: spec.tt, p1: [spec.tw / 2, H - spec.tt / 2], p2: [spec.bt / 2, H - spec.tt / 2] },
           { name: 'Cánh trên – trái', kind: 'outstand', c: (spec.bt - spec.tw) / 2, t: spec.tt, p1: [-spec.tw / 2, H - spec.tt / 2], p2: [-spec.bt / 2, H - spec.tt / 2] },
-          { name: 'Bản bụng', kind: 'internal', c: spec.hw, t: spec.tw, p1: [0, spec.tb], p2: [0, spec.tb + spec.hw], web: true },
+          ...webPlates,
+          ...stiffPlates,
           { name: 'Cánh dưới – phải', kind: 'outstand', c: (spec.bb - spec.tw) / 2, t: spec.tb, p1: [spec.tw / 2, spec.tb / 2], p2: [spec.bb / 2, spec.tb / 2] },
           { name: 'Cánh dưới – trái', kind: 'outstand', c: (spec.bb - spec.tw) / 2, t: spec.tb, p1: [-spec.tw / 2, spec.tb / 2], p2: [-spec.bb / 2, spec.tb / 2] },
         ],
         shear: { hw: spec.hw, tw: spec.tw, count: 1 },
+        stiffened: st.length ? { yBot: spec.tb, yTop, tw: spec.tw, list: st.map((k, i) => ({ y: ys[i], b: k.b, t: k.t, sides: k.sides })) } : undefined,
         note: 'Tiết diện tổ hợp hàn: bỏ qua đường hàn khi tính c.',
       };
     }
@@ -150,6 +179,22 @@ export function geometry(spec: SectionSpec): Geometry | null {
     default:
       return null;
   }
+}
+
+// ───────── Sườn dọc: tiết diện "thanh" gồm sườn + dải bụng ─────────
+
+/** Đặc trưng ngoài mặt phẳng bụng của sườn kèm dải bụng rộng w (mm). */
+export function stiffenerColumn(k: StiffenerGeo, tw: number, w: number) {
+  const parts: { A: number; x: number; I: number }[] = [{ A: w * tw, x: 0, I: (w * tw ** 3) / 12 }];
+  const xs = tw / 2 + k.b / 2;
+  parts.push({ A: k.b * k.t, x: xs, I: (k.t * k.b ** 3) / 12 });
+  if (k.sides === 2) parts.push({ A: k.b * k.t, x: -xs, I: (k.t * k.b ** 3) / 12 });
+  const A = parts.reduce((a, p) => a + p.A, 0);
+  const xc = parts.reduce((a, p) => a + p.A * p.x, 0) / A;
+  const I = parts.reduce((a, p) => a + p.I + p.A * (p.x - xc) ** 2, 0);
+  const xStiff = k.sides === 2 ? 0 : xs;
+  const e = Math.max(Math.abs(xc), Math.abs(xStiff - xc));
+  return { A, I, i: Math.sqrt(I / A), e, As: k.b * k.t * k.sides };
 }
 
 // ───────── Hệ số ổn định tấm ─────────
@@ -360,9 +405,23 @@ export function checkLocal(spec: SectionSpec, mat: Material, forces: ({ x?: numb
     const limit = (72 * eps) / eta;
     const a = opt.stiffenerSpacing > 0 ? opt.stiffenerSpacing : Infinity;
     const ah = a / hw;
-    const kTau = !Number.isFinite(a) ? 5.34 : ah >= 1 ? 5.34 + 4 / (ah * ah) : 4 + 5.34 / (ah * ah);
+    const kBase = (ahh: number) => (!Number.isFinite(ahh) ? 5.34 : ahh >= 1 ? 5.34 + 4 / (ahh * ahh) : 4 + 5.34 / (ahh * ahh));
+    let kTau = kBase(ah);
     const sigmaE = (Math.PI ** 2 * E * tw * tw) / (12 * (1 - mat.nu * mat.nu) * hw * hw);
-    const tauCr = kTau * sigmaE;
+    let tauCr = kTau * sigmaE;
+    if (geo.stiffened) {
+      // EN 1993-1-5 A.3: k_τ có sườn dọc (I_sl: sườn + 15εt_w mỗi bên), và kiểm tra từng ô bụng
+      const Isl = geo.stiffened.list.reduce((acc, k) => acc + stiffenerColumn(k, tw, 30 * eps * tw).I, 0);
+      const r = !Number.isFinite(a) ? 0 : hw / a;
+      const kSl = Math.max(9 * r * r * Math.pow(Isl / (tw ** 3 * hw), 0.75), (2.1 / tw) * Math.cbrt(Isl / hw));
+      kTau = (!Number.isFinite(a) ? 5.34 : ah >= 1 ? 5.34 + 4 * r * r : 4 + 5.34 * r * r) + kSl;
+      tauCr = kTau * sigmaE;
+      const ys = [geo.stiffened.yTop, ...geo.stiffened.list.map((k) => k.y), geo.stiffened.yBot];
+      let hMax = 0;
+      for (let i = 0; i + 1 < ys.length; i++) hMax = Math.max(hMax, ys[i] - ys[i + 1]);
+      const tauSub = kBase(a / hMax) * ((Math.PI ** 2 * E * tw * tw) / (12 * (1 - mat.nu * mat.nu) * hMax * hMax));
+      if (tauSub < tauCr) { tauCr = tauSub; kTau = kBase(a / hMax) * (hw / hMax) ** 2; }
+    }
     const lambdaW = 0.76 * Math.sqrt(fy / tauCr);
     const chiW = Math.min(1, lambdaW < 0.83 / eta ? eta : 0.83 / lambdaW);
     let Q = 0;
@@ -375,8 +434,8 @@ export function checkLocal(spec: SectionSpec, mat: Material, forces: ({ x?: numb
 
   let effective: EffectiveResult | undefined;
   let effCheck: EffCheck | null = null;
-  if (sectionClass === 4 && geo.plates.length) {
-    effective = effectiveSection(spec, mat, fy);
+  if ((sectionClass === 4 || geo.stiffened) && geo.plates.length) {
+    effective = effectiveSection(spec, mat, fy, opt.stiffenerSpacing);
     effCheck = checkEffective(effective, forces, mat.allowable);
   }
   const ok = (effCheck ? effCheck.ok : plates.every((p) => p.cls < 4 || p.util <= 1)) && (!shear || shear.ok);

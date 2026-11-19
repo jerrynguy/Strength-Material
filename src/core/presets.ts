@@ -79,6 +79,19 @@ export const PRESETS: Preset[] = [
     }),
   },
   {
+    key: 'stiff-girder',
+    label: 'Dầm tổ hợp hàn bụng cao có sườn dọc',
+    build: () => ({
+      title: 'Dầm tổ hợp hàn nhịp 16 m, bụng 1400×8 có sườn dọc',
+      length: 16,
+      material: { ...STEEL },
+      section: { kind: 'I', bt: 360, tt: 20, hw: 1400, tw: 8, bb: 360, tb: 20, stiffeners: [{ pos: 280, b: 120, t: 12, sides: 1 }] },
+      supports: [support('A', 0, 'pin'), support('B', 16, 'roller')],
+      hinges: [],
+      loads: [dist('q', 0, 16, -40)],
+    }),
+  },
+  {
     key: 'cantilever',
     label: 'Dầm công-xôn (ngàm một đầu) — tiết diện hộp rỗng',
     build: () => ({

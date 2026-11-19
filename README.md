@@ -125,6 +125,18 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - Dầm bụng mảnh chịu uốn: b_e1 = 0.4·b_eff đo từ mép nén, vòng lặp hội tụ.
 - **Giới hạn:** chưa có sườn dọc; chưa áp dụng cho vỏ trụ (ống tròn loại 4 theo EN 1993-1-6). Với thép GOST cánh dốc, phần khoét lấy theo bề dày trung bình.
 
+## Sườn dọc bản bụng
+
+- **Khai báo:** thêm sườn dọc dạng bản phẳng cho tiết diện chữ I tổ hợp hàn (vị trí tính từ mép trên bụng, bề rộng, bề dày, một hoặc hai phía). A, I, W có kể sườn.
+- **Ổn định cục bộ:** bản bụng được chia thành các ô giữa các sườn; mỗi ô và từng sườn (tấm vươn) được phân loại và tính b_eff riêng.
+- **Mất ổn định tổng thể của bụng có sườn** (EN 1993-1-5 A.2.2, mô hình thanh trên nền đàn hồi):
+  - Sườn cùng dải bụng góp hai bên (theo phân bố b_eff) tạo thành thanh có A_sl, I_sl.
+  - Tính a_c và σ_cr,sl (hai trường hợp a ≥ a_c và a < a_c), rồi ngoại suy thành σ_cr,c ở mép nén.
+  - Tính λ̄_c, α_e = 0.49 + 0.09/(i/e) và χ_c.
+  - ρ_c = χ_c dùng để giảm bề dày vùng nén của bụng (trừ dải biên sát cánh) và của sườn (EN §4.5.1). Bỏ qua làm việc kiểu tấm nên kết quả thiên về an toàn.
+- **Ổn định cắt** (EN 1993-1-5 A.3): k_τ có thêm k_τsl từ I_sl, đồng thời kiểm tra ô bụng lớn nhất.
+- **Kiểm chứng:** A_sl, σ_cr,sl khớp công thức; sườn khoẻ cho χ_c lớn hơn sườn yếu; sườn làm tăng W_eff và τ_cr. Ví dụ bụng 1400×8 thêm sườn 120×12 tại 0,2h_w: σ khi uốn giảm từ 154,7 xuống 141,1 MPa; τ_cr tăng từ 31,5 lên 49,2 MPa.
+
 ## Xuất báo cáo PDF
 
 Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, rồi bấm **In / Lưu PDF** và chọn “Lưu dưới dạng PDF”. App xuất qua chức năng in của trình duyệt: tiếng Việt hiển thị đúng, hình vẽ dạng vector, chữ trong PDF chọn và tìm kiếm được, không cần thư viện ngoài.
@@ -208,6 +220,7 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [x] Ổn định uốn – xoắn của dầm (M_cr bằng phần tử hữu hạn, χ_LT theo EN 1993-1-1)
 - [x] Ổn định cục bộ bản cánh / bản bụng, phân loại tiết diện, ổn định bụng chịu cắt
 - [x] Tiết diện hữu hiệu đầy đủ cho loại 4 (A_eff, W_eff, e_N, tính lặp)
-- [ ] Sườn dọc bản bụng; vỏ trụ loại 4
+- [x] Sườn dọc bản bụng (EN 1993-1-5 A.2, A.3)
+- [ ] Làm việc kiểu tấm của bản có sườn (A.1), vỏ trụ loại 4
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [x] Xuất báo cáo PDF (thanh thẳng, khung, ổn định)
