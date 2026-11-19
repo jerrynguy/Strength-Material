@@ -96,6 +96,16 @@ export function FrameStabilityCard({ res, model, mu, setMu }: {
       <div className="row">
         <Select label="Bảng φ" value={mat} onChange={setMat}
           options={(Object.keys(BUCKLING_MATERIALS) as BucklingMaterial[]).map((k) => ({ value: k, label: BUCKLING_MATERIALS[k].label }))} />
+        {res.buckling && (
+          <button onClick={() => {
+            const next = { ...mu };
+            for (const { mr, Nc } of rows) {
+              const EI = model.material.E * 1e9 * mr.section.Iz * 1e-12;
+              next[mr.id] = Math.round(((Math.PI / mr.L) * Math.sqrt(EI / (res.buckling!.alpha * Nc * 1e3))) * 1000) / 1000;
+            }
+            setMu(next);
+          }}>Lấy μ từ phân tích ổn định khung (α_th = {fmt(res.buckling.alpha, 2)})</button>
+        )}
       </div>
       <div className="table-scroll">
         <table className="grid">
@@ -126,8 +136,9 @@ export function FrameStabilityCard({ res, model, mu, setMu }: {
         </table>
       </div>
       <p className="hint">
-        μ mặc định = 1 (đầu thanh không chuyển vị ngang tương đối). Với khung có chuyển vị ngang (không giằng), cột có μ &gt; 1 — ví dụ cột
-        khung chân khớp μ ≈ 2 hoặc lớn hơn. Kiểm tra xét nén đúng tâm theo trục yếu (i_min); thanh chịu nén – uốn cần kiểm tra thêm.
+        μ mặc định = 1 (đầu thanh không chuyển vị ngang tương đối). Với khung có chuyển vị ngang (không giằng), bấm “Lấy μ từ phân tích ổn
+        định khung” để dùng μ tính từ hệ số tới hạn α_th (μ trong mặt phẳng; bảng này dùng chung μ cho cả trục yếu — thiên về an toàn).
+        Kiểm tra nén – uốn xem ở thẻ bên dưới.
       </p>
     </Card>
   );

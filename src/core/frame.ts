@@ -17,7 +17,7 @@
  *  3. Nội lực dọc thanh bằng phương pháp mặt cắt từ lực đầu thanh và tải trên thanh.
  */
 import { sectionForces, type PointAction } from './analysis';
-import { rank, solve, zeros, type Matrix } from './linalg';
+import { luFactor, rank, smallestEigen, solve, zeros, type Matrix } from './linalg';
 import { computeSection, validateSection, type SectionProps } from './section';
 import type { DistributedLoad, Material, SectionSpec } from './types';
 
@@ -149,6 +149,22 @@ export interface FrameResult {
   members: MemberResult[];
   nodeDisp: { nodeId: string; name: string; ux: number; uy: number; rz: number | null }[];
   residual: { X: number; Y: number; M: number };
+  secondOrder: boolean;
+  /** Phân tích ổn định: α_th và dạng mất ổn định (chuẩn hoá) */
+  buckling: { alpha: number; mode: { id: string; pts: { s: number; ux: number; uy: number }[] }[] } | null;
+}
+
+export interface FrameAnalyzeOptions {
+  secondOrder?: boolean;
+  buckling?: boolean;
+  loadFactor?: number;
+}
+
+function scaleFrameLoads(m: FrameModel, f: number): FrameModel {
+  return {
+    ...m,
+    loads: m.loads.map((l) => (l.type === 'mdist' ? { ...l, q1: l.q1 * f, q2: l.q2 * f } : { ...l, Fx: l.Fx * f, Fy: l.Fy * f, M: l.M * f })),
+  };
 }
 
 const KN = 1e3;
@@ -156,7 +172,7 @@ const KN = 1e3;
 function fail(errors: string[], det: FrameDeterminacy | null = null, warnings: string[] = []): FrameResult {
   return {
     ok: false, errors, warnings, status: 'bien-hinh', degree: 0, det, reactions: [], members: [], nodeDisp: [],
-    residual: { X: 0, Y: 0, M: 0 },
+    residual: { X: 0, Y: 0, M: 0 }, secondOrder: false, buckling: null,
   };
 }
 
@@ -198,7 +214,10 @@ function uniq(xs: number[], tol: number): number[] {
   return o;
 }
 
-export function analyzeFrame(model: FrameModel): FrameResult {
+export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}): FrameResult {
+  const model = opts.loadFactor !== undefined && opts.loadFactor !== 1 ? scaleFrameLoads(modelIn, opts.loadFactor) : modelIn;
+  const secondOrder = !!opts.secondOrder;
+  const wantBuckling = secondOrder || !!opts.buckling;
   const errors: string[] = [];
   const warnings: string[] = [];
   const nodeIdx = new Map(model.nodes.map((n, i) => [n.id, i]));
@@ -409,6 +428,7 @@ export function analyzeFrame(model: FrameModel): FrameResult {
   const qAt = (d: DistributedLoad, t: number) => d.q1 + ((d.q2 - d.q1) * (t - d.x1)) / (d.x2 - d.x1);
 
   const elemFeq: number[][][] = []; // [mesh][elem] → 6 tải nút tương đương (địa phương, N)
+  const elems: { mIdx: number; e: number; ids: number[]; c: number; s: number; l: number; EA: number; EI: number }[] = [];
   meshes.forEach((ms, mIdx) => {
     const { g, ts, dofs } = ms;
     const EA = E * g.sec.props.A * 1e-6;
@@ -429,6 +449,7 @@ export function analyzeFrame(model: FrameModel): FrameResult {
         cols.push(toGlobal(c, s, klu));
       }
       const ids = [...dofs[e], ...dofs[e + 1]];
+      elems.push({ mIdx, e, ids, c, s, l, EA, EI });
       for (let a = 0; a < 6; a++) for (let b = 0; b < 6; b++) K[ids[a]][ids[b]] += cols[b][a];
       const feq = new Array(6).fill(0);
       for (const d of dl) {
@@ -495,8 +516,92 @@ export function analyzeFrame(model: FrameModel): FrameResult {
       A[d][nd + q] = v * (kScale || 1);
     }
   });
-  const sol = solve(A, rhs);
+  let sol = solve(A, rhs);
   if (!sol) return fail(['Ma trận độ cứng suy biến — hệ biến hình.'], det);
+
+  // ── Lực dọc phần tử & ma trận độ cứng hình học ──
+  const geoLocal = (N: number, l: number): number[][] => {
+    const k = N / (30 * l);
+    const g = zeros(6, 6);
+    const idx = [1, 2, 4, 5];
+    const m = [
+      [36, 3 * l, -36, 3 * l],
+      [3 * l, 4 * l * l, -3 * l, -l * l],
+      [-36, -3 * l, 36, -3 * l],
+      [3 * l, -l * l, -3 * l, 4 * l * l],
+    ];
+    for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) g[idx[a]][idx[b]] = k * m[a][b];
+    return g;
+  };
+  const localEnd = (el: (typeof elems)[number], uu: number[], N: number) => {
+    const ul = toLocal(el.c, el.s, el.ids.map((d) => uu[d]));
+    const kl = elemK(el.EA, el.EI, el.l);
+    const kg = N ? geoLocal(N, el.l) : null;
+    const fe = elemFeq[el.mIdx][el.e];
+    return kl.map((row, a) => row.reduce((acc, kv, b) => acc + (kv + (kg ? kg[a][b] : 0)) * ul[b], 0) - fe[a]);
+  };
+  const axialForces = (uu: number[], Nprev: number[]) => elems.map((el, i) => {
+    const f = localEnd(el, uu, Nprev[i]);
+    return (-f[0] + f[3]) / 2;
+  });
+  const addGeo = (M: Matrix, Ns: number[], sign = 1) => {
+    elems.forEach((el, i) => {
+      if (!Ns[i]) return;
+      const gl = geoLocal(Ns[i], el.l);
+      for (let q = 0; q < 6; q++) {
+        const unit = new Array(6).fill(0);
+        unit[q] = 1;
+        const tu = toLocal(el.c, el.s, unit);
+        const col = toGlobal(el.c, el.s, gl.map((row) => row.reduce((acc, kv, z) => acc + kv * tu[z], 0)));
+        for (let a = 0; a < 6; a++) M[el.ids[a]][el.ids[q]] += sign * col[a];
+      }
+    });
+  };
+  let Ncur = axialForces(sol.slice(0, nd), new Array(elems.length).fill(0));
+
+  let buckling: FrameResult['buckling'] = null;
+  if (wantBuckling && Ncur.some((n) => n < 0)) {
+    const lu = luFactor(A);
+    if (lu) {
+      const G = zeros(nd, nd);
+      addGeo(G, Ncur, -1);
+      const applyG = (y: number[]) => {
+        const out = new Array<number>(nTot).fill(0);
+        for (let a = 0; a < nd; a++) { let acc = 0; const Ga = G[a]; for (let b = 0; b < nd; b++) acc += Ga[b] * y[b]; out[a] = acc; }
+        return out;
+      };
+      const start = sol.map((v, i) => (i < nd ? v + 1e-6 * Math.sin(i + 1) : 0));
+      const ev = smallestEigen(lu, applyG, nTot, start);
+      if (ev && ev.lambda > 0) {
+        let mx = 0;
+        for (let i = 0; i < nd; i++) mx = Math.max(mx, Math.abs(ev.x[i]));
+        buckling = {
+          alpha: ev.lambda,
+          mode: meshes.map((ms) => ({
+            id: ms.g.m.id,
+            pts: ms.ts.map((t, q) => ({ s: t, ux: ev.x[ms.dofs[q][0]] / (mx || 1), uy: ev.x[ms.dofs[q][1]] / (mx || 1) })),
+          })),
+        };
+      }
+    }
+  }
+  if (secondOrder) {
+    if (buckling && buckling.alpha <= 1) {
+      return fail([`Tải trọng vượt tải tới hạn của khung (α_th = ${buckling.alpha.toFixed(3)} ≤ 1) — khung mất ổn định.`], det);
+    }
+    for (let it = 0; it < 8; it++) {
+      const A2 = A.map((row) => [...row]);
+      addGeo(A2, Ncur);
+      const s2 = solve(A2, rhs);
+      if (!s2) return fail(['Ma trận độ cứng bậc hai suy biến — khung mất ổn định.'], det);
+      sol = s2;
+      const Nn = axialForces(sol.slice(0, nd), Ncur);
+      const dN = Math.max(...Nn.map((v, i) => Math.abs(v - Ncur[i])));
+      const nMax = Math.max(1, ...Nn.map(Math.abs));
+      Ncur = Nn;
+      if (dN <= 1e-7 * nMax) break;
+    }
+  }
   const u = sol.slice(0, nd);
   const lam = sol.slice(nd).map((v) => v * (kScale || 1));
 
@@ -530,11 +635,18 @@ export function analyzeFrame(model: FrameModel): FrameResult {
   const members: MemberResult[] = meshes.map((ms, mIdx) => {
     const { g, ts, dofs } = ms;
     const endForces = (e: number) => {
-      const ug = [...dofs[e], ...dofs[e + 1]].map((d) => u[d]);
-      const ul = toLocal(g.c, g.s, ug);
-      const kl = elemK(E * g.sec.props.A * 1e-6, E * g.sec.props.Iz * 1e-12, ts[e + 1] - ts[e]);
-      const fe = elemFeq[mIdx][e];
-      return kl.map((row, a) => (row.reduce((acc, kv, b) => acc + kv * ul[b], 0) - fe[a]) / KN);
+      const k = elems.findIndex((el) => el.mIdx === mIdx && el.e === e);
+      return localEnd(elems[k], u, secondOrder ? Ncur[k] : 0).map((v) => v / KN);
+    };
+    // chuyển vị ngang địa phương v′(s) (m) — nội suy Hermite giữa các nút chia
+    const vLoc = (sv: number) => {
+      let q = 0;
+      while (q < ts.length - 2 && sv > ts[q + 1]) q++;
+      const l = ts[q + 1] - ts[q];
+      const t = Math.min(Math.max((sv - ts[q]) / l, 0), 1);
+      const vv = (k: number) => -g.s * u[dofs[k][0]] + g.c * u[dofs[k][1]];
+      const v1 = vv(q), v2 = vv(q + 1), t1 = u[dofs[q][2]], t2 = u[dofs[q + 1][2]];
+      return (1 - 3 * t * t + 2 * t ** 3) * v1 + l * (t - 2 * t * t + t ** 3) * t1 + (3 * t * t - 2 * t ** 3) * v2 + l * (-t * t + t ** 3) * t2;
     };
     const f0 = endForces(0);
     const fl = endForces(ts.length - 2);
@@ -548,7 +660,24 @@ export function analyzeFrame(model: FrameModel): FrameResult {
     const dists = memberDists.get(g.m.id)!;
     const internalAt = (s: number, side: 'left' | 'right'): MemberForces => {
       const ss = Math.min(Math.max(s, 0), g.L);
-      const fz = sectionForces(actions, dists, ss, ss <= 0 ? 'right' : side, tol * 10);
+      const sd = ss <= 0 ? 'right' : side;
+      const fz = sectionForces(actions, dists, ss, sd, tol * 10);
+      if (secondOrder) {
+        const vh = vLoc(ss);
+        for (const a of actions) {
+          if (!a.Fx) continue;
+          if (!(a.x < ss - tol * 10 || (sd === 'right' && Math.abs(a.x - ss) <= tol * 10))) continue;
+          fz.Mz += a.Fx * (vLoc(a.x) - vh);
+        }
+        for (const d of dists) {
+          if (d.dir !== 'x' || d.x1 >= ss) continue;
+          const c2 = Math.min(d.x2, ss), n = 12, h = (c2 - d.x1) / n;
+          for (let k = 0; k <= n; k++) {
+            const sx = d.x1 + k * h;
+            fz.Mz += (k === 0 || k === n ? 1 : k % 2 ? 4 : 2) * (h / 3) * qAt(d, sx) * (vLoc(sx) - vh);
+          }
+        }
+      }
       return { N: clean(fz.N, fScale), Q: clean(fz.Qy, fScale), M: clean(fz.Mz, fScale * Math.max(1, g.L)) };
     };
     const keyS = uniq([0, g.L, ...pts.map((p) => p.x), ...dists.flatMap((d) => [d.x1, d.x2])], tol * 10);
@@ -602,6 +731,6 @@ export function analyzeFrame(model: FrameModel): FrameResult {
   }
   return {
     ok: true, errors, warnings, status: degree === 0 ? 'tinh-dinh' : 'sieu-tinh', degree, det, reactions, members, nodeDisp,
-    residual: { X, Y, M },
+    residual: { X, Y, M }, secondOrder, buckling,
   };
 }

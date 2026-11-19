@@ -2,7 +2,7 @@ import type { MouseEvent, ReactNode } from 'react';
 import { supportDirections, type FrameModel, type FrameResult, type FLoad } from '../../core/frame';
 import { fmt } from '../../core/stress';
 
-export type FrameViewMode = 'model' | 'N' | 'Q' | 'M' | 'deform';
+export type FrameViewMode = 'model' | 'N' | 'Q' | 'M' | 'deform' | 'buckle';
 
 const W = 900;
 
@@ -63,6 +63,17 @@ export function FrameView(props: {
       const a = nodeById0.get(mem.i)!;
       const curve = mr.disp.map((d): WPt => [a.x + mr.c * d.s + (d.ux / 1e3) * deformScale, a.y + mr.s * d.s + (d.uy / 1e3) * deformScale]);
       dia.push({ id: mr.id, kind: 'deform', curve, poly: [], labels: [] });
+    }
+  }
+  if (res?.ok && mode === 'buckle' && res.buckling) {
+    deformScale = 0.12 * span;
+    for (const bm of res.buckling.mode) {
+      const mem = model.members.find((m) => m.id === bm.id);
+      const a = mem && nodeById0.get(mem.i);
+      const mr = res.members.find((m) => m.id === bm.id);
+      if (!a || !mr) continue;
+      const curve = bm.pts.map((d): WPt => [a.x + mr.c * d.s + d.ux * deformScale, a.y + mr.s * d.s + d.uy * deformScale]);
+      dia.push({ id: bm.id, kind: 'deform', curve, poly: [], labels: [] });
     }
   }
   for (const d of dia) for (const [x, y] of [...d.curve, ...d.labels.map((l) => l.p)]) {
@@ -142,6 +153,9 @@ export function FrameView(props: {
       els.push(<text key="dmax" x={X(best.x) + 8} y={Y(best.y) + 16} className="d-val">max {fmt(best.m, 3)} mm</text>);
     }
     els.push(<text key="dsc" x={12} y={H - 10} className="lbl tiny">Phóng đại ×{fmt(deformScale, 0)}</text>);
+  }
+  if (res?.ok && mode === 'buckle' && res.buckling) {
+    els.push(<text key="bk" x={12} y={H - 10} className="lbl tiny">Dạng mất ổn định thứ nhất — α_th = {fmt(res.buckling.alpha, 3)} (biên độ quy ước)</text>);
   }
 
   // Gối

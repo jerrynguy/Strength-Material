@@ -9,6 +9,7 @@ import { designBeam } from './core/design';
 import { DesignCard } from './ui/DesignCard';
 import { STAB_PRESETS, StabilityApp, defaultStabModel, type StabModel } from './ui/stability/StabilityApp';
 import { BeamStabilityCard, type StabOpenRequest } from './ui/stability/StabilityChecks';
+import { BeamBeamColumnCard } from './ui/stability/BeamColumnCards';
 import type { Model } from './core/types';
 import { BeamView } from './ui/BeamView';
 import { Diagram } from './ui/Diagram';
@@ -56,7 +57,10 @@ export default function App() {
   useEffect(() => save(MODE_KEY, mode), [mode]);
   useEffect(() => save(STAB_KEY, stab), [stab]);
 
-  const res = useMemo(() => analyze(model), [model]);
+  const [so, setSo] = useState(false);
+  const res1 = useMemo(() => analyze(model), [model]);
+  const resSO = useMemo(() => (so ? analyze(model, { secondOrder: true }) : null), [model, so]);
+  const res = resSO && resSO.ok ? resSO : res1;
   const cls = useMemo(() => classify(res), [res]);
 
   const replaceFrame = (m: FrameModel) => {
@@ -188,12 +192,20 @@ export default function App() {
               <Card
                 title="Biểu đồ nội lực"
                 actions={
-                  <label className="check">
-                    <input type="checkbox" checked={mInvert} onChange={(e) => setMInvert(e.target.checked)} />
-                    Vẽ M về phía thớ căng
-                  </label>
+                  <>
+                    <label className="check" title="Kể mô men phụ do lực dọc trên độ võng">
+                      <input type="checkbox" checked={so} onChange={(e) => setSo(e.target.checked)} />
+                      Bậc hai (P-Δ)
+                    </label>
+                    <label className="check">
+                      <input type="checkbox" checked={mInvert} onChange={(e) => setMInvert(e.target.checked)} />
+                      Vẽ M về phía thớ căng
+                    </label>
+                  </>
                 }
               >
+                {so && resSO && !resSO.ok && <p className="error">{resSO.errors[0]} Đang hiển thị kết quả bậc nhất.</p>}
+                {so && resSO?.ok && <p className="hint">Đang hiển thị kết quả phân tích bậc hai (P-Δ).</p>}
                 <p className="hint">Rê chuột để đọc giá trị, bấm để chọn mặt cắt tính ứng suất (x = {pickX.toFixed(3)} m).</p>
                 {(any('N') || !any('Qy')) && <Diagram title="Lực dọc N" unit="kN" tone="c" data={fs.map((s) => ({ x: s.x, y: s.N }))} {...dprops} />}
                 {(any('Qy') || !any('N')) && <Diagram title="Lực cắt Qy" unit="kN" tone="a" data={fs.map((s) => ({ x: s.x, y: s.Qy }))} {...dprops} />}
@@ -211,7 +223,8 @@ export default function App() {
                 {!['v', 'w', 'u', 'phi'].some((k) => anyD(k as 'v')) && <p className="muted">Không có chuyển vị.</p>}
               </Card>
               <SummaryCard res={res} model={model} />
-              <BeamStabilityCard key={'st' + version} res={res} model={model} onOpen={openStab} />
+              <BeamStabilityCard key={'st' + version} res={res1} model={model} onOpen={openStab} />
+              <BeamBeamColumnCard model={model} />
               <DesignCard allowable={model.material.allowable} run={(o) => designBeam(model, o)}
                 apply={(spec) => { set((m) => ({ ...m, section: spec })); setVersion((v) => v + 1); }} />
             </>

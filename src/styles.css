@@ -257,3 +257,5 @@ button.linkish { border: 0; background: none; color: var(--accent); padding: 4px
 .bc-label { fill: var(--ink); font-size: 12px; font-weight: 600; }
 .bc-hover { fill: var(--tone); stroke: var(--panel); stroke-width: 2; }
 .bc-tip { fill: var(--panel); stroke: var(--line); }
+
+.sub-title { font-size: 14px; margin: 12px 0 4px; }

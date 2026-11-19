@@ -59,7 +59,25 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - Chế độ dầm/cột tự kiểm tra khi có lực nén, μ đoán từ liên kết hai đầu.
   - Chế độ khung kiểm tra từng thanh chịu nén, μ nhập riêng cho từng thanh.
   - Chọn số hiệu thép có thể kể thêm điều kiện ổn định.
-- **Giới hạn:** chỉ xét nén đúng tâm. Thanh chịu nén – uốn đồng thời, ổn định cục bộ và ổn định uốn – xoắn chưa được kiểm tra.
+- **Giới hạn:** ổn định cục bộ và ổn định uốn – xoắn của dầm chưa được kiểm tra.
+
+## Nén – uốn đồng thời, phân tích bậc hai
+
+- **Phân tích bậc hai (P-Δ):** dùng ma trận độ cứng hình học cho cả dầm và khung (khung lặp đến hội tụ lực dọc). Cân bằng được lập trên hình dạng đã biến dạng, có kể mô men phụ N·v. Bật bằng ô “Bậc hai (P-Δ)”.
+- **Bài toán ổn định (trị riêng):**
+  - Cho ra hệ số tới hạn α_th: tải tới hạn = α_th × tải hiện tại.
+  - Cho ra dạng mất ổn định; với khung có xem trực quan.
+  - Cho ra μ tương đương thật của từng thanh, kể cả cột khung không giằng.
+  - Dùng được cho mọi liên kết.
+- **Kiểm tra thanh nén – uốn theo 3 cách:**
+  1. Bền bậc hai với tải thực: σ_max ≤ [σ].
+  2. Theo giáo trình: tải nhân n, phân tích bậc hai, σ_max ≤ σ_ch.
+  3. Công thức tương tác: N/(φA) + M/(W(1 − N/N_th)) ≤ [σ].
+- **Kiểm chứng:**
+  - Lực Euler cho 4 kiểu liên kết.
+  - Khung cổng chân ngàm (μ = 1) và chân khớp (μ = 2).
+  - Mô men dầm-cột khớp Timoshenko (qL²/8)·2(sec u − 1)/u².
+  - Cột công-xôn: M = H·tan(kL)/k.
 
 ## Phương pháp
 
@@ -123,6 +141,7 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [ ] Lực nhiệt / lún gối cho khung
 - [x] Bảng thép hình tiêu chuẩn (GOST, JIS, EN) + chọn số hiệu thép
 - [x] Ổn định thanh chịu nén (Euler, Iasinski, hệ số φ)
-- [ ] Nén – uốn đồng thời, ổn định uốn – xoắn của dầm
+- [x] Nén – uốn đồng thời, phân tích bậc hai P-Δ, hệ số tới hạn khung
+- [ ] Ổn định uốn – xoắn của dầm, ổn định cục bộ
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [ ] Xuất báo cáo PDF

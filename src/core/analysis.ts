@@ -12,7 +12,7 @@
  *  - Uốn trong mặt phẳng ngang xz (w) — độ cứng EI_y
  *  - Xoắn (φ)                         — độ cứng GJ
  */
-import { rank, solve, zeros, type Matrix } from './linalg';
+import { luFactor, rank, smallestEigen, solve, zeros, type Matrix } from './linalg';
 import { computeSection, validateSection, type SectionProps } from './section';
 import {
   effectiveRestraints, type DistributedLoad, type InternalForces, type Model, type Restraints,
@@ -112,6 +112,8 @@ export interface AnalysisResult {
   displacementAt(x: number): DispSample;
   /** Phần dư cân bằng toàn hệ (phải ≈ 0) */
   equilibriumResidual: InternalForces;
+  secondOrder: boolean;
+  buckling: { bendY?: BucklingPlane; bendZ?: BucklingPlane };
 }
 
 const KN = 1e3; // kN → N
@@ -124,6 +126,8 @@ function emptyResult(model: Model, errors: string[], section: SectionProps | nul
     internalAt: () => ({ N: 0, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }),
     displacementAt: (x) => ({ x, u: 0, v: 0, w: 0, thetaZ: 0, thetaY: 0, phi: 0 }),
     equilibriumResidual: { N: 0, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 },
+    secondOrder: false,
+    buckling: {},
   };
 }
 
@@ -225,10 +229,90 @@ interface SubSolution {
   reac: [number, number][];
 }
 
+interface Assembled {
+  K: Matrix;
+  KG: Matrix | null;
+  Fnode: number[];
+  vIdx: number[];
+  tL: number[];
+  tR: number[];
+  ndof: number;
+  fixed: Set<number>;
+  free: number[];
+}
+
+/** Ma trận độ cứng hình học phần tử dầm với lực dọc N (kéo dương) */
+function geoMatrix(N: number, l: number): number[][] {
+  const c = N / (30 * l);
+  return [
+    [36 * c, 3 * l * c, -36 * c, 3 * l * c],
+    [3 * l * c, 4 * l * l * c, -3 * l * c, -l * l * c],
+    [-36 * c, -3 * l * c, 36 * c, -3 * l * c],
+    [3 * l * c, -l * l * c, -3 * l * c, 4 * l * l * c],
+  ];
+}
+
 function solveSub(
   kind: 'bar' | 'beam', xs: number[], hingeNodes: Set<number>, EI: number,
-  restrT: Set<number>, restrR: Set<number>, loads: SubLoads,
+  restrT: Set<number>, restrR: Set<number>, loads: SubLoads, Ne?: number[],
 ): SubSolution | null {
+  const a = assembleSub(kind, xs, hingeNodes, EI, restrT, restrR, loads, Ne);
+  const { K, KG, Fnode, vIdx, tL, tR, ndof, fixed, free } = a;
+  if (KG) for (let i = 0; i < ndof; i++) for (let j = 0; j < ndof; j++) K[i][j] += KG[i][j];
+  const Kff = free.map((r) => free.map((c) => K[r][c]));
+  const sol = free.length ? solve(Kff, free.map((d) => Fnode[d])) : [];
+  if (!sol) return null;
+  const u = new Array<number>(ndof).fill(0);
+  free.forEach((d, i) => (u[d] = sol[i]));
+  const R = K.map((row, i) => row.reduce((s, kij, j) => s + kij * u[j], 0) - Fnode[i]);
+  const reac: [number, number][] = xs.map((_, i) => {
+    const f = fixed.has(vIdx[i]) ? R[vIdx[i]] : 0;
+    let m = 0;
+    if (kind === 'beam') {
+      if (fixed.has(tL[i])) m += R[tL[i]];
+      if (tR[i] !== tL[i] && fixed.has(tR[i])) m += R[tR[i]];
+    }
+    return [f, m];
+  });
+  return {
+    d: vIdx.map((d) => u[d]),
+    thL: kind === 'beam' ? tL.map((d) => u[d]) : [],
+    thR: kind === 'beam' ? tR.map((d) => u[d]) : [],
+    reac,
+  };
+}
+
+/** Bài toán ổn định: K_E·x = α·(−K_G)·x → hệ số tới hạn α nhỏ nhất và dạng mất ổn định */
+function bucklingSub(
+  xs: number[], hingeNodes: Set<number>, EI: number, restrT: Set<number>, restrR: Set<number>, Ne: number[],
+): { alpha: number; mode: number[] } | null {
+  if (!Ne.some((n) => n < 0)) return null;
+  const empty: SubLoads = { nodeF: new Array(xs.length).fill(0), nodeC: new Array(xs.length).fill(0), elemQ: xs.slice(1).map(() => [0, 0] as [number, number]) };
+  const a = assembleSub('beam', xs, hingeNodes, EI, restrT, restrR, empty, Ne);
+  const { K, KG, free, vIdx } = a;
+  if (!KG || !free.length) return null;
+  const lu = luFactor(free.map((r) => free.map((c) => K[r][c])));
+  if (!lu) return null;
+  const G = free.map((r) => free.map((c) => -KG[r][c]));
+  const applyG = (y: number[]) => G.map((row) => row.reduce((s, g, j) => s + g * y[j], 0));
+  // vectơ khởi đầu: dạng nửa sóng sin trên chuyển vị ngang
+  const start = free.map((d) => {
+    const i = vIdx.indexOf(d);
+    return i >= 0 ? Math.sin((Math.PI * (xs[i] - xs[0])) / (xs[xs.length - 1] - xs[0])) + 0.1 : 0.01;
+  });
+  const r = smallestEigen(lu, applyG, free.length, start);
+  if (!r || !(r.lambda > 0)) return null;
+  const u = new Array<number>(a.ndof).fill(0);
+  free.forEach((d, i) => (u[d] = r.x[i]));
+  const mode = vIdx.map((d) => u[d]);
+  const m = Math.max(...mode.map(Math.abs)) || 1;
+  return { alpha: r.lambda, mode: mode.map((v) => v / m) };
+}
+
+function assembleSub(
+  kind: 'bar' | 'beam', xs: number[], hingeNodes: Set<number>, EI: number,
+  restrT: Set<number>, restrR: Set<number>, loads: SubLoads, Ne?: number[],
+): Assembled {
   const n = xs.length;
   const vIdx: number[] = [];
   const tL: number[] = [];
@@ -278,27 +362,17 @@ function solveSub(
   for (const i of restrT) fixed.add(vIdx[i]);
   if (kind === 'beam') for (const i of restrR) { fixed.add(tL[i]); fixed.add(tR[i]); }
   const free = [...Array(ndof).keys()].filter((d) => !fixed.has(d));
-  const Kff = free.map((r) => free.map((c) => K[r][c]));
-  const sol = free.length ? solve(Kff, free.map((d) => Fnode[d])) : [];
-  if (!sol) return null;
-  const u = new Array<number>(ndof).fill(0);
-  free.forEach((d, i) => (u[d] = sol[i]));
-  const R = K.map((row, i) => row.reduce((s, kij, j) => s + kij * u[j], 0) - Fnode[i]);
-  const reac: [number, number][] = xs.map((_, i) => {
-    const f = fixed.has(vIdx[i]) ? R[vIdx[i]] : 0;
-    let m = 0;
-    if (kind === 'beam') {
-      if (fixed.has(tL[i])) m += R[tL[i]];
-      if (tR[i] !== tL[i] && fixed.has(tR[i])) m += R[tR[i]];
+  let KG: Matrix | null = null;
+  if (kind === 'beam' && Ne && Ne.some((v) => v !== 0)) {
+    KG = zeros(ndof, ndof);
+    for (let e = 0; e < n - 1; e++) {
+      if (!Ne[e]) continue;
+      const g = geoMatrix(Ne[e], xs[e + 1] - xs[e]);
+      const ids = [vIdx[e], tR[e], vIdx[e + 1], tL[e + 1]];
+      for (let p = 0; p < 4; p++) for (let q = 0; q < 4; q++) KG[ids[p]][ids[q]] += g[p][q];
     }
-    return [f, m];
-  });
-  return {
-    d: vIdx.map((d) => u[d]),
-    thL: kind === 'beam' ? tL.map((d) => u[d]) : [],
-    thR: kind === 'beam' ? tR.map((d) => u[d]) : [],
-    reac,
-  };
+  }
+  return { K, KG, Fnode, vIdx, tL, tR, ndof, fixed, free };
 }
 
 // ───────────────────── Phương pháp mặt cắt ─────────────────────
@@ -342,7 +416,36 @@ export function sectionForces(
 
 // ───────────────────── Phân tích chính ─────────────────────
 
-export function analyze(model: Model): AnalysisResult {
+export interface AnalyzeOptions {
+  /** Phân tích bậc hai (P-Δ): kể ảnh hưởng của lực dọc lên uốn */
+  secondOrder?: boolean;
+  /** Tính hệ số tới hạn (bài toán ổn định) */
+  buckling?: boolean;
+  /** Nhân toàn bộ tải trọng với hệ số này */
+  loadFactor?: number;
+}
+
+export interface BucklingPlane {
+  /** Hệ số tới hạn: tải tới hạn = α × tải hiện tại */
+  alpha: number;
+  /** Dạng mất ổn định tại các nút lưới (chuẩn hoá max = 1) */
+  mode: { x: number; v: number }[];
+}
+
+function scaleLoads(m: Model, f: number): Model {
+  return {
+    ...m,
+    loads: m.loads.map((l) =>
+      l.type === 'force' ? { ...l, Fx: l.Fx * f, Fy: l.Fy * f, Fz: l.Fz * f }
+        : l.type === 'moment' ? { ...l, Mx: l.Mx * f, My: l.My * f, Mz: l.Mz * f }
+          : { ...l, q1: l.q1 * f, q2: l.q2 * f }),
+  };
+}
+
+export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResult {
+  const model = opts.loadFactor !== undefined && opts.loadFactor !== 1 ? scaleLoads(modelIn, opts.loadFactor) : modelIn;
+  const secondOrder = !!opts.secondOrder;
+  const wantBuckling = secondOrder || !!opts.buckling;
   const L = model.length;
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -457,6 +560,8 @@ export function analyze(model: Model): AnalysisResult {
   const subsystems: SubsystemInfo[] = [];
   const solutions: Partial<Record<SubKey, SubSolution>> = {};
   const rig: Record<SubKey, number> = { axial: rigidity.EA, bendY: rigidity.EIz, bendZ: rigidity.EIy, torsion: rigidity.GJ };
+  let Ne: number[] = new Array(xs.length - 1).fill(0);
+  const buckling: { bendY?: BucklingPlane; bendZ?: BucklingPlane } = {};
   for (const sub of SUBS) {
     const kin = kinematic(model, sub, hingeXs, tol);
     const isLoaded = loaded[sub.key];
@@ -505,16 +610,28 @@ export function analyze(model: Model): AnalysisResult {
         if (sub.rot && r[sub.rot]) restrR.add(n);
       }
       if (info.selfEquilibrated) restrT.add(0);
-      const sol = solveSub(sub.kind, xs, hingeNodes, rig[sub.key], restrT, restrR, subLoads[sub.key]);
+      const bend = sub.key === 'bendY' || sub.key === 'bendZ';
+      if (bend && wantBuckling && Ne.some((v) => v < 0)) {
+        const b = bucklingSub(xs, hingeNodes, rig[sub.key], restrT, restrR, Ne);
+        if (b) buckling[sub.key as 'bendY' | 'bendZ'] = { alpha: b.alpha, mode: xs.map((x, i) => ({ x, v: b.mode[i] })) };
+        if (secondOrder && b && b.alpha <= 1) {
+          errors.push(`${info.label}: lực nén vượt lực tới hạn (α_th = ${b.alpha.toFixed(3)} ≤ 1) — thanh mất ổn định, không tồn tại trạng thái cân bằng uốn bậc hai.`);
+          continue;
+        }
+      }
+      const sol = solveSub(sub.kind, xs, hingeNodes, rig[sub.key], restrT, restrR, subLoads[sub.key], secondOrder && bend ? Ne : undefined);
       if (!sol) errors.push(`${info.label}: ma trận độ cứng suy biến — hệ biến hình.`);
-      else solutions[sub.key] = sol;
+      else {
+        solutions[sub.key] = sol;
+        if (sub.key === 'axial') Ne = Ne.map((_, e) => (rig.axial * (sol.d[e + 1] - sol.d[e])) / (xs[e + 1] - xs[e]));
+      }
     }
   }
 
   const degree = subsystems.filter((s) => s.considered && s.stable).reduce((a, s) => a + s.degree, 0);
   if (errors.length) {
     const r = emptyResult(model, errors, sec);
-    return { ...r, warnings, subsystems, keyPoints };
+    return { ...r, warnings, subsystems, keyPoints, buckling };
   }
 
   // Phản lực
@@ -546,29 +663,6 @@ export function analyze(model: Model): AnalysisResult {
   for (const r of reactions) {
     if (r.Fx || r.Fy || r.Fz || r.Mx || r.My || r.Mz) {
       actions.push({ x: r.x, Fx: r.Fx, Fy: r.Fy, Fz: r.Fz, Mx: r.Mx, My: r.My, Mz: r.Mz, label: `Phản lực ${r.name}`, source: 'reaction' });
-    }
-  }
-
-  // Thang đo để làm sạch số rất nhỏ
-  let fScale = 1e-12;
-  for (const a of actions) fScale = Math.max(fScale, Math.abs(a.Fx), Math.abs(a.Fy), Math.abs(a.Fz), Math.abs(a.Mx), Math.abs(a.My), Math.abs(a.Mz));
-  for (const d of distributed) fScale = Math.max(fScale, Math.abs(d.q1) * L, Math.abs(d.q2) * L);
-  const mScale = fScale * Math.max(1, L);
-  const cleanF = (f: InternalForces): InternalForces => {
-    const c = (v: number, s: number) => (Math.abs(v) < 1e-9 * s ? 0 : v);
-    return { N: c(f.N, fScale), Qy: c(f.Qy, fScale), Qz: c(f.Qz, fScale), T: c(f.T, fScale), Mz: c(f.Mz, mScale), My: c(f.My, mScale) };
-  };
-  const internalAt = (x: number, side: 'left' | 'right') => cleanF(sectionForces(actions, distributed, x, side, tol));
-  const equilibriumResidual = sectionForces(actions, distributed, L, 'right', tol);
-
-  const forceSamples: ForceSample[] = [];
-  for (let i = 0; i + 1 < keyPoints.length; i++) {
-    const a = keyPoints[i], b = keyPoints[i + 1];
-    const m = 48;
-    for (let j = 0; j <= m; j++) {
-      const x = a + ((b - a) * j) / m;
-      const side = j === m ? 'left' : 'right';
-      forceSamples.push({ x, ...internalAt(x, side) });
     }
   }
 
@@ -605,9 +699,70 @@ export function analyze(model: Model): AnalysisResult {
     else dispSamples.push(d(i === 0 ? 'R' : 'L'));
   }
 
+  // Thang đo để làm sạch số rất nhỏ
+  let fScale = 1e-12;
+  for (const a of actions) fScale = Math.max(fScale, Math.abs(a.Fx), Math.abs(a.Fy), Math.abs(a.Fz), Math.abs(a.Mx), Math.abs(a.My), Math.abs(a.Mz));
+  for (const d of distributed) fScale = Math.max(fScale, Math.abs(d.q1) * L, Math.abs(d.q2) * L);
+  const mScale = fScale * Math.max(1, L);
+  const cleanF = (f: InternalForces): InternalForces => {
+    const c = (v: number, s: number) => (Math.abs(v) < 1e-9 * s ? 0 : v);
+    return { N: c(f.N, fScale), Qy: c(f.Qy, fScale), Qz: c(f.Qz, fScale), T: c(f.T, fScale), Mz: c(f.Mz, mScale), My: c(f.My, mScale) };
+  };
+  /** Mô men phụ do lực dọc trên chuyển vị (P-Δ), kN·m */
+  const pDelta = (x: number, side: 'left' | 'right'): [number, number] => {
+    if (!secondOrder) return [0, 0];
+    const dv = (xx: number) => displacementAt(xx);
+    const here = dv(x);
+    let mz = 0, my = 0;
+    for (const a of actions) {
+      if (!a.Fx) continue;
+      const inc = a.x < x - tol || (side === 'right' && Math.abs(a.x - x) <= tol);
+      if (!inc) continue;
+      const p = dv(a.x);
+      mz += (a.Fx * (p.v - here.v)) / 1e3;
+      my += (a.Fx * (p.w - here.w)) / 1e3;
+    }
+    for (const d of distributed) {
+      if (d.dir !== 'x' || d.x1 >= x) continue;
+      const c = Math.min(d.x2, x);
+      const n = 16;
+      const h = (c - d.x1) / n;
+      for (let k = 0; k <= n; k++) {
+        const sx = d.x1 + k * h;
+        const wgt = (k === 0 || k === n ? 1 : k % 2 ? 4 : 2) * (h / 3);
+        const p = dv(sx);
+        mz += (wgt * qAt(d, sx) * (p.v - here.v)) / 1e3;
+        my += (wgt * qAt(d, sx) * (p.w - here.w)) / 1e3;
+      }
+    }
+    return [mz, my];
+  };
+  const internalAt = (x: number, side: 'left' | 'right') => {
+    const f = sectionForces(actions, distributed, x, side, tol);
+    if (secondOrder) {
+      const [mz, my] = pDelta(x, side);
+      f.Mz += mz;
+      f.My += my;
+    }
+    return cleanF(f);
+  };
+  const equilibriumResidual = sectionForces(actions, distributed, L, 'right', tol);
+
+  const forceSamples: ForceSample[] = [];
+  for (let i = 0; i + 1 < keyPoints.length; i++) {
+    const a = keyPoints[i], b = keyPoints[i + 1];
+    const m = 48;
+    for (let j = 0; j <= m; j++) {
+      const x = a + ((b - a) * j) / m;
+      const side = j === m ? 'left' : 'right';
+      forceSamples.push({ x, ...internalAt(x, side) });
+    }
+  }
+
   const status: Status = degree === 0 ? 'tinh-dinh' : 'sieu-tinh';
   return {
     ok: true, errors, warnings, status, degree, subsystems, section: sec, rigidity, reactions, actions,
     distributed, keyPoints, forceSamples, dispSamples, internalAt, displacementAt, equilibriumResidual,
+    secondOrder, buckling,
   };
 }

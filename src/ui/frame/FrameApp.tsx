@@ -9,6 +9,7 @@ import { StressPanel } from '../results';
 import { designFrame } from '../../core/design';
 import { DesignCard } from '../DesignCard';
 import { FrameStabilityCard } from '../stability/StabilityChecks';
+import { FrameBeamColumnCard } from '../stability/BeamColumnCards';
 import { FrameGeneral, FrameGeometry, FrameLoads } from './FrameEditor';
 import { FrameView, type FrameViewMode } from './FrameView';
 
@@ -36,8 +37,12 @@ export function FrameApp({ model, setModel, replace }: {
   const [side, setSide] = useState<'left' | 'right'>('left');
   const [designSec, setDesignSec] = useState<string>('');
   const [memberMu, setMemberMu] = useState<Record<string, number>>({});
+  const [muOut, setMuOut] = useState<Record<string, number>>({});
+  const [so, setSo] = useState(false);
   const set = setModel;
-  const res = useMemo(() => analyzeFrame(model), [model]);
+  const res1 = useMemo(() => analyzeFrame(model, { buckling: true }), [model]);
+  const resSO = useMemo(() => (so ? analyzeFrame(model, { secondOrder: true, buckling: true }) : null), [model, so]);
+  const res = resSO && resSO.ok ? resSO : res1;
   const mr = res.ok ? res.members.find((m) => m.id === pick?.memberId) ?? res.members[0] : undefined;
   const sPick = mr ? Math.min(pick?.memberId === mr.id ? pick.s : mr.L / 2, mr.L) : 0;
 
@@ -58,13 +63,21 @@ export function FrameApp({ model, setModel, replace }: {
       <div className="col-res">
         <Card title={model.title || 'Sơ đồ khung'} actions={
           <div className="seg">
-            {([['model', 'Sơ đồ'], ['N', 'N'], ['Q', 'Q'], ['M', 'M'], ['deform', 'Biến dạng']] as [FrameViewMode, string][]).map(([k, l]) => (
-              <button key={k} className={view === k ? 'on' : ''} disabled={k !== 'model' && !res.ok} onClick={() => setView(k)}>{l}</button>
+            {([['model', 'Sơ đồ'], ['N', 'N'], ['Q', 'Q'], ['M', 'M'], ['deform', 'Biến dạng'], ['buckle', 'Mất ổn định']] as [FrameViewMode, string][]).map(([k, l]) => (
+              <button key={k} className={view === k ? 'on' : ''} disabled={(k !== 'model' && !res.ok) || (k === 'buckle' && !res.buckling)} onClick={() => setView(k)}>{l}</button>
             ))}
           </div>
         }>
           <FrameView model={model} res={res} mode={res.ok ? view : 'model'} pick={mr ? { memberId: mr.id, s: sPick } : null}
             onPick={(memberId, s) => setPick({ memberId, s })} />
+          <div className="row checks">
+            <label className="check">
+              <input type="checkbox" checked={so} onChange={(e) => setSo(e.target.checked)} />
+              Phân tích bậc hai (P-Δ) — kể ảnh hưởng lực dọc lên chuyển vị và mô men
+            </label>
+          </div>
+          {so && resSO && !resSO.ok && <p className="error">{resSO.errors[0]} Đang hiển thị kết quả bậc nhất.</p>}
+          {so && resSO?.ok && <p className="hint">Đang hiển thị kết quả bậc hai (cân bằng trên hình dạng đã biến dạng).</p>}
           <p className="hint">
             {view === 'M' ? 'Biểu đồ mô men vẽ về phía thớ căng. ' : ''}Bấm vào một thanh để chọn mặt cắt tính ứng suất.
           </p>
@@ -75,7 +88,8 @@ export function FrameApp({ model, setModel, replace }: {
             <FrameReactions res={res} model={model} />
             <FrameMembers res={res} />
             <FrameDisp res={res} />
-            <FrameStabilityCard res={res} model={model} mu={memberMu} setMu={setMemberMu} />
+            <FrameStabilityCard res={res1} model={model} mu={memberMu} setMu={setMemberMu} />
+            <FrameBeamColumnCard model={model} res={res1} muOut={muOut} setMuOut={setMuOut} />
             {model.sections.length > 0 && (() => {
               const sid = model.sections.some((x) => x.id === designSec) ? designSec : model.sections[0].id;
               return (
