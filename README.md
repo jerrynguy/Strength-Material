@@ -152,6 +152,10 @@ Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, r�
   - Phản lực, nội lực đầu thanh, biểu đồ N/Q/M trên khung, biến dạng, bền từng thanh.
   - Hệ số tới hạn α_th và dạng mất ổn định; ổn định, nén – uốn, cục bộ từng thanh.
 - **Ổn định:** dữ liệu, kết quả, đồ thị φ(λ) và σ_th(λ), lời giải, ổn định cục bộ.
+- **Sườn dọc bản bụng** (cả ba loại báo cáo):
+  - Phần đầu vào: bảng sườn (vị trí, b_s × t_s, phía, diện tích) và cách chia ô bụng.
+  - Phần ổn định: bảng thanh sườn (b1/b2, A_sl, I_sl, a_c, σ_cr,sl → σ_cr,c, λ̄_c, α_e, χ_c, ρ_c), ổn định cắt có sườn dọc (k_τ, τ_cr, χ_w), lời giải.
+  - Báo cáo khung có phần riêng cho từng thanh có sườn.
 - **Bật/tắt từng phần:** dữ liệu đầu vào, biểu đồ, ứng suất, ổn định, lời giải từng bước.
 
 ## Phương pháp

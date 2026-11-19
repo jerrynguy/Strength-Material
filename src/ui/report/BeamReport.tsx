@@ -14,6 +14,7 @@ import { Diagram } from '../Diagram';
 import { SectionView } from '../SectionView';
 import { quickPoints } from '../results';
 import { guessMu } from '../stability/StabilityChecks';
+import { StiffenerChecks, StiffenerInputs } from './StiffenerReport';
 import { RConclusion, RFig, RKV, RSection, RSteps, RSub, RTable, Verdict, type ReportParts } from './primitives';
 
 const STATUS = { 'tinh-dinh': 'tĩnh định', 'sieu-tinh': 'siêu tĩnh', 'bien-hinh': 'biến hình' };
@@ -87,7 +88,7 @@ export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: Repo
   if (axial) conclusions.push({ label: `Ổn định nén đúng tâm (μ = ${mu})`, ok: axial.okPhi, detail: `σ = ${fmt(axial.sigma, 2)} MPa so với φ[σ] = ${fmt(axial.allowPhi, 2)} MPa (λ = ${fmt(axial.lambdaMax, 1)})` });
   if (bc && bc.planes.some((p) => p.M1)) conclusions.push({ label: 'Nén – uốn đồng thời (bậc hai, giáo trình)', ok: bc.ok2 && bc.okN, detail: `σ_II = ${bc.sigma2 === null ? '—' : fmt(bc.sigma2, 2)} MPa; σ(n·tải) = ${bc.sigmaN === null ? '—' : fmt(bc.sigmaN, 2)} MPa${bc.sigmaInter !== null ? `; công thức tương tác ${fmt((bc.sigmaInter / allow) * 100, 1)}%${bc.okInter ? '' : ' (không đạt — thiên về an toàn)'}` : ''}` });
   if (ltb?.applicable) conclusions.push({ label: 'Ổn định uốn – xoắn', ok: ltb.ok, detail: `|M| = ${fmt(Math.abs(ltb.Mmax), 2)} kN·m so với χ_LT·W·[σ] = ${fmt(ltb.Mrd, 2)} kN·m (M_cr = ${fmt(ltb.Mcr, 2)})` });
-  if (local?.applicable) conclusions.push({ label: 'Ổn định cục bộ', ok: local.ok, detail: `Tiết diện loại ${local.sectionClass || '—'}${local.effCheck ? `; tiết diện hữu hiệu ${fmt(local.effCheck.util * 100, 0)}%` : ''}${local.shear?.needCheck ? `; bụng chịu cắt ${fmt(local.shear.util * 100, 0)}%` : ''}` });
+  if (local?.applicable) conclusions.push({ label: model.section.kind === 'I' && model.section.stiffeners?.length ? 'Ổn định cục bộ (bụng có sườn dọc)' : 'Ổn định cục bộ', ok: local.ok, detail: `Tiết diện loại ${local.sectionClass || '—'}${local.effCheck ? `; tiết diện hữu hiệu ${fmt(local.effCheck.util * 100, 0)}%` : ''}${local.shear?.needCheck ? `; bụng chịu cắt ${fmt(local.shear.util * 100, 0)}%` : ''}` });
 
   const fs = res.forceSamples, ds = res.dispSamples;
   const any = (k: keyof InternalForces) => fs.some((s) => s[k] !== 0);
@@ -120,6 +121,7 @@ export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: Repo
             <SectionView sec={sec} size={170} />
             <RKV rows={sectionRows(sec)} />
           </div>
+          <StiffenerInputs spec={model.section} />
           <RTable head={['Liên kết', 'Loại', 'x (m)', 'Chặn']} rows={model.supports.map((s) => [s.name, SUPPORT_LABELS[s.kind], fmt(s.x, 3), restr(s)])}
             note={model.hinges.length ? `Khớp nối: ${model.hinges.map((h) => `${h.name} (x = ${fmt(h.x, 3)} m)`).join(', ')}` : undefined} />
           <RTable head={['Tải', 'Loại', 'Vị trí', 'Giá trị']} rows={model.loads.map(loadRow)}
@@ -242,7 +244,8 @@ export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: Repo
                   ...(local.effCheck ? [['σ = N/A_eff + (M + N·e_N)/W_eff', <Verdict ok={local.effCheck.ok}>{fmt(local.effCheck.sigma, 2)} MPa so với [σ] = {allow} MPa</Verdict>] as [string, ReactNode]] : []),
                 ]} />
               )}
-              {local.shear && (
+              <StiffenerChecks local={local} steps={parts.steps} />
+              {local.shear && !(model.section.kind === 'I' && model.section.stiffeners?.length) && (
                 <p>Bản bụng chịu cắt: h_w/t_w = {fmt(local.shear.ratio, 1)} {local.shear.needCheck ? `> 72ε/η → χ_w = ${fmt(local.shear.chiW, 3)}` : '≤ 72ε/η'};
                   τ = <Verdict ok={local.shear.ok}>{fmt(local.shear.tau, 2)} MPa so với {fmt(local.shear.tauAllow, 2)} MPa</Verdict>.</p>
               )}

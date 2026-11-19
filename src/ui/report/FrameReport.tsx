@@ -9,6 +9,7 @@ import { fmt, maxNormalOnSection } from '../../core/stress';
 import type { InternalForces } from '../../core/types';
 import { memberClass } from '../frame/FrameApp';
 import { FrameView } from '../frame/FrameView';
+import { StiffenerChecks, StiffenerInputs } from './StiffenerReport';
 import { RConclusion, RFig, RKV, RSection, RSteps, RSub, RTable, Verdict, type ReportParts } from './primitives';
 import { sectionRows } from './BeamReport';
 
@@ -75,7 +76,7 @@ export function FrameReport({ model, parts }: { model: FrameModel; parts: Report
             })} />
           {model.sections.map((s) => {
             const mr = res.members.find((m) => model.members.find((x) => x.id === m.id)?.sectionId === s.id);
-            return mr ? <RSub key={s.id} title={`Tiết diện ${s.name}: ${mr.section.label}`}><RKV rows={sectionRows(mr.section)} /></RSub> : null;
+            return mr ? <RSub key={s.id} title={`Tiết diện ${s.name}: ${mr.section.label}`}><RKV rows={sectionRows(mr.section)} /><StiffenerInputs spec={s.spec} /></RSub> : null;
           })}
           <RTable head={['Gối tại nút', 'Loại', 'Góc mặt tựa']} rows={model.supports.map((s) => [nodeName(s.nodeId), SUP[s.kind], `${fmt(s.angle, 2)}°`])} />
           <RTable head={['Tải', 'Đặt tại', 'Giá trị']}
@@ -167,6 +168,9 @@ export function FrameReport({ model, parts }: { model: FrameModel; parts: Report
                   r.local!.shear ? <Verdict ok={r.local!.shear.ok}>{fmt(r.local!.shear.util * 100, 0)}%</Verdict> : '—'];
               })} note="Ổn định cục bộ theo EN 1993-1-1 bảng 5.2, f_y = 240 MPa." />
           )}
+          {locs.filter((r) => r.mr.sectionSpec.kind === 'I' && r.mr.sectionSpec.stiffeners?.length).map((r) => (
+            <StiffenerChecks key={r.mr.id} local={r.local} steps={parts.steps} title={`Thanh ${r.mr.name} — bụng có sườn dọc (EN 1993-1-5 A.2, A.3)`} />
+          ))}
         </RSection>
       )}
     </>

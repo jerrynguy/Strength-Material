@@ -7,6 +7,7 @@ import { SectionView } from '../SectionView';
 import { BucklingChart } from '../stability/BucklingChart';
 import type { StabModel } from '../stability/StabilityApp';
 import { sectionRows } from './BeamReport';
+import { StiffenerChecks, StiffenerInputs } from './StiffenerReport';
 import { RConclusion, RFig, RKV, RSection, RSteps, RTable, Verdict, type ReportParts } from './primitives';
 
 export function StabReport({ model, parts }: { model: StabModel; parts: ReportParts }) {
@@ -47,6 +48,7 @@ export function StabReport({ model, parts }: { model: StabModel; parts: ReportPa
             ['Mặt cắt', sec.label],
           ]} />
           <div className="r-row"><SectionView sec={sec} size={170} /><RKV rows={sectionRows(sec)} /></div>
+          <StiffenerInputs spec={model.section} />
         </RSection>
       )}
       <RSection n={N()} title="Kiểm tra ổn định">
@@ -79,6 +81,7 @@ export function StabReport({ model, parts }: { model: StabModel; parts: ReportPa
         {local.effective?.applicable && local.effective.N && local.sectionClass === 4 && (
           <p>Tiết diện loại 4 khi nén: A_eff = {fmt(local.effective.N.Aeff, 1)} mm² ({fmt((local.effective.N.Aeff / sec.A) * 100, 1)}% A); kiểm tra ổn định dùng σ = N/A_eff.</p>
         )}
+        <StiffenerChecks local={local} steps={parts.steps} />
         {local.tube && <p>Ống tròn: D/t = {fmt(local.tube.Dt, 1)} → loại {local.tube.cls}.</p>}
       </RSection>
     </>

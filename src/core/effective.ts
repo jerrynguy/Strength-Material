@@ -176,7 +176,8 @@ function stiffenerColumns(geo: Geometry, sigY: (y: number) => number, E: number,
   const edgeMax = Math.max(cAt(sg.yTop), cAt(sg.yBot));
   sg.list.forEach((k, i) => {
     const sS = cAt(k.y);
-    if (sS <= 1e-9) return;
+    // sườn nằm trong vùng kéo hoặc sát trục trung hoà (nén < 5% mép nén lớn nhất): không làm việc như thanh chịu nén
+    if (sS <= 0.05 * edgeMax) return;
     const yUp = ys[i], yDn = ys[i + 2];
     const b1 = yUp - k.y, b2 = k.y - yDn, b = b1 + b2;
     const w = share(b1, sS, cAt(yUp)) + share(b2, sS, cAt(yDn));
