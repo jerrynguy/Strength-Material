@@ -107,6 +107,8 @@ export interface StabilityInput {
   params: BucklingParams;
   /** Hệ số an toàn ổn định yêu cầu */
   nRequired: number;
+  /** Diện tích hữu hiệu (tiết diện loại 4) — dùng thay A khi tính σ = N/A */
+  Aeff?: number;
 }
 
 export interface StabilityResult {
@@ -175,18 +177,20 @@ export function checkStability(sec: SectionProps, inp: StabilityInput): Stabilit
   const nActual = inp.N > 0 ? Pcr / inp.N : Infinity;
   steps.push(`n_ôđ = P_th/N = ${f(Pcr, 2)}/${f(inp.N, 2)} = ${f(nActual, 3)} ${nActual >= inp.nRequired ? '≥' : '<'} [n_ôđ] = ${inp.nRequired}`);
   const phi = phiOf(inp.params, lambdaMax);
-  const sigma = (inp.N * 1e3) / A;
+  const Ause = inp.Aeff && inp.Aeff < A ? inp.Aeff : A;
+  if (Ause < A) steps.push(`Tiết diện loại 4 khi nén: dùng diện tích hữu hiệu A_eff = ${f(Ause, 1)} mm² (A = ${f(A, 1)} mm²)`);
+  const sigma = (inp.N * 1e3) / Ause;
   const allowPhi = phi !== null ? phi * inp.allowable : 0;
   if (phi === null) warnings.push(`λ = ${f(lambdaMax, 1)} vượt ngoài bảng φ (λ ≤ ${(inp.params.phi.length - 1) * 10}) — thanh quá mảnh, không nên dùng.`);
   else {
     steps.push(`Tra bảng φ(λ = ${f(lambdaMax, 2)}) = ${f(phi, 4)} (nội suy tuyến tính)`);
-    steps.push(`σ = N/A = ${f(inp.N * 1e3, 0)}/${f(A, 1)} = ${f(sigma, 2)} MPa ${sigma <= allowPhi ? '≤' : '>'} φ[σ] = ${f(phi, 4)}·${inp.allowable} = ${f(allowPhi, 2)} MPa`);
+    steps.push(`σ = N/${Ause < A ? 'A_eff' : 'A'} = ${f(inp.N * 1e3, 0)}/${f(Ause, 1)} = ${f(sigma, 2)} MPa ${sigma <= allowPhi ? '≤' : '>'} φ[σ] = ${f(phi, 4)}·${inp.allowable} = ${f(allowPhi, 2)} MPa`);
   }
   return {
     planes, governing, lambdaMax, principal, regime, sigmaCr, Pcr, nActual, phi, sigma, allowPhi,
     okPhi: phi !== null && sigma <= allowPhi + 1e-9,
     okN: nActual >= inp.nRequired,
-    Nallow: (allowPhi * A) / 1e3,
+    Nallow: (allowPhi * Ause) / 1e3,
     steps, warnings,
   };
 }

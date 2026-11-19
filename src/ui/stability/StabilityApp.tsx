@@ -8,6 +8,7 @@ import { STEEL_FAMILIES } from '../../core/steelTables';
 import { fmt } from '../../core/stress';
 import type { Material, SectionSpec } from '../../core/types';
 import { MaterialRow, SectionSpecEditor } from '../editors';
+import { aeffIfClass4 } from '../../core/effective';
 import { Card, NumField, Select, TextField } from '../fields';
 import { BucklingChart } from './BucklingChart';
 import { LocalCard } from './LocalCard';
@@ -83,6 +84,7 @@ export function StabilityApp({ model, setModel }: { model: StabModel; setModel: 
   const inp = {
     N: model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
     E: model.material.E, allowable: model.material.allowable, params: model.params, nRequired: model.nReq,
+    Aeff: sec ? aeffIfClass4(model.section, model.material, 240) : undefined,
   };
   const r = sec ? checkStability(sec, inp) : null;
   return (

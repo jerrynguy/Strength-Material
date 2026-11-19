@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AnalysisResult } from '../../core/analysis';
 import type { FrameModel, FrameResult } from '../../core/frame';
+import { aeffIfClass4 } from '../../core/effective';
 import { BUCKLING_MATERIALS, checkStability, type BucklingMaterial } from '../../core/stability';
 import { fmt } from '../../core/stress';
 import { effectiveRestraints, type Model, type SectionSpec } from '../../core/types';
@@ -44,7 +45,7 @@ export function BeamStabilityCard({ res, model, onOpen }: { res: AnalysisResult;
   if (!(Nc > 0)) return null;
   const r = checkStability(res.section, {
     N: Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: model.material.allowable,
-    params: BUCKLING_MATERIALS[mat], nRequired: nReq,
+    params: BUCKLING_MATERIALS[mat], nRequired: nReq, Aeff: aeffIfClass4(model.section, model.material, 240),
   });
   const ok = r.okPhi && r.okN;
   return (
@@ -115,7 +116,7 @@ export function FrameStabilityCard({ res, model, mu, setMu }: {
               const m = mu[mr.id] ?? 1;
               const r = checkStability(mr.section, {
                 N: Nc, Lz: mr.L, Ly: mr.L, muZ: m, muY: m, E: model.material.E, allowable: model.material.allowable,
-                params: BUCKLING_MATERIALS[mat], nRequired: 1,
+                params: BUCKLING_MATERIALS[mat], nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, 240),
               });
               return (
                 <tr key={mr.id}>

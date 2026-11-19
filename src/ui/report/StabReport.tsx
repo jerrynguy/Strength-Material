@@ -1,3 +1,4 @@
+import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal } from '../../core/localBuckling';
 import { computeSection, validateSection } from '../../core/section';
 import { checkStability, criticalStress, lambda1 } from '../../core/stability';
@@ -15,6 +16,7 @@ export function StabReport({ model, parts }: { model: StabModel; parts: ReportPa
   const r = checkStability(sec, {
     N: model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
     E: model.material.E, allowable: model.material.allowable, params: model.params, nRequired: model.nReq,
+    Aeff: aeffIfClass4(model.section, model.material, 240),
   });
   const local = checkLocal(model.section, model.material, [{ N: -model.N, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }], { fy: 240, stiffenerSpacing: 0 });
   const E = model.material.E * 1e3;
@@ -73,6 +75,9 @@ export function StabReport({ model, parts }: { model: StabModel; parts: ReportPa
             rows={local.plates.filter((p, i, a) => a.findIndex((q) => q.name.replace(/ – (trái|phải)$/, '') === p.name.replace(/ – (trái|phải)$/, '')) === i)
               .map((p) => [p.name.replace(/ – (trái|phải)$/, ''), fmt(p.ct, 1), p.limits.map((l) => fmt(l, 1)).join(' / '), fmt(p.sigmaCr, 0), String(p.cls)])}
             note={`Ổn định cục bộ (f_y = 240 MPa): tiết diện loại ${local.sectionClass}.`} />
+        )}
+        {local.effective?.applicable && local.effective.N && local.sectionClass === 4 && (
+          <p>Tiết diện loại 4 khi nén: A_eff = {fmt(local.effective.N.Aeff, 1)} mm² ({fmt((local.effective.N.Aeff / sec.A) * 100, 1)}% A); kiểm tra ổn định dùng σ = N/A_eff.</p>
         )}
         {local.tube && <p>Ống tròn: D/t = {fmt(local.tube.Dt, 1)} → loại {local.tube.cls}.</p>}
       </RSection>

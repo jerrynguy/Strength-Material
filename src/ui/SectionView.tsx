@@ -57,6 +57,9 @@ export function SectionView(props: {
       style={{ cursor: onPick ? 'crosshair' : undefined }}
     >
       <path d={path} fillRule="evenodd" className="sec-fill" />
+      {sec.rings.filter((r) => r.ineffective).map((r, i) => (
+        <path key={'ie' + i} d={'M' + r.pts.map(([z, y]) => `${X(z - zc).toFixed(2)},${Y(y - yc).toFixed(2)}`).join('L') + 'Z'} className="sec-ineff" />
+      ))}
       <line x1={8} y1={cy} x2={W - 8} y2={cy} className="axis" />
       <line x1={cx} y1={8} x2={cx} y2={H - 8} className="axis" />
       <text x={W - 10} y={cy - 4} className="axis-label" textAnchor="end">z</text>

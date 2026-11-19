@@ -3,6 +3,8 @@ import { checkLocal, type PlateResult } from '../../core/localBuckling';
 import { fmt } from '../../core/stress';
 import type { InternalForces, Material, SectionSpec } from '../../core/types';
 import { Card, NumField } from '../fields';
+import { SectionView } from '../SectionView';
+import type { EffectiveResult, EffCheck } from '../../core/effective';
 
 const CLS_TEXT = ['không chịu nén', 'loại 1', 'loại 2', 'loại 3', 'loại 4'];
 
@@ -107,6 +109,7 @@ export function LocalCard(props: {
               </tbody>
             </table>
           )}
+          {r.effective?.applicable && <EffectiveView eff={r.effective} check={r.effCheck ?? null} allow={props.material.allowable} xLabel={props.xLabel} />}
           <p className={r.ok ? 'ok' : 'error'}>{r.ok ? 'Đạt điều kiện ổn định cục bộ.' : 'KHÔNG đạt điều kiện ổn định cục bộ.'}</p>
           {r.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
         </>
@@ -117,5 +120,72 @@ export function LocalCard(props: {
         Thép cán: c tính trừ góc lượn; tiết diện hàn: bỏ qua đường hàn.
       </p>
     </Card>
+  );
+}
+
+export function EffectiveView({ eff, check, allow, xLabel }: { eff: EffectiveResult; check: EffCheck | null; allow: number; xLabel?: string }) {
+  const g = eff.gross;
+  const Wel = g.Iz / Math.max(g.yMax, -g.yMin);
+  const WelY = g.Iy / Math.max(g.zMax, -g.zMin);
+  const reduced = [
+    ...(eff.N?.plates ?? []).filter((p) => p.removed).map((p) => ({ when: 'nén đều', p })),
+    ...(eff.MzPos?.plates ?? []).filter((p) => p.removed).map((p) => ({ when: 'uốn M_z > 0', p })),
+    ...(eff.MzNeg?.plates ?? []).filter((p) => p.removed).map((p) => ({ when: 'uốn M_z < 0', p })),
+  ];
+  return (
+    <div className="eff-block">
+      <h3 className="sub-title">Tiết diện hữu hiệu (EN 1993-1-5 §4.3)</h3>
+      <div className="section-grid">
+        {eff.N && (
+          <figure className="eff-fig">
+            <SectionView sec={eff.N.sec} size={170} />
+            <figcaption>Khi nén đều: A_eff = {fmt(eff.N.Aeff, 0)} mm²</figcaption>
+          </figure>
+        )}
+        {eff.MzPos && (
+          <figure className="eff-fig">
+            <SectionView sec={eff.MzPos.sec} size={170} />
+            <figcaption>Khi uốn M_z &gt; 0: W_eff = {fmt(eff.MzPos.Weff, 0)} mm³</figcaption>
+          </figure>
+        )}
+        <table className="kv">
+          <tbody>
+            <tr><th>A_eff / A</th><td>{fmt(eff.N!.Aeff, 1)} / {fmt(g.A, 1)} mm² ({fmt((eff.N!.Aeff / g.A) * 100, 1)}%)</td></tr>
+            <tr><th>Độ lệch trọng tâm e_N,y · e_N,z</th><td>{fmt(eff.N!.eNy, 2)} · {fmt(eff.N!.eNz, 2)} mm</td></tr>
+            <tr><th>W_eff,z (M &gt; 0 / M &lt; 0)</th><td>{fmt(eff.MzPos!.Weff, 0)} / {fmt(eff.MzNeg!.Weff, 0)} mm³ (W_el = {fmt(Wel, 0)})</td></tr>
+            <tr><th>W_eff,y (M &gt; 0 / M &lt; 0)</th><td>{fmt(eff.MyPos!.Weff, 0)} / {fmt(eff.MyNeg!.Weff, 0)} mm³ (W_el = {fmt(WelY, 0)})</td></tr>
+            {check && (
+              <tr><th>Kiểm tra bền tiết diện hữu hiệu</th>
+                <td className={check.ok ? 'good' : 'bad'}>{fmt(check.sigma, 2)} {check.ok ? '≤' : '>'} [σ] = {allow} MPa ({fmt(check.util * 100, 1)}%)
+                  {check.x !== undefined && <span className="muted"> tại x = {fmt(check.x, 3)}{xLabel ?? ' m'}</span>}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {reduced.length > 0 && (
+        <div className="table-scroll">
+          <table className="grid">
+            <thead><tr><th>Trường hợp</th><th>Tấm</th><th>ψ</th><th>λ̄_p</th><th>ρ</th><th>b_eff (mm)</th><th>Phần khoét (mm)</th></tr></thead>
+            <tbody>
+              {reduced.map(({ when, p }, i) => (
+                <tr key={i}>
+                  <td>{when}</td><td>{p.name}</td><td>{fmt(p.psi, 3)}</td><td>{fmt(p.lambdaP, 3)}</td><td>{fmt(p.rho, 4)}</td>
+                  <td>{fmt(p.beff, 1)}</td><td>{fmt(p.removed![1] - p.removed![0], 1)} <span className="muted">({fmt(p.removed![0], 1)} → {fmt(p.removed![1], 1)})</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {check && <p className="hint">{check.terms}</p>}
+      <details>
+        <summary>Lời giải tiết diện hữu hiệu</summary>
+        <ul className="steps">{eff.steps.map((l, i) => <li key={i}>{l}</li>)}</ul>
+      </details>
+      <p className="hint">
+        Phần khoét đo từ chân tấm (tấm vươn) hoặc từ mép 1 (tấm trong); vùng tô đỏ trong hình là phần không hữu hiệu. Kiểm tra theo EN 1993-1-1
+        6.2.9.3: σ = N/A_eff + (|M| + |N|·e_N)/W_eff ≤ [σ]. Thanh chịu nén loại 4: kiểm tra ổn định dùng σ = N/A_eff.
+      </p>
+    </div>
   );
 }

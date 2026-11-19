@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { checkFrameMember, frameAnalyses } from '../../core/beamColumn';
 import { analyzeFrame, DIST_DIR_LABELS, type FrameModel } from '../../core/frame';
+import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal } from '../../core/localBuckling';
 import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
 import { sectionSteps } from '../../core/steps';
@@ -38,7 +39,7 @@ export function FrameReport({ model, parts }: { model: FrameModel; parts: Report
     for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
     const muIn = res.buckling && Nc > 0 ? (Math.PI / mr.L) * Math.sqrt((model.material.E * 1e9 * mr.section.Iz * 1e-12) / (res.buckling.alpha * Nc * 1e3)) : 1;
     const axial = Nc > 0 ? checkStability(mr.section, {
-      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 1,
+      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, 240),
     }) : null;
     const bc = a && Nc > 0 ? checkFrameMember(a, mr.id, 1, model, BUCKLING_MATERIALS.CT3) : null;
     const local = parts.stability ? checkLocal(mr.sectionSpec, model.material, mr.samples.map(toIF), { fy: 240, stiffenerSpacing: 0 }) : null;
@@ -157,11 +158,12 @@ export function FrameReport({ model, parts }: { model: FrameModel; parts: Report
               note={`Nén – uốn: (1) σ_II ≤ [σ] = ${allow}; (2) σ(1.5·tải) ≤ σ_ch = 240; (3) N/(φA) + M/(W(1 − N/N_th)) ≤ [σ].`} />
           )}
           {locs.length > 0 && (
-            <RTable head={['Thanh', 'Loại tiết diện', 'Tấm bất lợi', 'Bụng chịu cắt']}
+            <RTable head={['Thanh', 'Loại tiết diện', 'Tấm bất lợi', 'Tiết diện hữu hiệu', 'Bụng chịu cắt']}
               rows={locs.map((r) => {
                 const worst = r.local!.plates.filter((p) => p.cls).sort((x, y) => y.cls - x.cls || y.ct - x.ct)[0];
                 return [r.mr.name, r.local!.sectionClass || 'không nén',
                   worst ? `${worst.name}: c/t = ${fmt(worst.ct, 1)} (loại ${worst.cls})` : '—',
+                  r.local!.effCheck ? <Verdict ok={r.local!.effCheck.ok}>σ = {fmt(r.local!.effCheck.sigma, 1)} MPa</Verdict> : '—',
                   r.local!.shear ? <Verdict ok={r.local!.shear.ok}>{fmt(r.local!.shear.util * 100, 0)}%</Verdict> : '—'];
               })} note="Ổn định cục bộ theo EN 1993-1-1 bảng 5.2, f_y = 240 MPa." />
           )}

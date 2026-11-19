@@ -109,6 +109,22 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - IPE 600 chịu nén là loại 4.
   - Các hệ số k_σ = 4 / 23,9 / 0,43; k_τ = 9,34 khi a = h_w; λ̄_w khớp công thức EN.
 
+## Tiết diện hữu hiệu (tiết diện loại 4)
+
+- **Chiều rộng hữu hiệu** theo EN 1993-1-5 §4.3 (bảng 4.1, 4.2): b_eff, b_e1, b_e2 theo ψ. Phần không hữu hiệu được khoét khỏi hình học thật của mặt cắt, nên A_eff, I_eff, W_eff, trọng tâm hữu hiệu đều tính lại chính xác; trên hình vẽ, phần này tô đỏ.
+- **Tính lặp:** khoét cánh làm trục trung hoà dịch đi và đổi phân bố ứng suất trên bụng (EN 4.4(3)), nên app lặp đến khi vùng khoét hội tụ. ρ tính với σ_com = f_y, nên tiết diện hữu hiệu không phụ thuộc độ lớn nội lực.
+- **A_eff và W_eff tính riêng:** A_eff và độ lệch trọng tâm e_N khi chịu nén đều; W_eff,z, W_eff,y khi chịu uốn theo từng chiều mô men.
+- **Kiểm tra** theo EN 1993-1-1 6.2.9.3: σ = N/A_eff + (|M| + |N|·e_N)/W_eff ≤ [σ], tại mặt cắt bất lợi nhất dọc thanh.
+- **Đưa vào các phần khác:**
+  - Ổn định thanh nén dùng σ = N/A_eff.
+  - Công thức tương tác nén – uốn dùng A_eff, W_eff; uốn – xoắn dùng W_eff.
+  - Chọn số hiệu thép và báo cáo PDF.
+- **Kiểm chứng:**
+  - IPE 600 chịu nén: A_eff = A − c(1 − ρ)t_w.
+  - Cánh vươn mảnh: A_eff = A − 4(1 − ρ)c·t, khoét ở mép tự do.
+  - Dầm bụng mảnh chịu uốn: b_e1 = 0.4·b_eff đo từ mép nén, vòng lặp hội tụ.
+- **Giới hạn:** chưa có sườn dọc; chưa áp dụng cho vỏ trụ (ống tròn loại 4 theo EN 1993-1-6). Với thép GOST cánh dốc, phần khoét lấy theo bề dày trung bình.
+
 ## Xuất báo cáo PDF
 
 Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, rồi bấm **In / Lưu PDF** và chọn “Lưu dưới dạng PDF”. App xuất qua chức năng in của trình duyệt: tiếng Việt hiển thị đúng, hình vẽ dạng vector, chữ trong PDF chọn và tìm kiếm được, không cần thư viện ngoài.
@@ -191,6 +207,7 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [x] Nén – uốn đồng thời, phân tích bậc hai P-Δ, hệ số tới hạn khung
 - [x] Ổn định uốn – xoắn của dầm (M_cr bằng phần tử hữu hạn, χ_LT theo EN 1993-1-1)
 - [x] Ổn định cục bộ bản cánh / bản bụng, phân loại tiết diện, ổn định bụng chịu cắt
-- [ ] Tiết diện hữu hiệu đầy đủ cho loại 4, sườn dọc
+- [x] Tiết diện hữu hiệu đầy đủ cho loại 4 (A_eff, W_eff, e_N, tính lặp)
+- [ ] Sườn dọc bản bụng; vỏ trụ loại 4
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [x] Xuất báo cáo PDF (thanh thẳng, khung, ổn định)

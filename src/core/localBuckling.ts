@@ -12,6 +12,7 @@
  *  Ổn định bản bụng chịu cắt (EN 1993-1-5 §5): τ_cr = k_τ·σ_E, λ̄_w = 0.76√(f_y/τ_cr), χ_w
  * Với ứng suất cho phép: tấm loại 4 kiểm tra gần đúng σ_nén ≤ ρ·[σ]; cắt: τ_tb ≤ χ_w·[σ]/√3.
  */
+import { checkEffective, effectiveSection, type EffCheck, type EffectiveResult } from './effective';
 import { computeSection, type SectionProps } from './section';
 import { findProfile } from './steelTables';
 import { neutralAxisCoeffs } from './stress';
@@ -40,7 +41,7 @@ interface Geometry {
   note?: string;
 }
 
-function geometry(spec: SectionSpec): Geometry | null {
+export function geometry(spec: SectionSpec): Geometry | null {
   switch (spec.kind) {
     case 'I': {
       const H = spec.tb + spec.hw + spec.tt;
@@ -227,6 +228,9 @@ export interface LocalResult {
   shear?: ShearResult;
   tube?: { Dt: number; limits: [number, number, number]; cls: 1 | 2 | 3 | 4; sigmaCr: number };
   angleNote?: string;
+  /** Tiết diện hữu hiệu và kiểm tra σ = N/A_eff + M/W_eff (chỉ khi loại 4) */
+  effective?: EffectiveResult;
+  effCheck?: EffCheck | null;
   ok: boolean;
   warnings: string[];
 }
@@ -369,7 +373,13 @@ export function checkLocal(spec: SectionSpec, mat: Material, forces: ({ x?: numb
     shear = { hw, tw, ratio, limit, needCheck, a: Number.isFinite(a) ? a : 0, kTau, tauCr, lambdaW, chiW, tau, tauAllow, util: tau / tauAllow, ok: tau <= tauAllow, Q };
   }
 
-  const ok = plates.every((p) => p.cls < 4 || p.util <= 1) && (!shear || shear.ok);
-  if (sectionClass === 4) warnings.push('Tiết diện loại 4: mất ổn định cục bộ xảy ra trước khi đạt giới hạn chảy — cần dùng tiết diện hữu hiệu (ρ) khi kiểm tra bền.');
-  return { applicable: true, fy, eps, plates, sectionClass, shear, tube, angleNote, ok, warnings };
+  let effective: EffectiveResult | undefined;
+  let effCheck: EffCheck | null = null;
+  if (sectionClass === 4 && geo.plates.length) {
+    effective = effectiveSection(spec, mat, fy);
+    effCheck = checkEffective(effective, forces, mat.allowable);
+  }
+  const ok = (effCheck ? effCheck.ok : plates.every((p) => p.cls < 4 || p.util <= 1)) && (!shear || shear.ok);
+  if (sectionClass === 4) warnings.push('Tiết diện loại 4: mất ổn định cục bộ xảy ra trước khi đạt giới hạn chảy — kiểm tra bền dùng tiết diện hữu hiệu (A_eff, W_eff).');
+  return { applicable: true, fy, eps, plates, sectionClass, shear, tube, angleNote, effective, effCheck, ok, warnings };
 }

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { analyze } from '../../core/analysis';
 import { checkBeamColumn } from '../../core/beamColumn';
 import { classify } from '../../core/classify';
+import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal } from '../../core/localBuckling';
 import { checkLTB, type LtbOptions } from '../../core/ltb';
 import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
@@ -78,7 +79,7 @@ export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: Repo
   for (const s of res.forceSamples) Nc = Math.max(Nc, -s.N);
   const mu = guessMu(model);
   const axial = Nc > 0 ? checkStability(sec, {
-    N: Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 2,
+    N: Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 2, Aeff: aeffIfClass4(model.section, model.material, 240),
   }) : null;
   const bc = parts.stability && Nc > 0 ? checkBeamColumn(model, 1.5, BUCKLING_MATERIALS.CT3) : null;
   const ltb = parts.stability ? checkLTB(model, res, ltbOpt) : null;
@@ -86,7 +87,7 @@ export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: Repo
   if (axial) conclusions.push({ label: `Ổn định nén đúng tâm (μ = ${mu})`, ok: axial.okPhi, detail: `σ = ${fmt(axial.sigma, 2)} MPa so với φ[σ] = ${fmt(axial.allowPhi, 2)} MPa (λ = ${fmt(axial.lambdaMax, 1)})` });
   if (bc && bc.planes.some((p) => p.M1)) conclusions.push({ label: 'Nén – uốn đồng thời (bậc hai, giáo trình)', ok: bc.ok2 && bc.okN, detail: `σ_II = ${bc.sigma2 === null ? '—' : fmt(bc.sigma2, 2)} MPa; σ(n·tải) = ${bc.sigmaN === null ? '—' : fmt(bc.sigmaN, 2)} MPa${bc.sigmaInter !== null ? `; công thức tương tác ${fmt((bc.sigmaInter / allow) * 100, 1)}%${bc.okInter ? '' : ' (không đạt — thiên về an toàn)'}` : ''}` });
   if (ltb?.applicable) conclusions.push({ label: 'Ổn định uốn – xoắn', ok: ltb.ok, detail: `|M| = ${fmt(Math.abs(ltb.Mmax), 2)} kN·m so với χ_LT·W·[σ] = ${fmt(ltb.Mrd, 2)} kN·m (M_cr = ${fmt(ltb.Mcr, 2)})` });
-  if (local?.applicable) conclusions.push({ label: 'Ổn định cục bộ', ok: local.ok, detail: `Tiết diện loại ${local.sectionClass || '—'}${local.shear?.needCheck ? `; bụng chịu cắt ${fmt(local.shear.util * 100, 0)}%` : ''}` });
+  if (local?.applicable) conclusions.push({ label: 'Ổn định cục bộ', ok: local.ok, detail: `Tiết diện loại ${local.sectionClass || '—'}${local.effCheck ? `; tiết diện hữu hiệu ${fmt(local.effCheck.util * 100, 0)}%` : ''}${local.shear?.needCheck ? `; bụng chịu cắt ${fmt(local.shear.util * 100, 0)}%` : ''}` });
 
   const fs = res.forceSamples, ds = res.dispSamples;
   const any = (k: keyof InternalForces) => fs.some((s) => s[k] !== 0);
@@ -234,6 +235,13 @@ export function BeamReport({ model, parts, ltbOpt }: { model: Model; parts: Repo
                   .map((p) => [p.name.replace(/ – (trái|phải)$/, ''), fmt(p.ct, 1), p.cls ? p.limits.map((l) => fmt(l, 1)).join(' / ') : '—',
                     p.cls ? `${fmt(p.psi, 2)} · ${fmt(p.k, 2)}` : '—', p.cls ? fmt(p.s1, 1) : 'không nén', p.cls ? fmt(p.sigmaCr, 0) : '—',
                     p.cls === 0 ? '—' : p.cls === 4 ? <Verdict ok={p.util <= 1}>4 ({fmt(p.util * 100, 0)}%)</Verdict> : String(p.cls)])} />}
+              {local.effective?.applicable && local.effective.N && (
+                <RKV rows={[
+                  ['Tiết diện hữu hiệu: A_eff · e_N,y', `${fmt(local.effective.N.Aeff, 1)} mm² · ${fmt(local.effective.N.eNy, 2)} mm`],
+                  ['W_eff,z (M > 0 / M < 0)', `${fmt(local.effective.MzPos!.Weff, 0)} / ${fmt(local.effective.MzNeg!.Weff, 0)} mm³`],
+                  ...(local.effCheck ? [['σ = N/A_eff + (M + N·e_N)/W_eff', <Verdict ok={local.effCheck.ok}>{fmt(local.effCheck.sigma, 2)} MPa so với [σ] = {allow} MPa</Verdict>] as [string, ReactNode]] : []),
+                ]} />
+              )}
               {local.shear && (
                 <p>Bản bụng chịu cắt: h_w/t_w = {fmt(local.shear.ratio, 1)} {local.shear.needCheck ? `> 72ε/η → χ_w = ${fmt(local.shear.chiW, 3)}` : '≤ 72ε/η'};
                   τ = <Verdict ok={local.shear.ok}>{fmt(local.shear.tau, 2)} MPa so với {fmt(local.shear.tauAllow, 2)} MPa</Verdict>.</p>

@@ -16,6 +16,8 @@ export type Pt = [number, number]; // [z, y]
 export interface Ring {
   pts: Pt[];
   hole: boolean;
+  /** vùng không hữu hiệu (tiết diện loại 4) — chỉ để vẽ */
+  ineffective?: boolean;
 }
 
 export interface TorsionInfo {
@@ -175,7 +177,7 @@ function pointInRing(pts: Pt[], z: number, y: number): boolean {
   return inside;
 }
 
-function polygonSection(label: string, rings: Ring[], torsion: TorsionInfo): SectionProps {
+export function polygonSection(label: string, rings: Ring[], torsion: TorsionInfo): SectionProps {
   const raw = ringsRaw(rings);
   const A = raw.A;
   const zc = raw.Sy / A;

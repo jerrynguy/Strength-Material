@@ -11,6 +11,7 @@ import { analyze } from './analysis';
 import { analyzeFrame, type FrameModel } from './frame';
 import { computeSection, type SectionProps } from './section';
 import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
+import { aeffIfClass4, checkEffective, effectiveSection } from './effective';
 import { checkLocal, type LocalOptions } from './localBuckling';
 import { checkLTB, type LtbOptions } from './ltb';
 import { BUCKLING_MATERIALS, checkStability } from './stability';
@@ -70,9 +71,9 @@ function tauMax(sec: SectionProps, F: InternalForces, mat: Model['material']): n
 }
 
 /** Hệ số sử dụng theo ổn định cho lực nén Nc (kN, dương) */
-function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number, E: number, allowable: number): { util: number; lambda: number } {
+function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number, E: number, allowable: number, Aeff?: number): { util: number; lambda: number } {
   if (!(Nc > 0)) return { util: 0, lambda: 0 };
-  const r = checkStability(sec, { N: Nc, Lz: L, Ly: L, muZ: mu, muY: mu, E, allowable, params: BUCKLING_MATERIALS.CT3, nRequired: 1 });
+  const r = checkStability(sec, { N: Nc, Lz: L, Ly: L, muZ: mu, muY: mu, E, allowable, params: BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff });
   return { util: r.phi === null ? Infinity : r.sigma / r.allowPhi, lambda: r.lambdaMax };
 }
 
@@ -109,7 +110,7 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     let defl = 0;
     for (const d of res.dispSamples) defl = Math.max(defl, Math.hypot(d.v, d.w));
     const deflLimit = opt.deflRatio > 0 ? (model.length * 1e3) / opt.deflRatio : 0;
-    const st = opt.stability ? stabUtilOf(sec, Nc, model.length, opt.mu, model.material.E, model.material.allowable) : { util: 0, lambda: 0 };
+    const st = opt.stability ? stabUtilOf(sec, Nc, model.length, opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240) : undefined) : { util: 0, lambda: 0 };
     let ltbUtil = 0;
     if (opt.ltb) {
       const l = checkLTB({ ...model, section: spec, loads }, res, opt.ltb);
@@ -120,7 +121,11 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
       const lc = checkLocal(spec, model.material, res.forceSamples, opt.local);
       if (lc.applicable) {
         sectionClass = lc.sectionClass;
-        localUtil = Math.max(0, ...lc.plates.map((p) => p.util), lc.shear ? lc.shear.util : 0);
+        localUtil = lc.shear ? lc.shear.util : 0;
+        if (lc.sectionClass === 4) {
+          const ec = checkEffective(effectiveSection(spec, model.material, opt.local.fy), res.forceSamples, model.material.allowable);
+          if (ec) localUtil = Math.max(localUtil, ec.util);
+        }
       }
     }
     out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil: st.util, lambda: st.lambda, ltbUtil, localUtil, sectionClass }, model.material.allowable));
@@ -161,13 +166,17 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
         const lc = checkLocal(spec, model.material, mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), opt.local);
         if (lc.applicable) {
           sectionClass = Math.max(sectionClass, lc.sectionClass);
-          localUtil = Math.max(localUtil, ...lc.plates.map((p) => p.util), lc.shear ? lc.shear.util : 0);
+          localUtil = Math.max(localUtil, lc.shear ? lc.shear.util : 0);
+          if (lc.sectionClass === 4) {
+            const ec = checkEffective(effectiveSection(spec, model.material, opt.local.fy), mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), model.material.allowable);
+            if (ec) localUtil = Math.max(localUtil, ec.util);
+          }
         }
       }
       if (opt.stability) {
         let Nc = 0;
         for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
-        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable);
+        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240) : undefined);
         if (st.util > stabUtil) { stabUtil = st.util; lambda = st.lambda; }
       }
       for (const s of mr.samples) {

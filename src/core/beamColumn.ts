@@ -11,6 +11,7 @@
  * từ đó suy ra μ tương đương và độ mảnh λ.
  */
 import { analyze } from './analysis';
+import { aeffIfClass4, weffZ } from './effective';
 import { analyzeFrame, type FrameModel, type FrameResult } from './frame';
 import type { SectionProps } from './section';
 import { phiOf, type BucklingParams } from './stability';
@@ -74,6 +75,8 @@ interface CoreInput {
   sigma2: number | null;
   sigmaN: number | null;
   errors: string[];
+  /** Tiết diện loại 4 */
+  Aeff?: number;
 }
 
 function finish(c: CoreInput): BeamColumnResult {
@@ -102,8 +105,9 @@ function finish(c: CoreInput): BeamColumnResult {
   const phi = lambdaMax !== null ? phiOf(c.params, lambdaMax) : null;
   let sigmaInter: number | null = null;
   if (phi !== null && planes.every((p) => !p.M1 || (p.Ncr && p.Ncr > Nc))) {
-    const parts: string[] = [`${fmt(Nc * 1e3, 0)}/(${fmt(phi, 3)}·${fmt(sec.A, 1)})`];
-    sigmaInter = (Nc * 1e3) / (phi * sec.A);
+    const Ause = c.Aeff ?? sec.A;
+    const parts: string[] = [`${fmt(Nc * 1e3, 0)}/(${fmt(phi, 3)}·${fmt(Ause, 1)}${c.Aeff ? ' [A_eff]' : ''})`];
+    sigmaInter = (Nc * 1e3) / (phi * Ause);
     for (const p of planes) {
       if (!p.M1) continue;
       const amp = 1 - Nc / (p.Ncr as number);
@@ -151,12 +155,16 @@ export function checkBeamColumn(model: Model, n: number, params: BucklingParams)
     mk('z', r1.buckling.bendY, EIz, sec.Iz, 'Mz'),
     mk('y', r1.buckling.bendZ, EIy, sec.Iy, 'My'),
   ];
+  const Aeff = aeffIfClass4(model.section, model.material, 240);
+  const Mz1 = maxAbs(r1.forceSamples.map((s) => s.Mz));
+  const Wz = weffZ(model.section, model.material, 240, Math.sign(Mz1) || 1);
+  if (Wz && Wz < planes[0].W) planes[0].W = Wz;
   return finish({
     sec, E: model.material.E, allowable: model.material.allowable, params, n, Nc, planes,
     sigma1: sigmaMax(sec, r1.forceSamples),
     sigma2: r2.ok ? sigmaMax(sec, r2.forceSamples) : null,
     sigmaN: rn.ok ? sigmaMax(sec, rn.forceSamples) : null,
-    errors,
+    errors, Aeff,
   });
 }
 
@@ -208,7 +216,10 @@ export function checkFrameMember(
       W: W(sec.Iy, Math.max(sec.zMax, -sec.zMin)),
     },
   ];
+  const Wz = weffZ(m1.sectionSpec, model.material, 240, Math.sign(maxAbs(m1.samples.map((s) => s.M))) || 1);
+  if (Wz && Wz < planes[0].W) planes[0].W = Wz;
   return finish({
+    Aeff: aeffIfClass4(m1.sectionSpec, model.material, 240),
     sec, E: model.material.E, allowable: model.material.allowable, params, n: a.n, Nc, planes,
     sigma1: sigmaMax(sec, m1.samples.map(toIF)),
     sigma2: m2 ? sigmaMax(sec, m2.samples.map(toIF)) : null,

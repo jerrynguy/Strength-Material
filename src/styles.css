@@ -322,3 +322,7 @@ button.linkish { border: 0; background: none; color: var(--accent); padding: 4px
   .report-page { width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; }
   .report-page * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+.eff-block { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.eff-fig { margin: 0; }
+.eff-fig figcaption { font-size: 12px; color: var(--muted); text-align: center; }
+.sec-ineff { fill: #d83b2a; fill-opacity: 0.45; stroke: #d83b2a; stroke-width: 3; stroke-linejoin: round; }

@@ -15,6 +15,7 @@
  * Bỏ qua hiệu ứng Wagner với mặt cắt chỉ đối xứng một trục.
  */
 import type { AnalysisResult } from './analysis';
+import { weffZ } from './effective';
 import { luFactor, luSolve, zeros } from './linalg';
 import { fmt } from './stress';
 import { effectiveRestraints, type Model } from './types';
@@ -106,7 +107,9 @@ export function checkLTB(model: Model, res: AnalysisResult, opt: LtbOptions): Lt
   if (sec.Iz < sec.Iy * 1.0001) {
     return NA('Dầm uốn quanh trục yếu (I_z ≤ I_y): không xảy ra mất ổn định uốn – xoắn.');
   }
-  const W = sec.Iz / Math.max(sec.yMax, -sec.yMin);
+  const Wel = sec.Iz / Math.max(sec.yMax, -sec.yMin);
+  const Weff = weffZ(model.section, model.material, opt.fy, Math.sign(Mmax) || 1);
+  const W = Weff && Weff < Wel ? Weff : Wel;
   const L = model.length;
   const E = model.material.E * 1e9;
   const G = E / (2 * (1 + model.material.nu));
@@ -241,7 +244,7 @@ export function checkLTB(model: Model, res: AnalysisResult, opt: LtbOptions): Lt
   const Mrd = chi * Mel;
   const util = Math.abs(Mmax) / Mrd;
 
-  steps.push(`I_y (trục yếu) = ${fmt(sec.Iy, 0)} mm⁴; I_t = ${fmt(sec.torsion.J, 0)} mm⁴; I_w = ${fmt(lp.Iw, 0)} mm⁶; W = ${fmt(W, 0)} mm³`);
+  steps.push(`I_y (trục yếu) = ${fmt(sec.Iy, 0)} mm⁴; I_t = ${fmt(sec.torsion.J, 0)} mm⁴; I_w = ${fmt(lp.Iw, 0)} mm⁶; W = ${fmt(W, 0)} mm³${W < Wel ? ` (tiết diện loại 4: W_eff, W_el = ${fmt(Wel, 0)})` : ''}`);
   steps.push(`Tải đặt ${opt.loadHeight === 'top' ? 'ở cánh trên' : opt.loadHeight === 'bottom' ? 'ở cánh dưới' : 'tại tâm cắt'}: e = ${fmt(e * 1e3, 1)} mm so với tâm cắt`);
   steps.push(`Ước lượng (mô men đều, gối chạc, chiều dài L): M_cr,0 = π²EI_y/L²·√(I_w/I_y + L²GI_t/(π²EI_y)) = ${fmt(Mcr0 / 1e3, 2)} kN·m`);
   steps.push(`Bài toán trị riêng với biểu đồ mô men thực: α_cr = ${fmt(alpha, 4)} → M_cr = α·|M|max = ${fmt(alpha, 4)}·${fmt(Math.abs(Mmax), 3)} = ${fmt(Mcr, 3)} kN·m (= ${fmt(Mcr / (Mcr0 / 1e3), 3)} × M_cr,0${opt.braces.length ? '' : '; với dầm không giằng, tỉ số này chính là hệ số C1'})`);
