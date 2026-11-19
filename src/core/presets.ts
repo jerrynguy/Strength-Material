@@ -53,6 +53,19 @@ export const PRESETS: Preset[] = [
     }),
   },
   {
+    key: 'ltb',
+    label: 'Dầm thép IPE không giằng ngang (kiểm tra uốn – xoắn)',
+    build: () => ({
+      title: 'Dầm IPE 300 nhịp 6 m, tải trên cánh trên',
+      length: 6,
+      material: { ...STEEL },
+      section: { kind: 'catalog', family: 'IPE', name: 'IPE 300', rotate: false },
+      supports: [support('A', 0, 'pin'), support('B', 6, 'roller')],
+      hinges: [],
+      loads: [dist('q', 0, 6, -12)],
+    }),
+  },
+  {
     key: 'cantilever',
     label: 'Dầm công-xôn (ngàm một đầu) — tiết diện hộp rỗng',
     build: () => ({

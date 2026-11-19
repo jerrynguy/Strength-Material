@@ -186,3 +186,14 @@ describe('Nhận biết dạng chịu lực', () => {
     close(r.internalAt(1, 'left').Mz, 10);
   });
 });
+
+import { fmt } from '../src/core/stress';
+describe('Định dạng số', () => {
+  it('không xoá số 0 của phần nguyên', () => {
+    expect(fmt(80, 0)).toBe('80');
+    expect(fmt(100, 0)).toBe('100');
+    expect(fmt(80.2, 0)).toBe('80');
+    expect(fmt(1.50, 2)).toBe('1.5');
+    expect(fmt(2000, 1)).toBe('2000');
+  });
+});

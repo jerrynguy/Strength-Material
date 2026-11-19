@@ -79,6 +79,21 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - Mô men dầm-cột khớp Timoshenko (qL²/8)·2(sec u − 1)/u².
   - Cột công-xôn: M = H·tan(kL)/k.
 
+## Ổn định uốn – xoắn của dầm
+
+- **M_cr bằng phần tử hữu hạn:** hai ẩn là chuyển vị ngang u và góc xoắn φ, có EI_y, GI_t, EI_w, tính với biểu đồ mô men thực. Không cần tra C1/C2; áp dụng được với mọi tải, gối, ngàm (kiềm chế vênh) và giằng ngang/chống xoắn trong nhịp. Kể được cao độ đặt tải: cánh trên, tâm cắt, cánh dưới.
+- **Đặc trưng mặt cắt:**
+  - I_w (hằng số quạt) và tâm cắt cho chữ I (kể cả cánh không đều), U, T, L.
+  - I_t của thép cán chữ I/H theo El Darwish – Johnston (kể góc lượn): IPE 300 tính ra 19,9 cm⁴ (bảng 20,12); HEB 300 tính ra 185 cm⁴ (bảng 185).
+- **Kiểm tra:** theo EN 1993-1-1 §6.3.2.2 với λ̄_LT, đường cong a–d tự chọn theo loại thép và h/b, χ_LT; điều kiện |M| ≤ χ_LT·W·[σ].
+- **Tích hợp vào chọn số hiệu thép:** có thể bật kiểm tra uốn – xoắn khi chọn số hiệu cho dầm.
+- **Kiểm chứng:**
+  - Mô men đều: khớp công thức giải tích (sai số < 0,2%).
+  - Hệ số C1: tải phân bố đều 1,131; lực tập trung giữa nhịp 1,36.
+  - Giằng giữa nhịp: bằng dầm nhịp L/2.
+  - I_w của IPE 300 khớp bảng EN.
+- **Giới hạn:** bỏ qua hiệu ứng Wagner với mặt cắt chỉ đối xứng một trục; chưa xét uốn – xoắn của thanh trong khung.
+
 ## Phương pháp
 
 1. **Cấu tạo hình học:** mỗi đoạn giữa các khớp nối được coi là cứng tuyệt đối. Ma trận liên kết có hạng bằng số bậc tự do thì hệ bất biến hình; bậc siêu tĩnh = số liên kết − hạng.
@@ -142,6 +157,7 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [x] Bảng thép hình tiêu chuẩn (GOST, JIS, EN) + chọn số hiệu thép
 - [x] Ổn định thanh chịu nén (Euler, Iasinski, hệ số φ)
 - [x] Nén – uốn đồng thời, phân tích bậc hai P-Δ, hệ số tới hạn khung
-- [ ] Ổn định uốn – xoắn của dầm, ổn định cục bộ
+- [x] Ổn định uốn – xoắn của dầm (M_cr bằng phần tử hữu hạn, χ_LT theo EN 1993-1-1)
+- [ ] Ổn định cục bộ bản cánh / bản bụng
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [ ] Xuất báo cáo PDF

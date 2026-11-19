@@ -45,7 +45,8 @@ const f = (v: number, d = 3) => {
   if (!Number.isFinite(v)) return '—';
   if (Math.abs(v) < 1e-9) return '0';
   if (Math.abs(v) >= 1e7 || Math.abs(v) < 1e-3) return v.toExponential(Math.max(d, 4));
-  return v.toFixed(d).replace(/\.?0+$/, '') || '0';
+  const t = v.toFixed(d);
+  return (t.includes('.') ? t.replace(/\.?0+$/, '') : t) || '0';
 };
 
 /** Phần ứng suất pháp do uốn tại (y, z): σ = a·y + b·z (MPa), M tính bằng N·mm */

@@ -61,6 +61,23 @@ export interface SectionProps {
   /** Các điểm biên dùng để dò ứng suất pháp lớn nhất (so với trọng tâm) [z, y] */
   checkPoints: Pt[];
   torsion: TorsionInfo;
+  /** Đặc trưng cho ổn định uốn – xoắn (chỉ có với mặt cắt dùng được) */
+  ltb?: LtbProps;
+}
+
+export interface LtbProps {
+  /** Hằng số quạt (mô men quán tính quạt) I_w, mm⁶ */
+  Iw: number;
+  /** Toạ độ y của tâm cắt so với trọng tâm (mm) */
+  ySc: number;
+  /** Mặt cắt chỉ đối xứng một trục (bỏ qua hiệu ứng Wagner) */
+  monosym: boolean;
+  /** Mặt cắt kín (hộp, ống): hầu như không mất ổn định uốn – xoắn */
+  closed: boolean;
+  /** Thép cán (true) hay tổ hợp hàn / tự định nghĩa */
+  rolled: boolean;
+  /** h/b để chọn đường cong ổn định */
+  hOverB: number;
 }
 
 // ───────────────────────── Đa giác ─────────────────────────
@@ -379,7 +396,16 @@ function profileRings(g: ProfileGeom): Ring[] {
 
 function profileTorsion(g: ProfileGeom): TorsionInfo {
   switch (g.type) {
-    case 'I': return openThinTorsion([[g.b, g.tf], [g.b, g.tf], [g.h - 2 * g.tf, g.tw]]);
+    case 'I': {
+      if (!(g.r > 0)) return openThinTorsion([[g.b, g.tf], [g.b, g.tf], [g.h - 2 * g.tf, g.tw]]);
+      // El Darwish & Johnston: kể góc lượn chân (khớp bảng EN trong ~1–2%)
+      const { b, tf, tw, r, h } = g;
+      const a = -0.042 + 0.2204 * (tw / tf) + 0.1355 * (r / tf) - 0.0865 * ((r * tw) / (tf * tf)) - 0.0725 * ((tw * tw) / (tf * tf));
+      const D = ((tf + r) ** 2 + tw * (r + tw / 4)) / (2 * r + tf);
+      const J = (2 / 3) * b * tf ** 3 * (1 - 0.63 * (tf / b)) + ((h - 2 * tf) * tw ** 3) / 3 + 2 * a * D ** 4;
+      const tmax = Math.max(tf, tw);
+      return { J, model: 'Thép cán chữ I/H: I_t theo El Darwish – Johnston (kể góc lượn), τmax ≈ T·t_max/I_t', tauMax: (T) => (Math.abs(T) * tmax) / J };
+    }
     case 'U': return openThinTorsion([[g.b, g.tf], [g.b, g.tf], [g.h - 2 * g.tf, g.tw]]);
     case 'L': return openThinTorsion([[g.b, g.t], [g.b - g.t, g.t]]);
     case 'RHS': {
@@ -452,6 +478,12 @@ export function validateSection(s: SectionSpec): string | null {
 }
 
 export function computeSection(s: SectionSpec): SectionProps {
+  const p = computeSectionBase(s);
+  const ltb = ltbProps(s, p);
+  return ltb ? { ...p, ltb } : p;
+}
+
+function computeSectionBase(s: SectionSpec): SectionProps {
   switch (s.kind) {
     case 'rect':
       return polygonSection(`Chữ nhật ${s.b}×${s.h} mm`, [{ pts: rect(-s.b / 2, 0, s.b, s.h), hole: false }], rectTorsion(s.b, s.h));
@@ -547,3 +579,52 @@ export const SECTION_DEFAULTS: Record<SectionSpec['kind'], SectionSpec> = {
   polygon: { kind: 'polygon', outer: [[0, 0], [200, 0], [200, 50], [100, 300], [0, 50]], holes: [] },
   catalog: { kind: 'catalog', family: 'I_GOST', name: 'I20', rotate: false },
 };
+
+/** Hằng số quạt và tâm cắt (công thức thành mỏng). */
+function ltbProps(s: SectionSpec, p: SectionProps): LtbProps | undefined {
+  const yc = p.centroid[1];
+  const H = p.yMax - p.yMin;
+  switch (s.kind) {
+    case 'rect':
+      return { Iw: 0, ySc: 0, monosym: false, closed: false, rolled: false, hOverB: s.h / s.b };
+    case 'I': {
+      const I1 = (s.tt * s.bt ** 3) / 12; // cánh trên
+      const I2 = (s.tb * s.bb ** 3) / 12; // cánh dưới
+      const hs = s.tt / 2 + s.hw + s.tb / 2;
+      const yScDraw = s.tb / 2 + (hs * I1) / (I1 + I2);
+      return {
+        Iw: (hs * hs * I1 * I2) / (I1 + I2), ySc: yScDraw - yc, monosym: Math.abs(I1 - I2) > 1e-6 * (I1 + I2),
+        closed: false, rolled: false, hOverB: H / Math.max(s.bt, s.bb),
+      };
+    }
+    case 'T': {
+      const yScDraw = s.hw + s.tf / 2;
+      return { Iw: 0, ySc: yScDraw - yc, monosym: true, closed: false, rolled: false, hOverB: H / s.b };
+    }
+    case 'U': {
+      const b = s.b - s.tw / 2, h = s.h - s.tf;
+      const Iw = ((s.tf * b ** 3 * h * h) / 12) * ((3 * b * s.tf + 2 * h * s.tw) / (6 * b * s.tf + h * s.tw));
+      return { Iw, ySc: 0, monosym: false, closed: false, rolled: false, hOverB: s.h / s.b };
+    }
+    case 'L':
+      return { Iw: 0, ySc: s.t / 2 - yc, monosym: true, closed: false, rolled: false, hOverB: s.h / s.b };
+    case 'box': case 'tube': case 'circle':
+      return { Iw: 0, ySc: 0, monosym: false, closed: true, rolled: false, hOverB: 1 };
+    case 'catalog': {
+      if (s.rotate) return undefined;
+      const f = findProfile(s.family, s.name);
+      const g = f?.profile.geom;
+      if (!g) return undefined;
+      if (g.type === 'I') return { Iw: (p.Iy * (g.h - g.tf) ** 2) / 4, ySc: 0, monosym: false, closed: false, rolled: true, hOverB: g.h / g.b };
+      if (g.type === 'U') {
+        const b = g.b - g.tw / 2, h = g.h - g.tf;
+        const Iw = ((g.tf * b ** 3 * h * h) / 12) * ((3 * b * g.tf + 2 * h * g.tw) / (6 * b * g.tf + h * g.tw));
+        return { Iw, ySc: 0, monosym: false, closed: false, rolled: true, hOverB: g.h / g.b };
+      }
+      if (g.type === 'L') return { Iw: 0, ySc: g.t / 2 - yc, monosym: true, closed: false, rolled: true, hOverB: 1 };
+      return { Iw: 0, ySc: 0, monosym: false, closed: true, rolled: true, hOverB: 1 };
+    }
+    default:
+      return undefined;
+  }
+}

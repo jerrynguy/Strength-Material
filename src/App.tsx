@@ -10,6 +10,8 @@ import { DesignCard } from './ui/DesignCard';
 import { STAB_PRESETS, StabilityApp, defaultStabModel, type StabModel } from './ui/stability/StabilityApp';
 import { BeamStabilityCard, type StabOpenRequest } from './ui/stability/StabilityChecks';
 import { BeamBeamColumnCard } from './ui/stability/BeamColumnCards';
+import { LtbCard, defaultLtbOptions } from './ui/stability/LtbCard';
+import type { LtbOptions } from './core/ltb';
 import type { Model } from './core/types';
 import { BeamView } from './ui/BeamView';
 import { Diagram } from './ui/Diagram';
@@ -58,6 +60,7 @@ export default function App() {
   useEffect(() => save(STAB_KEY, stab), [stab]);
 
   const [so, setSo] = useState(false);
+  const [ltbOpt, setLtbOpt] = useState<LtbOptions>(defaultLtbOptions);
   const res1 = useMemo(() => analyze(model), [model]);
   const resSO = useMemo(() => (so ? analyze(model, { secondOrder: true }) : null), [model, so]);
   const res = resSO && resSO.ok ? resSO : res1;
@@ -225,7 +228,8 @@ export default function App() {
               <SummaryCard res={res} model={model} />
               <BeamStabilityCard key={'st' + version} res={res1} model={model} onOpen={openStab} />
               <BeamBeamColumnCard model={model} />
-              <DesignCard allowable={model.material.allowable} run={(o) => designBeam(model, o)}
+              <LtbCard model={model} res={res1} opt={ltbOpt} setOpt={setLtbOpt} />
+              <DesignCard allowable={model.material.allowable} run={(o) => designBeam(model, o)} ltb={ltbOpt}
                 apply={(spec) => { set((m) => ({ ...m, section: spec })); setVersion((v) => v + 1); }} />
             </>
           )}

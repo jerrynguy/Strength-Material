@@ -11,6 +11,7 @@ import { analyze } from './analysis';
 import { analyzeFrame, type FrameModel } from './frame';
 import { computeSection, type SectionProps } from './section';
 import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
+import { checkLTB, type LtbOptions } from './ltb';
 import { BUCKLING_MATERIALS, checkStability } from './stability';
 import { maxNormalOnSection, stressAt } from './stress';
 import type { InternalForces, Model, SectionSpec } from './types';
@@ -28,6 +29,8 @@ export interface DesignOptions {
   mu: number;
   /** μ riêng cho từng thanh khung */
   memberMu?: Record<string, number>;
+  /** Kiểm tra ổn định uốn – xoắn (chỉ dầm) */
+  ltb?: LtbOptions | null;
 }
 
 export interface Candidate {
@@ -42,6 +45,8 @@ export interface Candidate {
   /** Tỉ số σ_nén / (φ[σ]) lớn nhất; 0 nếu không kiểm tra / không có nén */
   stabUtil: number;
   lambda: number;
+  /** |M|/(χ_LT·W·[σ]); 0 nếu không kiểm tra */
+  ltbUtil: number;
   /** Hệ số sử dụng lớn nhất (≤ 1 là đạt) */
   util: number;
   ok: boolean;
@@ -67,7 +72,7 @@ function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number, E: num
 
 function finish(c: Omit<Candidate, 'util' | 'ok'>, allowable: number): Candidate {
   const tauAllow = allowable / Math.sqrt(3);
-  const util = Math.max(Math.abs(c.sigma) / allowable, c.tau / tauAllow, c.deflLimit > 0 ? c.defl / c.deflLimit : 0, c.stabUtil);
+  const util = Math.max(Math.abs(c.sigma) / allowable, c.tau / tauAllow, c.deflLimit > 0 ? c.defl / c.deflLimit : 0, c.stabUtil, c.ltbUtil);
   return { ...c, util, ok: !c.error && util <= 1 };
 }
 
@@ -84,7 +89,7 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     const res = analyze({ ...model, section: spec, loads });
     const base = { name: p.name, spec, A: sec.A, mass: massOf(sec) };
     if (!res.ok) {
-      out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, error: res.errors[0] }, model.material.allowable));
+      out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, ltbUtil: 0, error: res.errors[0] }, model.material.allowable));
       continue;
     }
     let sigma = 0, tau = 0, Nc = 0;
@@ -99,7 +104,12 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     for (const d of res.dispSamples) defl = Math.max(defl, Math.hypot(d.v, d.w));
     const deflLimit = opt.deflRatio > 0 ? (model.length * 1e3) / opt.deflRatio : 0;
     const st = opt.stability ? stabUtilOf(sec, Nc, model.length, opt.mu, model.material.E, model.material.allowable) : { util: 0, lambda: 0 };
-    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil: st.util, lambda: st.lambda }, model.material.allowable));
+    let ltbUtil = 0;
+    if (opt.ltb) {
+      const l = checkLTB({ ...model, section: spec, loads }, res, opt.ltb);
+      if (l.applicable) ltbUtil = l.util;
+    }
+    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil: st.util, lambda: st.lambda, ltbUtil }, model.material.allowable));
   }
   return out.sort((a, b) => a.mass - b.mass);
 }
@@ -127,7 +137,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
     const sec = computeSection(spec);
     const base = { name: p.name, spec, A: sec.A, mass: massOf(sec) };
     if (!res.ok) {
-      out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, error: res.errors[0] }, model.material.allowable));
+      out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, ltbUtil: 0, error: res.errors[0] }, model.material.allowable));
       continue;
     }
     let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0, stabUtil = 0, lambda = 0;
@@ -159,7 +169,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
         }
       }
     }
-    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil, lambda }, model.material.allowable));
+    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil, lambda, ltbUtil: 0 }, model.material.allowable));
   }
   return out.sort((a, b) => a.mass - b.mass);
 }
