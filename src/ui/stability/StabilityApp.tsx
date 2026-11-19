@@ -10,6 +10,7 @@ import type { Material, SectionSpec } from '../../core/types';
 import { MaterialRow, SectionSpecEditor } from '../editors';
 import { Card, NumField, Select, TextField } from '../fields';
 import { BucklingChart } from './BucklingChart';
+import { LocalCard } from './LocalCard';
 
 export interface StabModel {
   title: string;
@@ -133,6 +134,7 @@ export function StabilityApp({ model, setModel }: { model: StabModel; setModel: 
         {r && sec ? (
           <>
             <ResultCard r={r} model={model} />
+            <LocalCard spec={model.section} material={model.material} forces={[{ N: -model.N, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }]} title="Ổn định cục bộ bản cánh, bản bụng (nén đúng tâm)" />
             <Card title="Đồ thị φ(λ) và σ_th(λ)">
               <Charts r={r} model={model} />
             </Card>

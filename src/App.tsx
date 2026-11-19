@@ -11,6 +11,7 @@ import { STAB_PRESETS, StabilityApp, defaultStabModel, type StabModel } from './
 import { BeamStabilityCard, type StabOpenRequest } from './ui/stability/StabilityChecks';
 import { BeamBeamColumnCard } from './ui/stability/BeamColumnCards';
 import { LtbCard, defaultLtbOptions } from './ui/stability/LtbCard';
+import { LocalCard } from './ui/stability/LocalCard';
 import type { LtbOptions } from './core/ltb';
 import type { Model } from './core/types';
 import { BeamView } from './ui/BeamView';
@@ -229,6 +230,7 @@ export default function App() {
               <BeamStabilityCard key={'st' + version} res={res1} model={model} onOpen={openStab} />
               <BeamBeamColumnCard model={model} />
               <LtbCard model={model} res={res1} opt={ltbOpt} setOpt={setLtbOpt} />
+              <LocalCard spec={model.section} material={model.material} forces={res1.forceSamples} />
               <DesignCard allowable={model.material.allowable} run={(o) => designBeam(model, o)} ltb={ltbOpt}
                 apply={(spec) => { set((m) => ({ ...m, section: spec })); setVersion((v) => v + 1); }} />
             </>

@@ -10,6 +10,7 @@ import { designFrame } from '../../core/design';
 import { DesignCard } from '../DesignCard';
 import { FrameStabilityCard } from '../stability/StabilityChecks';
 import { FrameBeamColumnCard } from '../stability/BeamColumnCards';
+import { LocalCard } from '../stability/LocalCard';
 import { FrameGeneral, FrameGeometry, FrameLoads } from './FrameEditor';
 import { FrameView, type FrameViewMode } from './FrameView';
 
@@ -39,6 +40,7 @@ export function FrameApp({ model, setModel, replace }: {
   const [memberMu, setMemberMu] = useState<Record<string, number>>({});
   const [muOut, setMuOut] = useState<Record<string, number>>({});
   const [so, setSo] = useState(false);
+  const [localMem, setLocalMem] = useState('');
   const set = setModel;
   const res1 = useMemo(() => analyzeFrame(model, { buckling: true }), [model]);
   const resSO = useMemo(() => (so ? analyzeFrame(model, { secondOrder: true, buckling: true }) : null), [model, so]);
@@ -90,6 +92,21 @@ export function FrameApp({ model, setModel, replace }: {
             <FrameDisp res={res} />
             <FrameStabilityCard res={res1} model={model} mu={memberMu} setMu={setMemberMu} />
             <FrameBeamColumnCard model={model} res={res1} muOut={muOut} setMuOut={setMuOut} />
+            {(() => {
+              const lm = res1.members.find((m) => m.id === localMem) ?? res1.members[0];
+              if (!lm) return null;
+              return (
+                <LocalCard
+                  key={lm.id}
+                  title={`Ổn định cục bộ bản cánh, bản bụng — thanh ${lm.name}`}
+                  spec={lm.sectionSpec}
+                  material={model.material}
+                  forces={lm.samples.map((sm) => ({ x: sm.s, N: sm.N, Qy: sm.Q, Qz: 0, T: 0, Mz: sm.M, My: 0 }))}
+                  controls={<Select label="Thanh" value={lm.id} onChange={setLocalMem}
+                    options={res1.members.map((m) => ({ value: m.id, label: m.name }))} />}
+                />
+              );
+            })()}
             {model.sections.length > 0 && (() => {
               const sid = model.sections.some((x) => x.id === designSec) ? designSec : model.sections[0].id;
               return (

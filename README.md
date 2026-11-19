@@ -94,6 +94,21 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - I_w của IPE 300 khớp bảng EN.
 - **Giới hạn:** bỏ qua hiệu ứng Wagner với mặt cắt chỉ đối xứng một trục; chưa xét uốn – xoắn của thanh trong khung.
 
+## Ổn định cục bộ bản cánh, bản bụng
+
+- **Tách mặt cắt thành các tấm:** tấm vươn (cánh I/U/T, cánh thép góc, sườn T) và tấm tựa hai mép (bụng I/U, thành hộp). Thép cán tính c trừ góc lượn.
+- **Ứng suất ở hai mép tấm** lấy từ nội lực thực (N, Mz, My), ở mặt cắt bất lợi nhất dọc thanh → ψ, rồi k_σ theo EN 1993-1-5 (bảng 4.1, 4.2).
+- **Ứng suất tới hạn:** σ_cr = k_σ·π²E/(12(1−ν²))·(t/c)²; app hiện thêm hệ số an toàn n = σ_cr/σ.
+- **Phân loại tiết diện 1–4** theo EN 1993-1-1 bảng 5.2 (ε = √(235/f_y)), gồm các trường hợp riêng cho ống tròn (D/t) và thép góc chịu nén. Tấm loại 4: hệ số ρ, kiểm tra gần đúng σ ≤ ρ[σ].
+- **Ổn định bản bụng chịu cắt:** h_w/t_w so với 72ε/η; k_τ (có thể khai báo sườn ngang cách a), λ̄_w, χ_w; điều kiện τ ≤ χ_w[σ]/√3.
+- **Tích hợp:**
+  - Có mặt ở chế độ dầm, khung (chọn từng thanh) và ổn định (nén đúng tâm).
+  - Chọn số hiệu thép có thêm cột loại tiết diện và kiểm tra cục bộ.
+- **Kiểm chứng:**
+  - IPE 300 chịu nén là loại 2, chịu uốn là loại 1.
+  - IPE 600 chịu nén là loại 4.
+  - Các hệ số k_σ = 4 / 23,9 / 0,43; k_τ = 9,34 khi a = h_w; λ̄_w khớp công thức EN.
+
 ## Phương pháp
 
 1. **Cấu tạo hình học:** mỗi đoạn giữa các khớp nối được coi là cứng tuyệt đối. Ma trận liên kết có hạng bằng số bậc tự do thì hệ bất biến hình; bậc siêu tĩnh = số liên kết − hạng.
@@ -158,6 +173,7 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [x] Ổn định thanh chịu nén (Euler, Iasinski, hệ số φ)
 - [x] Nén – uốn đồng thời, phân tích bậc hai P-Δ, hệ số tới hạn khung
 - [x] Ổn định uốn – xoắn của dầm (M_cr bằng phần tử hữu hạn, χ_LT theo EN 1993-1-1)
-- [ ] Ổn định cục bộ bản cánh / bản bụng
+- [x] Ổn định cục bộ bản cánh / bản bụng, phân loại tiết diện, ổn định bụng chịu cắt
+- [ ] Tiết diện hữu hiệu đầy đủ cho loại 4, sườn dọc
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [ ] Xuất báo cáo PDF

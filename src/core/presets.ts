@@ -66,6 +66,19 @@ export const PRESETS: Preset[] = [
     }),
   },
   {
+    key: 'plate-girder',
+    label: 'Dầm tổ hợp hàn bản bụng mỏng (ổn định cục bộ)',
+    build: () => ({
+      title: 'Dầm tổ hợp hàn nhịp 12 m, bụng 1000×8',
+      length: 12,
+      material: { ...STEEL },
+      section: { kind: 'I', bt: 320, tt: 18, hw: 1000, tw: 8, bb: 320, tb: 18 },
+      supports: [support('A', 0, 'pin'), support('B', 12, 'roller')],
+      hinges: [],
+      loads: [dist('q', 0, 12, -45)],
+    }),
+  },
+  {
     key: 'cantilever',
     label: 'Dầm công-xôn (ngàm một đầu) — tiết diện hộp rỗng',
     build: () => ({
