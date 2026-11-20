@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DIST_DIR_LABELS, memberMaterial, type FDistDir, type FLoad, type FMaterial, type FrameModel, type FSupport, type FSupportKind } from '../../core/frame';
 import { SECTION_DEFAULTS, computeSection, validateSection } from '../../core/section';
-import { densityOf, selfWeightPerM } from '../../core/types';
+import { alphaTOf, densityOf, selfWeightPerM } from '../../core/types';
 import { fdist, fmember, fnode, fnodeLoad, fpoint, fsupport, inclinedBeam } from '../../core/framePresets';
 import { uid } from '../../core/presets';
 import { fmt } from '../../core/stress';
@@ -11,7 +11,7 @@ import { Card, NumField, Select, TextField } from '../fields';
 type Setter = (fn: (m: FrameModel) => FrameModel) => void;
 
 const SUP_LABELS: Record<FSupportKind, string> = {
-  fixed: 'Ngàm', pin: 'Gối cố định (khớp)', roller: 'Gối di động', custom: 'Tuỳ chỉnh',
+  fixed: 'Ngàm', pin: 'Gối cố định (khớp)', roller: 'Gối di động', custom: 'Tuỳ chỉnh', spring: 'Gối đàn hồi (lò xo)',
 };
 
 const nextName = (used: string[]) => {
@@ -29,7 +29,7 @@ export function FrameGeneral({ model, set, onReplace }: { model: FrameModel; set
           <TextField label="Tên bài toán" value={model.title} onChange={(v) => set((s) => ({ ...s, title: v }))} width={280} />
         </div>
         <p className="muted small">Vật liệu chung (cho các thanh không chọn vật liệu riêng):</p>
-        <MaterialRow m={model.material} setMat={(p) => set((s) => ({ ...s, material: { ...s.material, ...p } }))} />
+        <MaterialRow thermal m={model.material} setMat={(p) => set((s) => ({ ...s, material: { ...s.material, ...p } }))} />
         <div className="row">
           <NumField label="f_y vật liệu chung (tuỳ chọn)" unit="MPa" value={model.material.fy ?? 0} width={130}
             onChange={(v) => set((s) => ({ ...s, material: { ...s.material, fy: v > 0 ? v : undefined } }))} title="0 = không khai báo; khi đó dùng f_y chung trong thẻ ổn định cục bộ" />
@@ -159,9 +159,9 @@ export function FrameGeometry({ model, set }: { model: FrameModel; set: Setter }
             <div key={s.id} className="item">
               <div className="row">
                 <Select label="Tại nút" value={s.nodeId} options={nodeOpts} onChange={(v) => upd({ nodeId: v })} />
-                <Select label="Loại" value={s.kind} onChange={(v) => upd({ kind: v })}
+                <Select label="Loại" value={s.kind} onChange={(v) => upd({ kind: v, ...(v === 'spring' && !s.springs ? { springs: { kx: 0, ky: 10000, kr: 0 } } : {}) })}
                   options={(Object.keys(SUP_LABELS) as FSupportKind[]).map((k) => ({ value: k, label: SUP_LABELS[k] }))} />
-                <NumField label="Góc mặt tựa" unit="°" value={s.angle} onChange={(v) => upd({ angle: v })} />
+                {s.kind !== 'spring' && <NumField label="Góc mặt tựa" unit="°" value={s.angle} onChange={(v) => upd({ angle: v })} />}
                 <button className="del" onClick={() => set((m) => ({ ...m, supports: m.supports.filter((x) => x.id !== s.id) }))}>✕</button>
               </div>
               {s.kind === 'custom' && (
@@ -174,10 +174,36 @@ export function FrameGeometry({ model, set }: { model: FrameModel; set: Setter }
                   ))}
                 </div>
               )}
+              {s.kind === 'spring' ? (
+                <div className="row">
+                  {(() => { const k = s.springs ?? { kx: 0, ky: 0, kr: 0 }; return (
+                    <>
+                      <NumField label="k_x" unit="kN/m" value={k.kx} width={110} onChange={(v) => upd({ springs: { ...k, kx: Math.max(0, v) } })} title="Lò xo theo phương X; 0 = tự do" />
+                      <NumField label="k_y" unit="kN/m" value={k.ky} width={110} onChange={(v) => upd({ springs: { ...k, ky: Math.max(0, v) } })} title="Lò xo theo phương Y; 0 = tự do" />
+                      <NumField label="k_φ" unit="kN·m/rad" value={k.kr} width={110} onChange={(v) => upd({ springs: { ...k, kr: Math.max(0, v) } })} title="Lò xo xoay; 0 = tự do" />
+                    </>
+                  ); })()}
+                </div>
+              ) : (
+                <div className="row">
+                  <span className="muted">Lún gối / chuyển vị cưỡng bức:</span>
+                  {(() => { const st = s.settle ?? { dx: 0, dy: 0, rz: 0 }; const set1 = (p: Partial<typeof st>) => { const n = { ...st, ...p }; upd({ settle: n.dx || n.dy || n.rz ? n : undefined }); }; return (
+                    <>
+                      <NumField label="Δx" unit="mm" value={st.dx} width={90} onChange={(v) => set1({ dx: v })} />
+                      <NumField label="Δy" unit="mm" value={st.dy} width={90} onChange={(v) => set1({ dy: v })} title="Âm = lún xuống" />
+                      <NumField label="φ (↺ +)" unit="‰ rad" value={st.rz} width={90} onChange={(v) => set1({ rz: v })} />
+                    </>
+                  ); })()}
+                </div>
+              )}
             </div>
           );
         })}
-        <p className="hint">Góc mặt tựa 0° = nằm ngang (gối di động cho phản lực thẳng đứng). Gối di động trên mặt nghiêng α cho phản lực vuông góc mặt nghiêng.</p>
+        <p className="hint">
+          Góc mặt tựa 0° = nằm ngang (gối di động cho phản lực thẳng đứng). Gối di động trên mặt nghiêng α cho phản lực vuông góc mặt nghiêng.
+          Lún gối (Δx, Δy theo hệ tổng thể, φ tính bằng phần nghìn radian) chỉ có tác dụng theo các phương gối chặn; với hệ tĩnh định lún gối chỉ gây
+          chuyển vị, không gây nội lực. Gối đàn hồi: lò xo theo X, Y và xoay, phản lực R = −k·u; có thể đặt cùng nút với gối khác.
+        </p>
       </Card>
 
       <Card title="Tiết diện" actions={
@@ -220,12 +246,13 @@ export function FrameLoads({ model, set }: { model: FrameModel; set: Setter }) {
         <button disabled={!model.nodes.length} onClick={() => set((m) => ({ ...m, loads: [...m.loads, fnodeLoad(nm('P'), m.nodes[0], 0, -10)] }))}>+ Lực/mô men tại nút</button>
         <button disabled={!m0} onClick={() => set((m) => ({ ...m, loads: [...m.loads, fpoint(nm('P'), m0, lenOf(m0.id) / 2, 0, -10)] }))}>+ Lực trên thanh</button>
         <button disabled={!m0} onClick={() => set((m) => ({ ...m, loads: [...m.loads, fdist(nm('q'), m0, 0, lenOf(m0.id), -10)] }))}>+ Phân bố</button>
+        <button disabled={!m0} onClick={() => set((m) => ({ ...m, loads: [...m.loads, { id: uid('t'), type: 'mtemp', name: nm('t'), memberId: m0.id, Ttop: 30, Tbot: 30 }] }))}>+ Nhiệt độ</button>
       </>
     }>
       {model.loads.map((ld) => (
         <div key={ld.id} className="item">
           <div className="row">
-            <span className="tag">{ld.type === 'node' ? 'Tại nút' : ld.type === 'mpoint' ? 'Trên thanh' : 'Phân bố'}</span>
+            <span className="tag">{ld.type === 'node' ? 'Tại nút' : ld.type === 'mpoint' ? 'Trên thanh' : ld.type === 'mtemp' ? 'Nhiệt độ' : 'Phân bố'}</span>
             <TextField label="Tên" value={ld.name} width={60} onChange={(v) => upd(ld.id, { name: v })} />
             {ld.type === 'node'
               ? <Select label="Nút" value={ld.nodeId} options={nodeOpts} onChange={(v) => upd(ld.id, { nodeId: v })} />
@@ -250,6 +277,27 @@ export function FrameLoads({ model, set }: { model: FrameModel; set: Setter }) {
               <NumField label="M (↺ +)" unit="kN·m" value={ld.M} onChange={(v) => upd(ld.id, { M: v })} />
             </div>
           )}
+          {ld.type === 'mtemp' && (() => {
+            const b = model.members.find((x) => x.id === ld.memberId);
+            const mt = b ? memberMaterial(model, b) : model.material;
+            const sp = b && model.sections.find((x) => x.id === b.sectionId)?.spec;
+            const sec = sp && !validateSection(sp) ? computeSection(sp) : null;
+            const at = alphaTOf(mt);
+            const hh = sec ? (sec.yMax - sec.yMin) / 1e3 : 0;
+            const Tc = sec ? ld.Tbot + ((ld.Ttop - ld.Tbot) * (-sec.yMin / 1e3)) / hh : (ld.Ttop + ld.Tbot) / 2;
+            return (
+              <>
+                <div className="row">
+                  <NumField label="ΔT thớ trên (+y′)" unit="°C" value={ld.Ttop} onChange={(v) => upd(ld.id, { Ttop: v })} />
+                  <NumField label="ΔT thớ dưới" unit="°C" value={ld.Tbot} onChange={(v) => upd(ld.id, { Tbot: v })} />
+                </div>
+                <p className="hint">
+                  α_t = {at.toExponential(2)} 1/°C ({mt.name}); h = {fmt(hh * 1e3, 1)} mm. Tại trọng tâm ΔT = {fmt(Tc, 2)} °C → ε₀ = α_t·ΔT = {(at * Tc).toExponential(3)};
+                  độ cong κ₀ = α_t(T_dưới − T_trên)/h = {hh ? ((at * (ld.Tbot - ld.Ttop)) / hh).toExponential(3) : '—'} 1/m.
+                </p>
+              </>
+            );
+          })()}
           {ld.type === 'mdist' && (
             <>
               <div className="row">
@@ -284,6 +332,7 @@ export function FrameLoads({ model, set }: { model: FrameModel; set: Setter }) {
       <p className="hint">
         a, b đo dọc theo thanh từ đầu i (m). Lực theo hệ tổng thể: Fy &lt; 0, q &lt; 0 (phương đứng) là hướng xuống.
         Phương “vuông góc thanh” lấy dương theo trục y′ (quay +90° từ hướng i → j).
+        Nhiệt độ: độ tăng so với lúc lắp dựng, thớ trên là phía +y′; thanh tĩnh định giãn/cong tự do, thanh siêu tĩnh phát sinh nội lực.
       </p>
     </Card>
   );
@@ -292,8 +341,8 @@ export function FrameLoads({ model, set }: { model: FrameModel; set: Setter }) {
 const MATERIAL_TEMPLATES: { key: string; label: string; m: Omit<FMaterial, 'id'> }[] = [
   { key: 'ct3', label: 'Thép CT3 / CCT34', m: { name: 'Thép CT3', E: 200, nu: 0.3, allowable: 160, fy: 240, density: 7850 } },
   { key: 's355', label: 'Thép S355 / Q345 (tham khảo)', m: { name: 'Thép S355', E: 200, nu: 0.3, allowable: 210, fy: 345, density: 7850 } },
-  { key: 'b20', label: 'Bê tông B20 (tham khảo)', m: { name: 'Bê tông B20', E: 27.5, nu: 0.2, allowable: 11.5, density: 2500 } },
-  { key: 'wood', label: 'Gỗ nhóm V (tham khảo)', m: { name: 'Gỗ nhóm V', E: 10, nu: 0.3, allowable: 12, density: 600 } },
+  { key: 'b20', label: 'Bê tông B20 (tham khảo)', m: { name: 'Bê tông B20', E: 27.5, nu: 0.2, allowable: 11.5, density: 2500, alphaT: 1e-5 } },
+  { key: 'wood', label: 'Gỗ nhóm V (tham khảo)', m: { name: 'Gỗ nhóm V', E: 10, nu: 0.3, allowable: 12, density: 600, alphaT: 5e-6 } },
 ];
 
 /** Thư viện vật liệu của khung — mỗi thanh chọn một vật liệu */
@@ -323,6 +372,7 @@ function MaterialLibrary({ model, set }: { model: FrameModel; set: Setter }) {
               <NumField label="[σ]" unit="MPa" value={mt.allowable} width={100} onChange={(v) => upd(mt.id, { allowable: v })} />
               <NumField label="f_y" unit="MPa" value={mt.fy ?? 0} width={100} onChange={(v) => upd(mt.id, { fy: v > 0 ? v : undefined })} title="0 = không khai báo" />
               <NumField label="ρ" unit="kg/m³" value={densityOf(mt)} width={110} onChange={(v) => upd(mt.id, { density: v > 0 ? v : undefined })} />
+              <NumField label="α_t" unit="×10⁻⁶/°C" value={alphaTOf(mt) * 1e6} width={110} onChange={(v) => upd(mt.id, { alphaT: v > 0 ? v * 1e-6 : undefined })} />
               <button className="del" title="Xoá (các thanh đang dùng sẽ quay về vật liệu chung)"
                 onClick={() => set((m) => ({
                   ...m,

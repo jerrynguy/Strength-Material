@@ -1,12 +1,5 @@
 
-  VITE v7.3.8  ready in 116 ms
+  VITE v7.3.8  ready in 137 ms
 
   ➜  Local:   http://localhost:5174/
   ➜  Network: use --host to expose
-11:29:52 AM [vite] (client) hmr update /src/App.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/report/FrameReport.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/report/StabReport.tsx, /src/ui/DesignCard.tsx, /src/ui/stability/LocalCard.tsx, /src/ui/report/StiffenerReport.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/editors.tsx, /src/ui/frame/FrameView.tsx, /src/ui/SteelPicker.tsx
-11:30:46 AM [vite] (client) hmr update /src/ui/stability/LtbCard.tsx, /src/App.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/report/BeamReport.tsx
-11:31:56 AM [vite] (client) hmr update /src/ui/editors.tsx
-11:31:56 AM [vite] (client) hmr update /src/ui/report/BeamReport.tsx
-11:31:56 AM [vite] (client) hmr update /src/ui/stability/LtbCard.tsx
-11:31:56 AM [vite] (client) hmr update /src/ui/report/FrameReport.tsx
-11:32:08 AM [vite] (client) hmr update /src/ui/report/BeamReport.tsx

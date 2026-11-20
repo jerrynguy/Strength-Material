@@ -105,6 +105,18 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - Kiểm chứng: nén thuần α_cr,op·P = min(N_cr,z, N_cr,T); uốn thuần trùng M_cr của thẻ uốn – xoắn; nén + mô men đều khớp nghiệm (P_y − αP)(P_T − αP) = α²M²/r₀².
   - Giới hạn: thép chữ U, góc bỏ qua độ lệch tâm cắt theo phương z.
 
+## Khung: nhiệt độ, lún gối, gối đàn hồi
+
+- **Nhiệt độ trên thanh** (tải “Nhiệt độ”): nhập độ tăng nhiệt thớ trên (phía +y′) và thớ dưới, phân bố tuyến tính theo chiều cao h.
+  - Biến dạng ban đầu ε₀ = α_t·ΔT tại trục trọng tâm (nội suy theo vị trí trọng tâm), độ cong κ₀ = α_t(T_dưới − T_trên)/h.
+  - Quy về lực nút tương đương EA·ε₀ (dọc trục) và EI·κ₀ (mô men) trên từng phần tử; nội lực N = EA(ε − ε₀), M = EI(κ − κ₀).
+  - Hệ số giãn nở α_t nhập cho vật liệu chung và từng vật liệu trong thư viện (thép 12, bê tông 10, gỗ dọc thớ ~5 ×10⁻⁶/°C).
+- **Lún gối / chuyển vị cưỡng bức:** mỗi gối cứng nhập Δx, Δy (mm, hệ tổng thể) và góc xoay φ (‰ rad); chỉ có tác dụng theo các phương gối chặn. Đưa vào vế phải của các ràng buộc Lagrange.
+- **Gối đàn hồi:** lò xo k_x, k_y (kN/m) và k_φ (kN·m/rad), cộng thẳng vào ma trận độ cứng; phản lực R = −k·u. Có thể đặt cùng nút với gối khác (ví dụ khớp + lò xo xoay = ngàm đàn hồi). Lò xo được tính là liên kết khi phân tích cấu tạo hình học.
+- Hệ tĩnh định: nhiệt độ và lún gối chỉ gây chuyển vị, không gây nội lực; hệ siêu tĩnh phát sinh nội lực. Bài mẫu “Khung siêu tĩnh: nhiệt độ, lún gối, gối đàn hồi”.
+- Hệ số tải (phân tích bậc hai, kiểm tra nén – uốn với n·tải) nhân cả nhiệt độ và lún gối.
+- **Kiểm chứng:** ngàm – ngàm tăng nhiệt đều N = −EAα_tΔT; chênh nhiệt M = −EIα_tΔT/h; dầm đơn giản giãn α_tΔTL, võng κ₀L²/8 không có nội lực; lún gối ngàm – ngàm R = 12EIΔ/L³, M = 6EIΔ/L²; ngàm – di động R = 3EIΔ/L³; xoay cưỡng bức M = 4EIθ/L; công-xôn tựa lò xo R = P·k/(k + 3EI/L³); lò xo xoay chân cột φ = H·h/k_φ.
+
 ## Bền dẻo: W_pl cho tiết diện loại 1, 2
 
 - **W_pl và trục trung hoà dẻo** tính số trên đa giác thật của mặt cắt (cả lượn, lỗ, sườn): tìm trục chia đôi diện tích bằng chia đôi khoảng, rồi W_pl = S_trên + S_dưới. Hiện ở bảng đặc trưng mặt cắt và báo cáo (W_pl,z, W_pl,y, hệ số hình dạng W_pl/W_el).
@@ -284,7 +296,7 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 ## Lộ trình
 
 - [x] Khung phẳng / dầm nghiêng, dàn
-- [ ] Lực nhiệt / lún gối cho khung
+- [x] Nhiệt độ, lún gối, gối đàn hồi cho khung
 - [x] Bảng thép hình tiêu chuẩn (GOST, JIS, EN) + chọn số hiệu thép
 - [x] Ổn định thanh chịu nén (Euler, Iasinski, hệ số φ)
 - [x] Nén – uốn đồng thời, phân tích bậc hai P-Δ, hệ số tới hạn khung
@@ -293,5 +305,4 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [x] Tiết diện hữu hiệu đầy đủ cho loại 4 (A_eff, W_eff, e_N, tính lặp)
 - [x] Sườn dọc bản bụng (EN 1993-1-5 A.2, A.3)
 - [x] Làm việc kiểu tấm / kiểu thanh của bản có sườn (A.1, hai sườn gộp, nội suy ρ_c), vỏ trụ loại 4
-- [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [x] Xuất báo cáo PDF (thanh thẳng, khung, ổn định)

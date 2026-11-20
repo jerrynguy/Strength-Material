@@ -3,7 +3,7 @@ import { dist, force, moment, support, uid } from '../core/presets';
 import { SECTION_DEFAULTS, SECTION_LABELS, computeSection, validateSection, plasticProps } from '../core/section';
 import { fmt } from '../core/stress';
 import {
-  SUPPORT_DEFAULTS, SUPPORT_LABELS, type Load, type Model, type Restraints, type SectionSpec, type Support, type SupportKind, densityOf, selfWeightPerM,
+  SUPPORT_DEFAULTS, SUPPORT_LABELS, type Load, type Model, type Restraints, type SectionSpec, type Support, type SupportKind, alphaTOf, densityOf, selfWeightPerM,
 } from '../core/types';
 import { Card, NumField, Select, TextField } from './fields';
 import { SectionView } from './SectionView';
@@ -14,7 +14,7 @@ type Setter = (fn: (m: Model) => Model) => void;
 const nextName = (used: string[], letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') =>
   [...letters].find((c) => !used.includes(c)) ?? `G${used.length + 1}`;
 
-export function MaterialRow({ m, setMat }: { m: Model['material']; setMat: (p: Partial<Model['material']>) => void }) {
+export function MaterialRow({ m, setMat, thermal }: { m: Model['material']; setMat: (p: Partial<Model['material']>) => void; thermal?: boolean }) {
   return (
     <div className="row">
       <TextField label="Vật liệu" value={m.name} onChange={(v) => setMat({ name: v })} width={160} />
@@ -22,6 +22,7 @@ export function MaterialRow({ m, setMat }: { m: Model['material']; setMat: (p: P
       <NumField label="ν (Poisson)" value={m.nu} onChange={(v) => setMat({ nu: v })} />
       <NumField label="[σ]" unit="MPa" value={m.allowable} onChange={(v) => setMat({ allowable: v })} />
       <NumField label="ρ (khối lượng riêng)" unit="kg/m³" value={densityOf(m)} width={130} onChange={(v) => setMat({ density: v > 0 ? v : undefined })} />
+      {thermal && <NumField label="α_t (×10⁻⁶/°C)" value={alphaTOf(m) * 1e6} width={110} onChange={(v) => setMat({ alphaT: v > 0 ? v * 1e-6 : undefined })} title="Hệ số giãn nở nhiệt; thép 12, bê tông 10, gỗ dọc thớ ~5" />}
     </div>
   );
 }

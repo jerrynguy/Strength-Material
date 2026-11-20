@@ -176,12 +176,28 @@ export function FrameView(props: {
         g.push(<line key="g" x1={-18} y1={21} x2={18} y2={21} className="support" />);
         for (let i = -16; i <= 10; i += 7) g.push(<line key={i} x1={i} y1={21} x2={i + 6} y2={28} className="support thin" />);
       }
+    } else if (s.kind === 'spring') {
+      // lò xo: đường zigzag xuống đất
+      const k = s.springs ?? { kx: 0, ky: 0, kr: 0 };
+      if (k.ky > 0) {
+        g.push(<polyline key="z" points="0,0 0,5 -6,8 6,13 -6,18 6,23 0,26 0,30" className="support" fill="none" />);
+        g.push(<line key="g" x1={-14} y1={30} x2={14} y2={30} className="support" />);
+      }
+      if (k.kx > 0) g.push(<polyline key="zx" points="0,0 -5,0 -8,-6 -13,6 -18,-6 -23,6 -26,0 -30,0" className="support" fill="none" />);
+      if (k.kr > 0) g.push(<path key="zr" d="M 0 -4 a 4 4 0 1 0 0.1 0 M 0 -8 a 8 8 0 1 0 0.1 0" className="support thin" fill="none" />);
+      g.push(<text key="l" x={10} y={k.ky > 0 ? 22 : 16} className="lbl tiny">k</text>);
     } else {
       const lab = supportDirections(s).map((d) => d.label).join('');
       g.push(<rect key="r" x={-9} y={2} width={18} height={18} className="support-fill" />);
       g.push(<text key="l" x={0} y={34} className="lbl tiny" textAnchor="middle">{lab || '∅'}</text>);
     }
-    els.push(<g key={s.id} transform={`translate(${X(n.x)},${Y(n.y)}) rotate(${-s.angle})`}>{g}</g>);
+    els.push(<g key={s.id} transform={`translate(${X(n.x)},${Y(n.y)}) rotate(${s.kind === 'spring' ? 0 : -s.angle})`}>{g}</g>);
+    if (s.settle && (s.settle.dx || s.settle.dy || s.settle.rz)) {
+      const st = s.settle;
+      els.push(<text key={s.id + 'st'} x={X(n.x) + 14} y={Y(n.y) + 44} className="lbl tiny load-lbl">
+        lún{st.dx ? ` Δx = ${fmt(st.dx, 1)}` : ''}{st.dy ? ` Δy = ${fmt(st.dy, 1)}` : ''} mm{st.rz ? ` φ = ${fmt(st.rz, 2)}‰` : ''}
+      </text>);
+    }
   }
 
   // Nút
@@ -276,6 +292,17 @@ function drawLoad(ld: FLoad, model: FrameModel, X: (x: number) => number, Y: (y:
     const [gx, gy] = ld.local ? [c * ld.Fx - s * ld.Fy, s * ld.Fx + c * ld.Fy] : [ld.Fx, ld.Fy];
     if (gx || gy) arrow(ld.id, X(px), Y(py), gx, gy, arrowLen, `${ld.name} = ${fmt(Math.hypot(gx, gy), 2)} kN`);
     if (ld.M) momentArc(ld.id + 'm', X(px), Y(py), ld.M, `${ld.name} = ${fmt(Math.abs(ld.M), 2)} kN·m`);
+    return out;
+  }
+  if (ld.type === 'mtemp') {
+    // nhiệt độ: nhãn đặt giữa thanh, lệch về phía +y′
+    const [px, py] = at(L / 2);
+    const off = 16;
+    out.push(
+      <text key={ld.id + 't'} x={X(px) - s * off} y={Y(py) - c * off} className="lbl load-lbl" textAnchor="middle">
+        {ld.Ttop === ld.Tbot ? `${ld.name}: ΔT = ${fmt(ld.Ttop, 1)} °C` : `${ld.name}: ΔT trên ${fmt(ld.Ttop, 1)} / dưới ${fmt(ld.Tbot, 1)} °C`}
+      </text>,
+    );
     return out;
   }
   // phân bố

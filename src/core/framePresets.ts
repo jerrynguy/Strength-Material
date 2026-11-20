@@ -97,6 +97,23 @@ export const FRAME_PRESETS: FramePreset[] = [
     },
   },
   {
+    key: 'imposed',
+    label: 'Khung siêu tĩnh: nhiệt độ, lún gối, gối đàn hồi',
+    build: () => {
+      const s = sec('Thanh', { kind: 'I', bt: 200, tt: 12, hw: 376, tw: 8, bb: 200, tb: 12 });
+      const A = fnode('A', 0, 0), C = fnode('C', 0, 4), D = fnode('D', 8, 4), B = fnode('B', 8, 0), E = fnode('E', 12, 4);
+      const m1 = fmember('AC', A, C, s.id), m2 = fmember('CD', C, D, s.id), m3 = fmember('BD', B, D, s.id), m4 = fmember('DE', D, E, s.id);
+      return {
+        title: 'Khung ngàm chân, dầm nhiệt độ, gối B lún, đầu E tựa lò xo', material: { ...STEEL }, sections: [s], nodes: [A, C, D, B, E], members: [m1, m2, m3, m4],
+        supports: [fsupport(A, 'fixed'), { ...fsupport(B, 'fixed'), settle: { dx: 0, dy: -10, rz: 0 } }, { ...fsupport(E, 'spring'), springs: { kx: 0, ky: 2000, kr: 0 } }],
+        loads: [
+          { id: uid('t'), type: 'mtemp', name: 't', memberId: m2.id, Ttop: 40, Tbot: 20 },
+          fdist('q', m4, 0, 4, -10),
+        ],
+      };
+    },
+  },
+  {
     key: 'gable',
     label: 'Khung mái dốc (nhà công nghiệp) chân khớp',
     build: () => {

@@ -1,9 +1,10 @@
+import { alphaTOf } from '../../core/types';
 import { defaultFrameLtbOptions, frameLtbRows, frameOpRows } from '../stability/LtbCard';
 import type { FrameLtbOptions } from '../../core/ltb';
 import type { FrameMu } from '../frame/FrameApp';
 import type { ReactNode } from 'react';
 import { checkFrameMember, frameAnalyses } from '../../core/beamColumn';
-import { analyzeFrame, DIST_DIR_LABELS, memberLocal, withFrameSelfWeight, withYield, type FrameModel } from '../../core/frame';
+import { analyzeFrame, DIST_DIR_LABELS, memberLocal, memberMaterial, withFrameSelfWeight, withYield, type FrameModel } from '../../core/frame';
 import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
@@ -17,7 +18,7 @@ import { RConclusion, RFig, RKV, RSection, RSteps, RSub, RTable, Verdict, type R
 import { sectionRows } from './BeamReport';
 
 const STATUS = { 'tinh-dinh': 'tĩnh định', 'sieu-tinh': 'siêu tĩnh', 'bien-hinh': 'biến hình' };
-const SUP = { fixed: 'Ngàm', pin: 'Gối cố định', roller: 'Gối di động', custom: 'Tuỳ chỉnh' };
+const SUP = { fixed: 'Ngàm', pin: 'Gối cố định', roller: 'Gối di động', custom: 'Tuỳ chỉnh', spring: 'Gối đàn hồi' };
 const toIF = (s: { N: number; Q: number; M: number }): InternalForces => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 });
 
 export function FrameReport({ model, parts, local: lopt, mu, ltb: ltbOpt = defaultFrameLtbOptions() }: { model: FrameModel; parts: ReportParts; local: LocalOptions; mu?: FrameMu; ltb?: FrameLtbOptions }) {
@@ -93,10 +94,14 @@ export function FrameReport({ model, parts, local: lopt, mu, ltb: ltbOpt = defau
             const mr = res.members.find((m) => model.members.find((x) => x.id === m.id)?.sectionId === s.id);
             return mr ? <RSub key={s.id} title={`Tiết diện ${s.name}: ${mr.section.label}`}><RKV rows={sectionRows(mr.section)} /><StiffenerInputs spec={s.spec} /></RSub> : null;
           })}
-          <RTable head={['Gối tại nút', 'Loại', 'Góc mặt tựa']} rows={model.supports.map((s) => [nodeName(s.nodeId), SUP[s.kind], `${fmt(s.angle, 2)}°`])} />
+          <RTable head={['Gối tại nút', 'Loại', 'Góc mặt tựa / lò xo', 'Lún gối (chuyển vị cưỡng bức)']} rows={model.supports.map((s) => [nodeName(s.nodeId), SUP[s.kind],
+            s.kind === 'spring' ? `k_x = ${fmt(s.springs?.kx ?? 0, 1)}, k_y = ${fmt(s.springs?.ky ?? 0, 1)} kN/m; k_φ = ${fmt(s.springs?.kr ?? 0, 1)} kN·m/rad` : `${fmt(s.angle, 2)}°`,
+            s.settle && (s.settle.dx || s.settle.dy || s.settle.rz) ? `Δx = ${fmt(s.settle.dx, 2)} mm, Δy = ${fmt(s.settle.dy, 2)} mm, φ = ${fmt(s.settle.rz, 3)}‰ rad` : '—'])} />
           <RTable head={['Tải', 'Đặt tại', 'Giá trị']}
             rows={withFrameSelfWeight(model).loads.map((l) => l.type === 'node'
               ? [l.name, `nút ${nodeName(l.nodeId)}`, `Fx = ${fmt(l.Fx, 3)}, Fy = ${fmt(l.Fy, 3)} kN, M = ${fmt(l.M, 3)} kN·m`]
+              : l.type === 'mtemp'
+                ? [l.name, `thanh ${model.members.find((m) => m.id === l.memberId)?.name}`, `nhiệt độ: thớ trên ΔT = ${fmt(l.Ttop, 2)} °C, thớ dưới ΔT = ${fmt(l.Tbot, 2)} °C (α_t = ${alphaTOf(memberMaterial(model, model.members.find((m) => m.id === l.memberId)!)).toExponential(2)} 1/°C)`]
               : l.type === 'mpoint'
                 ? [l.name, `thanh ${model.members.find((m) => m.id === l.memberId)?.name}, a = ${fmt(l.a, 3)} m`, `${l.local ? "Fx' / Fy'" : 'Fx / Fy'} = ${fmt(l.Fx, 3)} / ${fmt(l.Fy, 3)} kN, M = ${fmt(l.M, 3)} kN·m`]
                 : [l.name, `thanh ${model.members.find((m) => m.id === l.memberId)?.name}, ${fmt(l.a, 3)} → ${fmt(l.b, 3)} m`, `q = ${fmt(l.q1, 3)} → ${fmt(l.q2, 3)} kN/m (${DIST_DIR_LABELS[l.dir]})`])} />

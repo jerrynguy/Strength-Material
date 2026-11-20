@@ -19,7 +19,7 @@
 import { sectionForces, type PointAction } from './analysis';
 import { luFactor, rank, smallestEigen, solve, zeros, type Matrix } from './linalg';
 import { computeSection, validateSection, type SectionProps } from './section';
-import { selfWeightPerM, type DistributedLoad, type Material, type SectionSpec } from './types';
+import { alphaTOf, selfWeightPerM, type DistributedLoad, type Material, type SectionSpec } from './types';
 
 export interface FNode {
   id: string;
@@ -28,7 +28,7 @@ export interface FNode {
   y: number;
 }
 
-export type FSupportKind = 'fixed' | 'pin' | 'roller' | 'custom';
+export type FSupportKind = 'fixed' | 'pin' | 'roller' | 'custom' | 'spring';
 
 export interface FSupport {
   id: string;
@@ -38,6 +38,10 @@ export interface FSupport {
   angle: number;
   /** Dùng khi kind = 'custom' — theo hệ trục của mặt tựa: t (dọc mặt tựa), n (vuông góc), xoay */
   restraints: { t: boolean; n: boolean; r: boolean };
+  /** Gối đàn hồi (kind = 'spring'): độ cứng lò xo theo X, Y (kN/m) và xoay (kN·m/rad); 0 = tự do */
+  springs?: { kx: number; ky: number; kr: number };
+  /** Lún gối / chuyển vị cưỡng bức (hệ tổng thể): dx, dy (mm), xoay rz (rad·10⁻³); chỉ có tác dụng theo các phương gối chặn */
+  settle?: { dx: number; dy: number; rz: number };
 }
 
 export interface FMember {
@@ -104,7 +108,12 @@ export type FLoad =
       /** true: Fx, Fy theo hệ trục địa phương (dọc, vuông góc thanh) */
       local: boolean; Fx: number; Fy: number; M: number;
     }
-  | { id: string; type: 'mdist'; name: string; memberId: string; a: number; b: number; q1: number; q2: number; dir: FDistDir };
+  | { id: string; type: 'mdist'; name: string; memberId: string; a: number; b: number; q1: number; q2: number; dir: FDistDir }
+  | {
+      id: string; type: 'mtemp'; name: string; memberId: string;
+      /** độ tăng nhiệt độ thớ trên (phía +y địa phương) và thớ dưới của thanh (°C), phân bố tuyến tính theo chiều cao */
+      Ttop: number; Tbot: number;
+    };
 
 /** Vật liệu trong thư viện của khung */
 export interface FMaterial extends Material {
@@ -204,7 +213,8 @@ export interface FrameAnalyzeOptions {
 function scaleFrameLoads(m: FrameModel, f: number): FrameModel {
   return {
     ...m,
-    loads: m.loads.map((l) => (l.type === 'mdist' ? { ...l, q1: l.q1 * f, q2: l.q2 * f } : { ...l, Fx: l.Fx * f, Fy: l.Fy * f, M: l.M * f })),
+    loads: m.loads.map((l) => (l.type === 'mdist' ? { ...l, q1: l.q1 * f, q2: l.q2 * f } : l.type === 'mtemp' ? { ...l, Ttop: l.Ttop * f, Tbot: l.Tbot * f } : { ...l, Fx: l.Fx * f, Fy: l.Fy * f, M: l.M * f })),
+    supports: m.supports.map((s) => (s.settle ? { ...s, settle: { dx: s.settle.dx * f, dy: s.settle.dy * f, rz: s.settle.rz * f } } : s)),
   };
 }
 
@@ -223,11 +233,20 @@ export function supportDirections(s: FSupport): { d: [number, number, number]; l
   const t: [number, number, number] = [Math.cos(a), Math.sin(a), 0];
   const n: [number, number, number] = [-Math.sin(a), Math.cos(a), 0];
   const r: [number, number, number] = [0, 0, 1];
+  if (s.kind === 'spring') {
+    // gối đàn hồi: lò xo theo X, Y tổng thể và xoay (dùng cho phân tích cấu tạo hình học như một liên kết)
+    const k = s.springs ?? { kx: 0, ky: 0, kr: 0 };
+    const o: { d: [number, number, number]; label: 't' | 'n' | 'r' }[] = [];
+    if (k.kx > 0) o.push({ d: [1, 0, 0], label: 't' });
+    if (k.ky > 0) o.push({ d: [0, 1, 0], label: 'n' });
+    if (k.kr > 0) o.push({ d: [0, 0, 1], label: 'r' });
+    return o;
+  }
   const R =
     s.kind === 'fixed' ? { t: true, n: true, r: true }
       : s.kind === 'pin' ? { t: true, n: true, r: false }
         : s.kind === 'roller' ? { t: false, n: true, r: false }
-          : s.restraints;
+          : s.restraints ?? { t: false, n: false, r: false };
   const out: { d: [number, number, number]; label: 't' | 'n' | 'r' }[] = [];
   if (R.t) out.push({ d: t, label: 't' });
   if (R.n) out.push({ d: n, label: 'n' });
@@ -313,6 +332,7 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
       const g = geoById.get(ld.memberId);
       if (!g) { errors.push(`Tải ${ld.name}: thanh không tồn tại`); continue; }
       if (ld.type === 'mpoint' && !(ld.a >= -tol && ld.a <= g.L + tol)) errors.push(`Tải ${ld.name}: vị trí a phải nằm trong [0; ${g.L.toFixed(3)}] m`);
+      if (ld.type === 'mtemp' && !(Number.isFinite(ld.Ttop) && Number.isFinite(ld.Tbot))) errors.push(`Tải ${ld.name}: nhiệt độ không hợp lệ`);
       if (ld.type === 'mdist' && !(ld.a >= -tol && ld.b <= g.L + tol && ld.b > ld.a + tol))
         errors.push(`Tải ${ld.name}: cần 0 ≤ a < b ≤ L = ${g.L.toFixed(3)} m`);
     }
@@ -486,6 +506,18 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
   const qAt = (d: DistributedLoad, t: number) => d.q1 + ((d.q2 - d.q1) * (t - d.x1)) / (d.x2 - d.x1);
 
   const elemFeq: number[][][] = []; // [mesh][elem] → 6 tải nút tương đương (địa phương, N)
+  let forceScale = 0; // độ lớn nội lực do tác động cưỡng bức (để làm sạch sai số làm tròn)
+  const thermal = new Map<string, { eps0: number; kappa0: number }[]>();
+  for (const ld of model.loads) {
+    if (ld.type !== 'mtemp') continue;
+    const g = geoById.get(ld.memberId)!;
+    const p = g.sec.props;
+    const h = (p.yMax - p.yMin) / 1e3; // m
+    const at = alphaTOf(g.mat);
+    // nhiệt độ tại trục trọng tâm (nội suy tuyến tính theo chiều cao): T_c = T_dưới + (T_trên − T_dưới)·(−y_min)/h
+    const Tc = ld.Tbot + ((ld.Ttop - ld.Tbot) * (-p.yMin / 1e3)) / h;
+    thermal.set(g.m.id, [...(thermal.get(g.m.id) ?? []), { eps0: at * Tc, kappa0: (at * (ld.Tbot - ld.Ttop)) / h }]);
+  }
   const elems: { mIdx: number; e: number; ids: number[]; c: number; s: number; l: number; EA: number; EI: number }[] = [];
   meshes.forEach((ms, mIdx) => {
     const { g, ts, dofs } = ms;
@@ -523,6 +555,12 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
           feq[5] -= (l * l * (2 * qa + 3 * qb)) / 60;
         }
       }
+      // nhiệt độ: biến dạng ban đầu ε₀ = α_t·T(trọng tâm), độ cong κ₀ = α_t(T_dưới − T_trên)/h → lực nút tương đương
+      for (const t of thermal.get(g.m.id) ?? []) {
+        feq[0] -= EA * t.eps0; feq[3] += EA * t.eps0;
+        feq[2] -= EI * t.kappa0; feq[5] += EI * t.kappa0;
+        forceScale = Math.max(forceScale, Math.abs(EA * t.eps0) / KN, Math.abs(EI * t.kappa0) / KN);
+      }
       elemFeq[mIdx].push(feq);
       const fg = toGlobal(c, s, feq);
       for (let a = 0; a < 6; a++) F[ids[a]] += fg[a];
@@ -545,8 +583,27 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
     if (dr !== null) F[dr] += ld.M * KN;
   }
 
-  // Liên kết (nhân tử Lagrange)
-  const cons = supCols.map((sc) => {
+  // Gối đàn hồi: cộng độ cứng lò xo vào ma trận độ cứng
+  for (const s of model.supports) {
+    if (s.kind !== 'spring') continue;
+    const k = nodeIdx.get(s.nodeId)!;
+    const [dx, dy, dr] = nodeDof[k];
+    const sp = s.springs ?? { kx: 0, ky: 0, kr: 0 };
+    if (sp.kx > 0) K[dx][dx] += sp.kx * KN;
+    if (sp.ky > 0) K[dy][dy] += sp.ky * KN;
+    if (sp.kr > 0) {
+      if (dr !== null) K[dr][dr] += sp.kr * KN;
+      else warnings.push(`Gối đàn hồi tại nút ${model.nodes[k].name}: lò xo xoay không có tác dụng vì mọi thanh nối khớp vào nút.`);
+    }
+  }
+  // Liên kết cứng (nhân tử Lagrange); lún gối = vế phải của ràng buộc
+  const rigidCols = supCols.map((sc, q) => ({ sc, q })).filter(({ sc }) => sc.sup.kind !== 'spring');
+  const settleOf = (sc: (typeof supCols)[number]) => {
+    const st = sc.sup.settle;
+    if (!st) return 0;
+    return (sc.d[0] * st.dx) / 1e3 + (sc.d[1] * st.dy) / 1e3 + (sc.d[2] * st.rz) / 1e3;
+  };
+  const cons = rigidCols.map(({ sc }) => {
     const [dx, dy, dr] = nodeDof[sc.k];
     const row = new Map<number, number>();
     if (sc.d[0]) row.set(dx, sc.d[0]);
@@ -572,6 +629,11 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
     for (const [d, v] of row) {
       A[nd + q][d] = v * (kScale || 1);
       A[d][nd + q] = v * (kScale || 1);
+    }
+    const c = settleOf(rigidCols[q].sc);
+    if (c) {
+      rhs[nd + q] = c * (kScale || 1);
+      forceScale = Math.max(forceScale, (Math.abs(c) * (kScale || 1)) / KN);
     }
   });
   let sol = solve(A, rhs);
@@ -667,7 +729,16 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
   const reactions: FrameReaction[] = model.supports.map((s) => {
     const k = nodeIdx.get(s.nodeId)!;
     const r: FrameReaction = { supportId: s.id, nodeId: s.nodeId, name: model.nodes[k].name, Rx: 0, Ry: 0, M: 0, Rt: 0, Rn: 0 };
-    supCols.forEach((sc, q) => {
+    if (s.kind === 'spring') {
+      // phản lực lò xo R = −k·u
+      const [dx, dy, dr] = nodeDof[k];
+      const sp = s.springs ?? { kx: 0, ky: 0, kr: 0 };
+      r.Rx = sp.kx > 0 ? -sp.kx * u[dx] : 0;
+      r.Ry = sp.ky > 0 ? -sp.ky * u[dy] : 0;
+      r.M = sp.kr > 0 && dr !== null ? -sp.kr * u[dr] : 0;
+      r.Rt = r.Rx; r.Rn = r.Ry;
+    }
+    rigidCols.forEach(({ sc }, q) => {
       if (sc.sup.id !== s.id) return;
       const v = -lam[q] / KN;
       r.Rx += v * sc.d[0];
@@ -682,9 +753,10 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
   });
 
   // Nội lực thanh
-  let fScale = 1e-12;
+  let fScale = Math.max(1e-12, forceScale);
   for (const r of reactions) fScale = Math.max(fScale, Math.abs(r.Rx), Math.abs(r.Ry), Math.abs(r.M));
   for (const ld of model.loads) {
+    if (ld.type === 'mtemp') continue;
     if (ld.type === 'mdist') fScale = Math.max(fScale, Math.abs(ld.q1), Math.abs(ld.q2));
     else fScale = Math.max(fScale, Math.abs(ld.Fx), Math.abs(ld.Fy), Math.abs(ld.M));
   }
@@ -767,6 +839,7 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
   for (const r of reactions) { const n = model.nodes[nodeIdx.get(r.nodeId)!]; addF(r.Rx, r.Ry, n.x, n.y, r.M); }
   for (const ld of model.loads) {
     if (ld.type === 'node') { const n = model.nodes[nodeIdx.get(ld.nodeId)!]; addF(ld.Fx, ld.Fy, n.x, n.y, ld.M); continue; }
+    if (ld.type === 'mtemp') continue; // tác động nhiệt tự cân bằng
     const g = geoById.get(ld.memberId)!;
     const ni = model.nodes[g.i];
     const P = (t: number): [number, number] => [ni.x + g.c * t, ni.y + g.s * t];
@@ -784,7 +857,7 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
   }
 
   const degree = det.degree;
-  if (geos.every((g) => g.m.releaseI && g.m.releaseJ) && model.loads.some((l) => l.type !== 'node')) {
+  if (geos.every((g) => g.m.releaseI && g.m.releaseJ) && model.loads.some((l) => l.type === 'mpoint' || l.type === 'mdist')) {
     warnings.push('Mọi thanh đều nối khớp hai đầu (hệ dàn) nhưng có tải trên thanh: thanh sẽ chịu uốn cục bộ.');
   }
   return {

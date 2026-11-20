@@ -93,9 +93,13 @@ export interface Material {
   fy?: number;
   /** Khối lượng riêng ρ (kg/m³) — bỏ trống = thép 7850 */
   density?: number;
+  /** Hệ số giãn nở nhiệt α_t (1/°C) — bỏ trống = thép 1.2·10⁻⁵ */
+  alphaT?: number;
 }
 
 export const DEFAULT_DENSITY = 7850;
+export const DEFAULT_ALPHA_T = 1.2e-5;
+export const alphaTOf = (m: Material) => (m.alphaT && m.alphaT > 0 ? m.alphaT : DEFAULT_ALPHA_T);
 export const densityOf = (m: Material) => (m.density && m.density > 0 ? m.density : DEFAULT_DENSITY);
 /** Trọng lượng bản thân trên 1 m dài (kN/m) với diện tích A (mm²) */
 export const selfWeightPerM = (m: Material, A: number) => (densityOf(m) * 9.81 * A * 1e-6) / 1000;
