@@ -19,7 +19,7 @@
 import { sectionForces, type PointAction } from './analysis';
 import { luFactor, rank, smallestEigen, solve, zeros, type Matrix } from './linalg';
 import { computeSection, validateSection, type SectionProps } from './section';
-import type { DistributedLoad, Material, SectionSpec } from './types';
+import { selfWeightPerM, type DistributedLoad, type Material, type SectionSpec } from './types';
 
 export interface FNode {
   id: string;
@@ -122,6 +122,8 @@ export interface FrameModel {
   members: FMember[];
   supports: FSupport[];
   loads: FLoad[];
+  /** Tự kể trọng lượng bản thân các thanh (ρ·g·A, phương đứng) */
+  selfWeight?: boolean;
 }
 
 export interface FrameDeterminacy {
@@ -253,8 +255,24 @@ function uniq(xs: number[], tol: number): number[] {
   return o;
 }
 
+/** Thêm tải trọng bản thân của từng thanh (theo vật liệu và tiết diện của thanh), phương đứng xuống. */
+export function withFrameSelfWeight(m: FrameModel): FrameModel {
+  if (!m.selfWeight) return m;
+  const extra: FLoad[] = [];
+  for (const b of m.members) {
+    const sp = m.sections.find((s) => s.id === b.sectionId)?.spec;
+    const a = m.nodes.find((n) => n.id === b.i), c = m.nodes.find((n) => n.id === b.j);
+    if (!sp || validateSection(sp) || !a || !c) continue;
+    const L = Math.hypot(c.x - a.x, c.y - a.y);
+    const q = selfWeightPerM(memberMaterial(m, b), computeSection(sp).A);
+    if (L > 0 && q > 0) extra.push({ id: `__sw_${b.id}`, type: 'mdist', name: 'g (bản thân)', memberId: b.id, a: 0, b: L, q1: -q, q2: -q, dir: 'gy' });
+  }
+  return { ...m, loads: [...m.loads, ...extra] };
+}
+
 export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}): FrameResult {
-  const model = opts.loadFactor !== undefined && opts.loadFactor !== 1 ? scaleFrameLoads(modelIn, opts.loadFactor) : modelIn;
+  const withSW = withFrameSelfWeight(modelIn);
+  const model = opts.loadFactor !== undefined && opts.loadFactor !== 1 ? scaleFrameLoads(withSW, opts.loadFactor) : withSW;
   const secondOrder = !!opts.secondOrder;
   const wantBuckling = secondOrder || !!opts.buckling;
   const errors: string[] = [];

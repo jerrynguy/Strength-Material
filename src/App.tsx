@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { analyze } from './core/analysis';
+import { analyze, withSelfWeight } from './core/analysis';
 import { classify } from './core/classify';
 import { PRESETS, defaultModel } from './core/presets';
 import type { FrameModel } from './core/frame';
@@ -197,7 +197,7 @@ export default function App() {
 
         <div className="col-res">
           <Card title={model.title || 'Sơ đồ tính'}>
-            <BeamView model={model} cursorX={hoverX ?? pickX} />
+            <BeamView model={withSelfWeight(model)} cursorX={hoverX ?? pickX} />
           </Card>
           <DeterminacyCard res={res} />
           {res.ok && (

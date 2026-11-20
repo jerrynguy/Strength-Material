@@ -3,7 +3,7 @@ import { dist, force, moment, support, uid } from '../core/presets';
 import { SECTION_DEFAULTS, SECTION_LABELS, computeSection, validateSection } from '../core/section';
 import { fmt } from '../core/stress';
 import {
-  SUPPORT_DEFAULTS, SUPPORT_LABELS, type Load, type Model, type Restraints, type SectionSpec, type Support, type SupportKind,
+  SUPPORT_DEFAULTS, SUPPORT_LABELS, type Load, type Model, type Restraints, type SectionSpec, type Support, type SupportKind, densityOf, selfWeightPerM,
 } from '../core/types';
 import { Card, NumField, Select, TextField } from './fields';
 import { SectionView } from './SectionView';
@@ -21,6 +21,7 @@ export function MaterialRow({ m, setMat }: { m: Model['material']; setMat: (p: P
       <NumField label="E" unit="GPa" value={m.E} onChange={(v) => setMat({ E: v })} />
       <NumField label="ν (Poisson)" value={m.nu} onChange={(v) => setMat({ nu: v })} />
       <NumField label="[σ]" unit="MPa" value={m.allowable} onChange={(v) => setMat({ allowable: v })} />
+      <NumField label="ρ (khối lượng riêng)" unit="kg/m³" value={densityOf(m)} width={130} onChange={(v) => setMat({ density: v > 0 ? v : undefined })} />
     </div>
   );
 }
@@ -55,7 +56,7 @@ function parsePts(text: string): [number, number][] {
 }
 const ptsText = (pts: [number, number][]) => pts.map((p) => `${p[0]}, ${p[1]}`).join('\n');
 
-export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200 }: { spec: SectionSpec; onChange: (s: SectionSpec) => void; size?: number }) {
+export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200, density }: { spec: SectionSpec; onChange: (s: SectionSpec) => void; size?: number; density?: number }) {
   const err = validateSection(s);
   const props = err ? null : computeSection(s);
   const [outerText, setOuterText] = useState(s.kind === 'polygon' ? ptsText(s.outer) : '');
@@ -117,7 +118,7 @@ export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200 }: { s
               <tr><th>W<sub>z</sub> = I<sub>z</sub>/y<sub>max</sub></th><td>{fmt(props.Iz / Math.max(props.yMax, -props.yMin), 0)} mm³</td></tr>
               <tr><th>W<sub>y</sub></th><td>{fmt(props.Iy / Math.max(props.zMax, -props.zMin), 0)} mm³</td></tr>
               <tr><th>Trọng tâm cách đáy</th><td>{fmt(-props.yMin, 2)} mm</td></tr>
-              <tr><th>Khối lượng (thép)</th><td>{fmt(props.A * 1e-6 * 7850, 2)} kg/m</td></tr>
+              <tr><th>Khối lượng{density ? '' : ' (thép)'}</th><td>{fmt(props.A * 1e-6 * (density ?? 7850), 2)} kg/m</td></tr>
               <tr><th>J (xoắn)</th><td>{props.torsion.J ? `${fmt(props.torsion.J, 0)} mm⁴` : '—'}</td></tr>
               <tr><td colSpan={2} className="muted">{props.torsion.model}</td></tr>
             </tbody>
@@ -131,7 +132,7 @@ export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200 }: { s
 export function SectionEditor({ model, set }: { model: Model; set: Setter }) {
   return (
     <Card title="Mặt cắt ngang">
-      <SectionSpecEditor spec={model.section} onChange={(sec) => set((m) => ({ ...m, section: sec }))} />
+      <SectionSpecEditor spec={model.section} density={densityOf(model.material)} onChange={(sec) => set((m) => ({ ...m, section: sec }))} />
     </Card>
   );
 }
@@ -281,6 +282,21 @@ export function LoadsEditor({ model, set }: { model: Model; set: Setter }) {
           )}
         </div>
       ))}
+      <div className="row checks sw-row">
+        <label className="check">
+          <input type="checkbox" checked={!!model.selfWeight} onChange={(e) => set((m) => ({ ...m, selfWeight: e.target.checked ? 'y' : undefined }))} />
+          Kể trọng lượng bản thân
+        </label>
+        {model.selfWeight && (
+          <>
+            <Select value={model.selfWeight} onChange={(v) => set((m) => ({ ...m, selfWeight: v }))}
+              options={[{ value: 'y', label: 'dầm nằm ngang (tải theo −y)' }, { value: 'x', label: 'cột đứng, chân tại x = 0 (dọc trục −x)' }]} />
+            {!validateSection(model.section) && (
+              <span className="muted small">g = ρ·g·A = {fmt(densityOf(model.material), 0)}·9.81·{fmt(computeSection(model.section).A, 0)}·10⁻⁶ = <b>{fmt(selfWeightPerM(model.material, computeSection(model.section).A), 4)} kN/m</b></span>
+            )}
+          </>
+        )}
+      </div>
       <p className="hint">
         Dấu theo trục: Fy &lt; 0 và q &lt; 0 (phương y) là <b>hướng xuống</b>. Mz &gt; 0 là ngược chiều kim đồng hồ ↺. q₁ ≠ q₂ cho tải hình thang / tam giác.
       </p>

@@ -8,7 +8,7 @@
  * Chưa xét ổn định cục bộ bản cánh/bụng và mất ổn định uốn–xoắn của dầm.
  */
 import { analyze } from './analysis';
-import { analyzeFrame, memberLocal, withYield, type FrameModel } from './frame';
+import { analyzeFrame, memberLocal, memberMaterial, withYield, type FrameModel } from './frame';
 import { computeSection, type SectionProps } from './section';
 import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
 import { aeffIfClass4, checkEffective, effectiveSection } from './effective';
@@ -16,7 +16,7 @@ import { checkLocal, type LocalOptions } from './localBuckling';
 import { checkLTB, type LtbOptions } from './ltb';
 import { BUCKLING_MATERIALS, checkStability } from './stability';
 import { maxNormalOnSection, stressAt } from './stress';
-import type { InternalForces, Model, SectionSpec } from './types';
+import { densityOf, selfWeightPerM, type InternalForces, type Material, type Model, type SectionSpec } from './types';
 
 export interface DesignOptions {
   family: string;
@@ -60,8 +60,8 @@ export interface Candidate {
   error?: string;
 }
 
-const massOf = (sec: SectionProps) => sec.A * 1e-6 * STEEL_DENSITY;
-const selfWeightQ = (sec: SectionProps) => -(massOf(sec) * 9.81) / 1000; // kN/m
+const massOf = (sec: SectionProps, mat?: Material) => sec.A * 1e-6 * (mat ? densityOf(mat) : STEEL_DENSITY);
+const selfWeightQ = (sec: SectionProps, mat: Material) => -selfWeightPerM(mat, sec.A); // kN/m
 
 function tauMax(sec: SectionProps, F: InternalForces, mat: Model['material']): number {
   const shear = stressAt(sec, { ...F, N: 0, Mz: 0, My: 0, T: 0 }, mat, 0, 0);
@@ -90,11 +90,12 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
   for (const p of fam.profiles) {
     const spec: SectionSpec = { kind: 'catalog', family: fam.key, name: p.name, rotate: opt.rotate };
     const sec = computeSection(spec);
-    const loads = opt.selfWeight
-      ? [...model.loads, { id: '__sw', type: 'distributed' as const, name: 'g', x1: 0, x2: model.length, dir: 'y' as const, q1: selfWeightQ(sec), q2: selfWeightQ(sec) }]
+    // nếu mô hình đã tự kể trọng lượng bản thân thì không cộng thêm
+    const loads = opt.selfWeight && !model.selfWeight
+      ? [...model.loads, { id: '__sw', type: 'distributed' as const, name: 'g', x1: 0, x2: model.length, dir: 'y' as const, q1: selfWeightQ(sec, model.material), q2: selfWeightQ(sec, model.material) }]
       : model.loads;
     const res = analyze({ ...model, section: spec, loads });
-    const base = { name: p.name, spec, A: sec.A, mass: massOf(sec) };
+    const base = { name: p.name, spec, A: sec.A, mass: massOf(sec, model.material) };
     if (!res.ok) {
       out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, ltbUtil: 0, localUtil: 0, sectionClass: 0, error: res.errors[0] }, model.material.allowable));
       continue;
@@ -142,19 +143,19 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
     const spec: SectionSpec = { kind: 'catalog', family: fam.key, name: p.name, rotate: opt.rotate };
     const sections = model.sections.map((s) => (s.id === sectionId ? { ...s, spec } : s));
     let loads = model.loads;
-    if (opt.selfWeight) {
+    if (opt.selfWeight && !model.selfWeight) {
       loads = [...loads];
       for (const m of model.members) {
         const sp = sections.find((s) => s.id === m.sectionId)?.spec;
         const a = model.nodes.find((n) => n.id === m.i), b = model.nodes.find((n) => n.id === m.j);
         if (!sp || !a || !b) continue;
-        const q = selfWeightQ(computeSection(sp));
+        const q = selfWeightQ(computeSection(sp), memberMaterial(model, m));
         loads.push({ id: '__sw' + m.id, type: 'mdist', name: 'g', memberId: m.id, a: 0, b: Math.hypot(b.x - a.x, b.y - a.y), q1: q, q2: q, dir: 'gy' });
       }
     }
     const res = analyzeFrame({ ...model, sections, loads });
     const sec = computeSection(spec);
-    const base = { name: p.name, spec, A: sec.A, mass: massOf(sec) };
+    const base = { name: p.name, spec, A: sec.A, mass: massOf(sec, memberMaterial(model, model.members.find((x) => x.sectionId === sectionId))) };
     if (!res.ok) {
       out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, ltbUtil: 0, localUtil: 0, sectionClass: 0, error: res.errors[0] }, model.material.allowable));
       continue;

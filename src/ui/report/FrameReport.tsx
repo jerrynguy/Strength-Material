@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { checkFrameMember, frameAnalyses } from '../../core/beamColumn';
-import { analyzeFrame, DIST_DIR_LABELS, memberLocal, withYield, type FrameModel } from '../../core/frame';
+import { analyzeFrame, DIST_DIR_LABELS, memberLocal, withFrameSelfWeight, withYield, type FrameModel } from '../../core/frame';
 import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
 import { sectionSteps } from '../../core/steps';
 import { fmt, maxNormalOnSection } from '../../core/stress';
-import type { InternalForces } from '../../core/types';
+import { densityOf, type InternalForces } from '../../core/types';
 import { memberClass } from '../frame/FrameApp';
 import { FrameView } from '../frame/FrameView';
 import { StiffenerChecks, StiffenerInputs } from './StiffenerReport';
@@ -68,9 +68,9 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
       {parts.inputs && (
         <RSection n={N()} title="Sơ đồ tính và dữ liệu đầu vào">
           <RFig caption="Hình 1. Sơ đồ khung"><FrameView model={model} res={res} mode="model" /></RFig>
-          <RTable head={['Vật liệu', 'E (GPa)', 'ν', '[σ] (MPa)', 'f_y (MPa)', 'Dùng cho thanh']}
+          <RTable head={['Vật liệu', 'E (GPa)', 'ν', '[σ] (MPa)', 'f_y (MPa)', 'ρ (kg/m³)', 'Dùng cho thanh']}
             rows={[{ id: '', ...model.material, name: `${model.material.name} (chung)` }, ...(model.materials ?? [])].map((mt) => [
-              mt.name, fmt(mt.E, 1), fmt(mt.nu, 2), fmt(mt.allowable, 1), mt.fy ? fmt(mt.fy, 0) : '—',
+              mt.name, fmt(mt.E, 1), fmt(mt.nu, 2), fmt(mt.allowable, 1), mt.fy ? fmt(mt.fy, 0) : '—', fmt(densityOf(mt), 0),
               model.members.filter((b) => (b.materialId && (model.materials ?? []).some((x) => x.id === b.materialId) ? b.materialId : '') === mt.id).map((b) => b.name).join(', ') || '—',
             ])} />
           <RTable head={['Nút', 'X (m)', 'Y (m)']} rows={model.nodes.map((x) => [x.name, fmt(x.x, 3), fmt(x.y, 3)])} />
@@ -85,7 +85,7 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
           })}
           <RTable head={['Gối tại nút', 'Loại', 'Góc mặt tựa']} rows={model.supports.map((s) => [nodeName(s.nodeId), SUP[s.kind], `${fmt(s.angle, 2)}°`])} />
           <RTable head={['Tải', 'Đặt tại', 'Giá trị']}
-            rows={model.loads.map((l) => l.type === 'node'
+            rows={withFrameSelfWeight(model).loads.map((l) => l.type === 'node'
               ? [l.name, `nút ${nodeName(l.nodeId)}`, `Fx = ${fmt(l.Fx, 3)}, Fy = ${fmt(l.Fy, 3)} kN, M = ${fmt(l.M, 3)} kN·m`]
               : l.type === 'mpoint'
                 ? [l.name, `thanh ${model.members.find((m) => m.id === l.memberId)?.name}, a = ${fmt(l.a, 3)} m`, `${l.local ? "Fx' / Fy'" : 'Fx / Fy'} = ${fmt(l.Fx, 3)} / ${fmt(l.Fy, 3)} kN, M = ${fmt(l.M, 3)} kN·m`]

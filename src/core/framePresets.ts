@@ -60,7 +60,7 @@ export const FRAME_PRESETS: FramePreset[] = [
       const A = fnode('A', 0, 0), C = fnode('C', 3, 1.8), B = fnode('B', 4.5, 1.8);
       const m1 = fmember('AC', A, C, s.id), m2 = fmember('CB', C, B, s.id);
       return {
-        title: 'Dầm gãy khúc (cầu thang)', material: { name: 'Bê tông B20', E: 27.5, nu: 0.2, allowable: 11.5 }, sections: [s],
+        title: 'Dầm gãy khúc (cầu thang)', material: { name: 'Bê tông B20', E: 27.5, nu: 0.2, allowable: 11.5, density: 2500 }, sections: [s],
         nodes: [A, C, B], members: [m1, m2],
         supports: [fsupport(A, 'pin'), fsupport(B, 'roller')],
         loads: [fdist('q1', m1, 0, Math.hypot(3, 1.8), -8, -8, 'gyp'), fdist('q2', m2, 0, 1.5, -6)],

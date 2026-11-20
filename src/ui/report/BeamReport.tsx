@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { analyze } from '../../core/analysis';
+import { analyze, withSelfWeight } from '../../core/analysis';
 import { checkBeamColumn } from '../../core/beamColumn';
 import { classify } from '../../core/classify';
 import { aeffIfClass4 } from '../../core/effective';
@@ -8,7 +8,7 @@ import { checkLTB, type LtbOptions } from '../../core/ltb';
 import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
 import { equilibriumSteps, sectionSteps } from '../../core/steps';
 import { fmt, maxNormalOnSection, stressAt } from '../../core/stress';
-import { SUPPORT_LABELS, effectiveRestraints, type InternalForces, type Model } from '../../core/types';
+import { SUPPORT_LABELS, effectiveRestraints, type InternalForces, type Model, densityOf } from '../../core/types';
 import { BeamView } from '../BeamView';
 import { Diagram } from '../Diagram';
 import { SectionView } from '../SectionView';
@@ -19,13 +19,13 @@ import { RConclusion, RFig, RKV, RSection, RSteps, RSub, RTable, Verdict, type R
 
 const STATUS = { 'tinh-dinh': 'tĩnh định', 'sieu-tinh': 'siêu tĩnh', 'bien-hinh': 'biến hình' };
 
-export function sectionRows(sec: NonNullable<ReturnType<typeof analyze>['section']>): [string, string][] {
+export function sectionRows(sec: NonNullable<ReturnType<typeof analyze>['section']>, density = 7850): [string, string][] {
   return [
     ['Diện tích A', `${fmt(sec.A, 1)} mm²`],
     ['I_z (trục ngang) · I_y (trục đứng)', `${fmt(sec.Iz, 0)} · ${fmt(sec.Iy, 0)} mm⁴`],
     ['W_z · W_y', `${fmt(sec.Iz / Math.max(sec.yMax, -sec.yMin), 0)} · ${fmt(sec.Iy / Math.max(sec.zMax, -sec.zMin), 0)} mm³`],
     ['Mô men quán tính xoắn I_t', sec.torsion.J ? `${fmt(sec.torsion.J, 0)} mm⁴` : '—'],
-    ['Khối lượng (thép)', `${fmt(sec.A * 1e-6 * 7850, 2)} kg/m`],
+    ['Khối lượng', `${fmt(sec.A * 1e-6 * density, 2)} kg/m (ρ = ${fmt(density, 0)} kg/m³)`],
   ];
 }
 
@@ -111,20 +111,20 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt }: { model: Model
 
       {parts.inputs && (
         <RSection n={N()} title="Sơ đồ tính và dữ liệu đầu vào">
-          <RFig caption="Hình 1. Sơ đồ tính"><BeamView model={model} /></RFig>
+          <RFig caption="Hình 1. Sơ đồ tính"><BeamView model={withSelfWeight(model)} /></RFig>
           <RKV rows={[
             ['Chiều dài thanh L', `${fmt(model.length, 3)} m`],
-            ['Vật liệu', `${model.material.name}: E = ${model.material.E} GPa, ν = ${model.material.nu}, [σ] = ${allow} MPa`],
+            ['Vật liệu', `${model.material.name}: E = ${model.material.E} GPa, ν = ${model.material.nu}, [σ] = ${allow} MPa, ρ = ${fmt(densityOf(model.material), 0)} kg/m³`],
             ['Mặt cắt', sec.label],
           ]} />
           <div className="r-row">
             <SectionView sec={sec} size={170} />
-            <RKV rows={sectionRows(sec)} />
+            <RKV rows={sectionRows(sec, densityOf(model.material))} />
           </div>
           <StiffenerInputs spec={model.section} />
           <RTable head={['Liên kết', 'Loại', 'x (m)', 'Chặn']} rows={model.supports.map((s) => [s.name, SUPPORT_LABELS[s.kind], fmt(s.x, 3), restr(s)])}
             note={model.hinges.length ? `Khớp nối: ${model.hinges.map((h) => `${h.name} (x = ${fmt(h.x, 3)} m)`).join(', ')}` : undefined} />
-          <RTable head={['Tải', 'Loại', 'Vị trí', 'Giá trị']} rows={model.loads.map(loadRow)}
+          <RTable head={['Tải', 'Loại', 'Vị trí', 'Giá trị']} rows={withSelfWeight(model).loads.map(loadRow)}
             note="Dấu theo hệ trục tổng thể: Fy < 0, q < 0 hướng xuống; Mz > 0 ngược chiều kim đồng hồ." />
         </RSection>
       )}

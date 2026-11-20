@@ -91,7 +91,14 @@ export interface Material {
   allowable: number;
   /** Giới hạn chảy f_y (MPa) — tuỳ chọn, dùng cho ổn định cục bộ / σ_ch */
   fy?: number;
+  /** Khối lượng riêng ρ (kg/m³) — bỏ trống = thép 7850 */
+  density?: number;
 }
+
+export const DEFAULT_DENSITY = 7850;
+export const densityOf = (m: Material) => (m.density && m.density > 0 ? m.density : DEFAULT_DENSITY);
+/** Trọng lượng bản thân trên 1 m dài (kN/m) với diện tích A (mm²) */
+export const selfWeightPerM = (m: Material, A: number) => (densityOf(m) * 9.81 * A * 1e-6) / 1000;
 
 export type SectionSpec =
   | { kind: 'rect'; b: number; h: number }
@@ -126,6 +133,8 @@ export interface Model {
   supports: Support[];
   hinges: Hinge[];
   loads: Load[];
+  /** Tự kể trọng lượng bản thân: 'y' — dầm nằm ngang (tải theo −y); 'x' — cột đứng, chân tại x = 0 (tải dọc trục theo −x) */
+  selfWeight?: 'y' | 'x';
 }
 
 export const SUPPORT_DEFAULTS: Record<Exclude<SupportKind, 'custom'>, Restraints> = {

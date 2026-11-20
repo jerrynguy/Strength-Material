@@ -157,6 +157,12 @@ Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, r�
   - Phần ổn định: bảng thanh sườn (b1/b2, A_sl, I_sl, a_c, σ_cr,sl → σ_cr,c, λ̄_c, α_e, χ_c, ρ_c), ổn định cắt có sườn dọc (k_τ, τ_cr, χ_w), lời giải.
   - Báo cáo khung có phần riêng cho từng thanh có sườn.
 - **Thông số ổn định cục bộ trong báo cáo:** f_y và khoảng cách sườn ngang a lấy đúng theo giá trị đang nhập trong thẻ “Ổn định cục bộ” của từng chế độ (lưu trên trình duyệt). Các giá trị này cũng được dùng cho chọn số hiệu thép, tiết diện hữu hiệu trong kiểm tra ổn định nén, nén – uốn và uốn – xoắn.
+- **Khối lượng riêng và trọng lượng bản thân:**
+  - Vật liệu có ρ (kg/m³, mặc định thép 7850; mẫu bê tông 2500, gỗ khoảng 600).
+  - Ô “Kể trọng lượng bản thân” trong phần tải trọng: thanh thẳng chọn dầm nằm ngang (−y) hoặc cột đứng chân tại x = 0 (dọc trục −x); khung tự cộng ρ·g·A cho từng thanh theo vật liệu và tiết diện của thanh, phương đứng.
+  - Tải này được cộng vào mọi phép tính, kể cả khi nhân tải × n.
+  - Khối lượng kg/m của mặt cắt và của các số hiệu khi chọn thép tính theo ρ. Chọn số hiệu không cộng trọng lượng bản thân hai lần khi mô hình đã bật ô này.
+  - Báo cáo có ρ và dòng tải “g (bản thân)”.
 - **Khung: mỗi thanh một vật liệu riêng.**
   - Thẻ “Thư viện vật liệu” có các mẫu (thép CT3, S355/Q345, bê tông B20, gỗ — giá trị [σ] chỉ để tham khảo); mỗi thanh chọn vật liệu ở mục “Thanh”, bỏ trống thì dùng vật liệu chung.
   - E của từng thanh được dùng khi giải khung (độ cứng, P-Δ, bài toán ổn định); [σ], ν, f_y của vật liệu thanh được dùng cho kiểm tra bền, ổn định, nén – uốn, cục bộ và chọn số hiệu thép (hệ số sử dụng theo [σ] từng thanh).

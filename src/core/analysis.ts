@@ -15,7 +15,7 @@
 import { luFactor, rank, smallestEigen, solve, zeros, type Matrix } from './linalg';
 import { computeSection, validateSection, type SectionProps } from './section';
 import {
-  effectiveRestraints, type DistributedLoad, type InternalForces, type Model, type Restraints,
+  effectiveRestraints, selfWeightPerM, type DistributedLoad, type InternalForces, type Model, type Restraints,
 } from './types';
 
 export type SubKey = 'axial' | 'bendY' | 'bendZ' | 'torsion';
@@ -442,8 +442,18 @@ function scaleLoads(m: Model, f: number): Model {
   };
 }
 
+/** Thêm tải trọng bản thân (nếu bật) thành một tải phân bố đều trên toàn thanh. */
+export function withSelfWeight(m: Model): Model {
+  if (!m.selfWeight || validateSection(m.section)) return m;
+  const q = selfWeightPerM(m.material, computeSection(m.section).A);
+  if (!(q > 0) || !(m.length > 0)) return m;
+  const ld: DistributedLoad = { id: '__selfweight', type: 'distributed', name: 'g (bản thân)', x1: 0, x2: m.length, dir: m.selfWeight, q1: -q, q2: -q };
+  return { ...m, loads: [...m.loads, ld] };
+}
+
 export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResult {
-  const model = opts.loadFactor !== undefined && opts.loadFactor !== 1 ? scaleLoads(modelIn, opts.loadFactor) : modelIn;
+  const withSW = withSelfWeight(modelIn);
+  const model = opts.loadFactor !== undefined && opts.loadFactor !== 1 ? scaleLoads(withSW, opts.loadFactor) : withSW;
   const secondOrder = !!opts.secondOrder;
   const wantBuckling = secondOrder || !!opts.buckling;
   const L = model.length;

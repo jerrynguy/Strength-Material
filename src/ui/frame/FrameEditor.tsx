@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { DIST_DIR_LABELS, type FDistDir, type FLoad, type FMaterial, type FrameModel, type FSupport, type FSupportKind } from '../../core/frame';
+import { DIST_DIR_LABELS, memberMaterial, type FDistDir, type FLoad, type FMaterial, type FrameModel, type FSupport, type FSupportKind } from '../../core/frame';
+import { SECTION_DEFAULTS, computeSection, validateSection } from '../../core/section';
+import { densityOf, selfWeightPerM } from '../../core/types';
 import { fdist, fmember, fnode, fnodeLoad, fpoint, fsupport, inclinedBeam } from '../../core/framePresets';
-import { SECTION_DEFAULTS } from '../../core/section';
 import { uid } from '../../core/presets';
 import { fmt } from '../../core/stress';
 import { MaterialRow, SectionSpecEditor } from '../editors';
@@ -265,6 +266,21 @@ export function FrameLoads({ model, set }: { model: FrameModel; set: Setter }) {
           )}
         </div>
       ))}
+      <div className="row checks sw-row">
+        <label className="check">
+          <input type="checkbox" checked={!!model.selfWeight} onChange={(e) => set((m) => ({ ...m, selfWeight: e.target.checked || undefined }))} />
+          Kể trọng lượng bản thân các thanh (ρ·g·A theo vật liệu và tiết diện của từng thanh, phương đứng)
+        </label>
+      </div>
+      {model.selfWeight && (
+        <p className="hint">
+          {model.members.map((b) => {
+            const sp = model.sections.find((s) => s.id === b.sectionId)?.spec;
+            if (!sp || validateSection(sp)) return null;
+            return `${b.name}: ${fmt(selfWeightPerM(memberMaterial(model, b), computeSection(sp).A), 3)} kN/m`;
+          }).filter(Boolean).join(' · ')}
+        </p>
+      )}
       <p className="hint">
         a, b đo dọc theo thanh từ đầu i (m). Lực theo hệ tổng thể: Fy &lt; 0, q &lt; 0 (phương đứng) là hướng xuống.
         Phương “vuông góc thanh” lấy dương theo trục y′ (quay +90° từ hướng i → j).
@@ -274,10 +290,10 @@ export function FrameLoads({ model, set }: { model: FrameModel; set: Setter }) {
 }
 
 const MATERIAL_TEMPLATES: { key: string; label: string; m: Omit<FMaterial, 'id'> }[] = [
-  { key: 'ct3', label: 'Thép CT3 / CCT34', m: { name: 'Thép CT3', E: 200, nu: 0.3, allowable: 160, fy: 240 } },
-  { key: 's355', label: 'Thép S355 / Q345 (tham khảo)', m: { name: 'Thép S355', E: 200, nu: 0.3, allowable: 210, fy: 345 } },
-  { key: 'b20', label: 'Bê tông B20 (tham khảo)', m: { name: 'Bê tông B20', E: 27.5, nu: 0.2, allowable: 11.5 } },
-  { key: 'wood', label: 'Gỗ nhóm V (tham khảo)', m: { name: 'Gỗ nhóm V', E: 10, nu: 0.3, allowable: 12 } },
+  { key: 'ct3', label: 'Thép CT3 / CCT34', m: { name: 'Thép CT3', E: 200, nu: 0.3, allowable: 160, fy: 240, density: 7850 } },
+  { key: 's355', label: 'Thép S355 / Q345 (tham khảo)', m: { name: 'Thép S355', E: 200, nu: 0.3, allowable: 210, fy: 345, density: 7850 } },
+  { key: 'b20', label: 'Bê tông B20 (tham khảo)', m: { name: 'Bê tông B20', E: 27.5, nu: 0.2, allowable: 11.5, density: 2500 } },
+  { key: 'wood', label: 'Gỗ nhóm V (tham khảo)', m: { name: 'Gỗ nhóm V', E: 10, nu: 0.3, allowable: 12, density: 600 } },
 ];
 
 /** Thư viện vật liệu của khung — mỗi thanh chọn một vật liệu */
@@ -306,6 +322,7 @@ function MaterialLibrary({ model, set }: { model: FrameModel; set: Setter }) {
               <NumField label="ν" value={mt.nu} width={70} onChange={(v) => upd(mt.id, { nu: v })} />
               <NumField label="[σ]" unit="MPa" value={mt.allowable} width={100} onChange={(v) => upd(mt.id, { allowable: v })} />
               <NumField label="f_y" unit="MPa" value={mt.fy ?? 0} width={100} onChange={(v) => upd(mt.id, { fy: v > 0 ? v : undefined })} title="0 = không khai báo" />
+              <NumField label="ρ" unit="kg/m³" value={densityOf(mt)} width={110} onChange={(v) => upd(mt.id, { density: v > 0 ? v : undefined })} />
               <button className="del" title="Xoá (các thanh đang dùng sẽ quay về vật liệu chung)"
                 onClick={() => set((m) => ({
                   ...m,

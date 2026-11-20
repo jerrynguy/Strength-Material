@@ -4,7 +4,7 @@ import { SUPPORT_DEFAULTS, type Load, type Material, type Model, type Support, t
 let counter = 0;
 export const uid = (p = 'id') => `${p}_${Date.now().toString(36)}_${(counter++).toString(36)}`;
 
-export const STEEL: Material = { name: 'Thép CT3 / CCT34', E: 200, nu: 0.3, allowable: 160 };
+export const STEEL: Material = { name: 'Thép CT3 / CCT34', E: 200, nu: 0.3, allowable: 160, density: 7850 };
 
 export function support(name: string, x: number, kind: SupportKind): Support {
   return {
