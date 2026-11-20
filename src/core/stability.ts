@@ -351,3 +351,49 @@ export function beamSelfWeightNtd(model: Model, res: AnalysisResult, mu: number)
   const Ntop = Math.max(0, -res.internalAt(model.length, 'left').N);
   return selfWeightColumn(model.section, res.section, model.material, { N: Ntop, L: model.length, Ly: model.length, sameL: true, muZ: mu, muY: mu });
 }
+
+export interface EquivalentAxial {
+  /** lực nén lớn nhất (kN) */
+  Nmax: number;
+  /** lực nén đều tương đương (kN) */
+  Ntd: number;
+  planes: { plane: 'z' | 'y'; alpha: number; NcrUniform: number; Ntd: number; mu: number }[];
+  /** lực nén thay đổi dọc thanh (tải dọc giữa thân, phân bố, trọng lượng bản thân) */
+  varying: boolean;
+  steps: string[];
+}
+
+/**
+ * Chế độ thanh thẳng: quy lực nén thay đổi dọc thanh (lực giữa thân, tải dọc phân bố, trọng lượng bản thân)
+ * về lực nén đều tương đương có cùng hệ số tới hạn: N_tđ = N_th,đều / α_th, với
+ *   α_th — bài toán trị riêng của hệ thật (gối tựa, toàn bộ tải dọc trục thật),
+ *   N_th,đều — lực tới hạn khi nén đều toàn chiều dài trên cùng gối tựa.
+ * Đồng thời μ = (π/L)·√(EI/N_th,đều) — hệ số chiều dài tính toán theo đúng gối tựa của mô hình.
+ */
+export function beamEquivalentAxial(model: Model, res?: AnalysisResult): EquivalentAxial | null {
+  const r = analyze(model, { buckling: true, bucklingUniform: true });
+  const base = res && res.ok ? res : r;
+  if (!r.ok || !r.section) return null;
+  let Nmax = 0, Nmin = Infinity;
+  for (const s of base.forceSamples) { Nmax = Math.max(Nmax, -s.N); Nmin = Math.min(Nmin, -s.N); }
+  if (!(Nmax > 0)) return null;
+  const E = model.material.E * 1e9;
+  const L = model.length;
+  const planes: EquivalentAxial['planes'] = [];
+  const steps: string[] = [];
+  for (const [plane, b, I] of [['z', r.buckling.bendY, r.section.Iz], ['y', r.buckling.bendZ, r.section.Iy]] as const) {
+    if (!b || !b.NcrUniform) continue;
+    const Ntd = b.NcrUniform / b.alpha;
+    const mu = (Math.PI / L) * Math.sqrt((E * I * 1e-12) / (b.NcrUniform * 1e3));
+    planes.push({ plane, alpha: b.alpha, NcrUniform: b.NcrUniform, Ntd, mu });
+    steps.push(
+      `Uốn quanh ${plane}: bài toán trị riêng với tải thật → α_th = ${f(b.alpha, 4)}; với lực nén đều cùng gối tựa → N_th,đều = ${f(b.NcrUniform, 2)} kN ` +
+        `(μ = (π/L)√(EI/N_th,đều) = ${f(mu, 3)}); N_tđ = N_th,đều/α_th = ${f(Ntd, 3)} kN`,
+    );
+  }
+  if (!planes.length) return null;
+  const Ntd = Math.max(...planes.map((p) => p.Ntd));
+  const varying = Math.abs(Nmax - Nmin) > 1e-6 * Nmax || base.forceSamples.some((s) => s.N >= 0);
+  steps.push(`Lực nén lớn nhất N_max = ${f(Nmax, 3)} kN; lực nén đều tương đương dùng kiểm tra ổn định N_tđ = ${f(Ntd, 3)} kN${varying ? '' : ' (lực nén không đổi: N_tđ = N)'}`);
+  return { Nmax, Ntd, planes, varying, steps };
+}

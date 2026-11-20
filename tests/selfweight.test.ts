@@ -88,3 +88,65 @@ describe('Thẻ ổn định chế độ dầm dùng N_tđ khi có trọng lư�
     expect(ok.stabUtil).toBeGreaterThan(0);
   });
 });
+
+import { beamEquivalentAxial } from '../src/core/stability';
+
+describe('Lực nén đều tương đương (lực giữa thân, tải dọc phân bố)', () => {
+  const spec = { kind: 'catalog', family: 'CHS', name: 'Ø168.3×6.3', rotate: false } as const;
+  const L = 6;
+  const mk = (supports: Model['supports'], loads: Model['loads'], sw?: 'x'): Model => ({
+    title: '', length: L, material: { ...STEEL }, section: spec, supports, hinges: [], loads, selfWeight: sw,
+  });
+  it('lực nén không đổi (khớp – khớp): N_tđ = N, μ = 1', () => {
+    const r = beamEquivalentAxial(mk([support('A', 0, 'pin'), support('B', L, 'roller')], [{ id: 'p', type: 'force', name: 'P', x: L, Fx: -100, Fy: 0, Fz: 0 }]))!;
+    expect(r.Ntd).toBeCloseTo(100, 3);
+    expect(r.planes[0].mu).toBeCloseTo(1, 3);
+    expect(r.varying).toBe(false);
+  });
+  it('công-xôn, lực đặt giữa thân: N_tđ = P/4, μ = 2', () => {
+    const r = beamEquivalentAxial(mk([support('A', 0, 'fixed')], [{ id: 'p', type: 'force', name: 'P', x: L / 2, Fx: -100, Fy: 0, Fz: 0 }]))!;
+    expect(Math.abs(r.Ntd / 25 - 1)).toBeLessThan(0.005);
+    expect(r.planes[0].mu).toBeCloseTo(2, 3);
+    expect(r.Nmax).toBeCloseTo(100, 6);
+  });
+  it('công-xôn chỉ có trọng lượng bản thân: N_tđ ≈ 0.315·G (Greenhill)', () => {
+    const m = mk([support('A', 0, 'fixed')], [], 'x');
+    const r = beamEquivalentAxial(m)!;
+    const G = selfWeightPerM(STEEL, computeSection(spec).A) * L;
+    expect(Math.abs(r.Ntd / G - Math.PI ** 2 / 4 / 7.837)).toBeLessThan(0.005);
+  });
+  it('khớp – khớp, hai lực: đỉnh P1 và giữa thân P2 → P1 < N_tđ < P1 + P2', () => {
+    const r = beamEquivalentAxial(mk([support('A', 0, 'pin'), support('B', L, 'roller')], [
+      { id: 'a', type: 'force', name: 'P1', x: L, Fx: -60, Fy: 0, Fz: 0 },
+      { id: 'b', type: 'force', name: 'P2', x: L / 2, Fx: -60, Fy: 0, Fz: 0 },
+    ]))!;
+    expect(r.Ntd).toBeGreaterThan(60);
+    expect(r.Ntd).toBeLessThan(120);
+    expect(r.varying).toBe(true);
+  });
+});
+
+import { beamAxialCheck, DEFAULT_BEAM_STAB } from '../src/core/beamAxial';
+
+describe('beamAxialCheck (thẻ / báo cáo / chọn tiết diện dùng chung)', () => {
+  const spec = { kind: 'catalog', family: 'CHS', name: 'Ø168.3×6.3', rotate: false } as const;
+  const m: Model = {
+    title: '', length: 6, material: { ...STEEL }, section: spec, supports: [support('A', 0, 'fixed')], hinges: [],
+    loads: [{ id: 'p', type: 'force', name: 'P', x: 3, Fx: -100, Fy: 0, Fz: 0 }],
+  };
+  it('μ tự động: công-xôn lực giữa thân → μ = 2, kiểm tra với N_tđ = P/4', () => {
+    const res = analyze(m);
+    const c = beamAxialCheck(m, res, res.section!, DEFAULT_BEAM_STAB)!;
+    expect(c.auto).toBe(true);
+    expect(c.muZ).toBeCloseTo(2, 3);
+    expect(Math.abs(c.Ncheck / 25 - 1)).toBeLessThan(0.005);
+    expect(c.r.sigma).toBeCloseTo((c.Ncheck * 1e3) / res.section!.A, 6);
+  });
+  it('μ nhập tay được giữ nguyên, N_tđ vẫn từ bài toán trị riêng', () => {
+    const res = analyze(m);
+    const c = beamAxialCheck(m, res, res.section!, { ...DEFAULT_BEAM_STAB, muAuto: false, mu: 1.5 })!;
+    expect(c.muZ).toBe(1.5);
+    expect(c.auto).toBe(false);
+    expect(Math.abs(c.Ncheck / 25 - 1)).toBeLessThan(0.005);
+  });
+});

@@ -29,9 +29,14 @@ export function memberClass(mr: MemberResult) {
   return labelFor({ N: n, Qy: q, Qz: 0, T: 0, Mz: mm, My: 0 }, 1e-7 * scale, 1e-7 * scale, Math.sign(nSigned));
 }
 
-export function FrameApp({ model, setModel, replace, local, setLocal }: {
+export interface FrameMu { in: Record<string, number>; out: Record<string, number> }
+
+export function FrameApp({ model, setModel, replace, local, setLocal, mu, setMu }: {
   local: LocalOptions;
   setLocal: (o: LocalOptions) => void;
+  /** μ trong / ngoài mặt phẳng từng thanh (giữ ở App để báo cáo PDF dùng cùng giá trị) */
+  mu: FrameMu;
+  setMu: (m: FrameMu) => void;
   model: FrameModel;
   setModel: (fn: (m: FrameModel) => FrameModel) => void;
   replace: (m: FrameModel) => void;
@@ -40,8 +45,9 @@ export function FrameApp({ model, setModel, replace, local, setLocal }: {
   const [pick, setPick] = useState<{ memberId: string; s: number } | null>(null);
   const [side, setSide] = useState<'left' | 'right'>('left');
   const [designSec, setDesignSec] = useState<string>('');
-  const [memberMu, setMemberMu] = useState<Record<string, number>>({});
-  const [muOut, setMuOut] = useState<Record<string, number>>({});
+  const memberMu = mu.in, muOut = mu.out;
+  const setMemberMu = (m: Record<string, number>) => setMu({ ...mu, in: m });
+  const setMuOut = (m: Record<string, number>) => setMu({ ...mu, out: m });
   const [so, setSo] = useState(false);
   const [localMem, setLocalMem] = useState('');
   const set = setModel;
@@ -106,6 +112,7 @@ export function FrameApp({ model, setModel, replace, local, setLocal }: {
                   fyLabel={`f_y của ${lm.name}${model.members.find((x) => x.id === lm.id)?.fy !== undefined ? ' (riêng)' : lm.material.fy ? ' (theo vật liệu)' : ' (= chung)'}`}
                   spec={lm.sectionSpec}
                   material={lm.material}
+                  length={lm.L * 1e3}
                   opt={memberLocal(local, model.members.find((x) => x.id === lm.id), lm.material)}
                   setOpt={(o) => {
                     const cur = memberLocal(local, model.members.find((x) => x.id === lm.id), lm.material);
@@ -143,6 +150,7 @@ export function FrameApp({ model, setModel, replace, local, setLocal }: {
               return (
                 <DesignCard
                   allowable={model.material.allowable}
+                  allowableLabel={model.materials?.length && model.members.some((b) => b.materialId) ? 'theo vật liệu từng thanh' : undefined}
                   run={(o) => designFrame(model, sid, { ...o, memberMu })}
                   showMu={false}
                   localOpt={local}

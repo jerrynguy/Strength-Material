@@ -423,6 +423,8 @@ export interface AnalyzeOptions {
   buckling?: boolean;
   /** Nhân toàn bộ tải trọng với hệ số này */
   loadFactor?: number;
+  /** Tính thêm lực tới hạn khi lực nén đều toàn chiều dài (cùng gối tựa) — để quy đổi N_tđ, μ */
+  bucklingUniform?: boolean;
 }
 
 export interface BucklingPlane {
@@ -430,6 +432,8 @@ export interface BucklingPlane {
   alpha: number;
   /** Dạng mất ổn định tại các nút lưới (chuẩn hoá max = 1) */
   mode: { x: number; v: number }[];
+  /** Lực tới hạn khi nén đều toàn chiều dài với cùng gối tựa (kN) — chỉ khi bucklingUniform */
+  NcrUniform?: number;
 }
 
 function scaleLoads(m: Model, f: number): Model {
@@ -623,7 +627,14 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
       const bend = sub.key === 'bendY' || sub.key === 'bendZ';
       if (bend && wantBuckling && Ne.some((v) => v < 0)) {
         const b = bucklingSub(xs, hingeNodes, rig[sub.key], restrT, restrR, Ne);
-        if (b) buckling[sub.key as 'bendY' | 'bendZ'] = { alpha: b.alpha, mode: xs.map((x, i) => ({ x, v: b.mode[i] })) };
+        if (b) {
+          const bp: BucklingPlane = { alpha: b.alpha, mode: xs.map((x, i) => ({ x, v: b.mode[i] })) };
+          if (opts.bucklingUniform) {
+            const u = bucklingSub(xs, hingeNodes, rig[sub.key], restrT, restrR, Ne.map(() => -1));
+            if (u) bp.NcrUniform = u.alpha / KN;
+          }
+          buckling[sub.key as 'bendY' | 'bendZ'] = bp;
+        }
         if (secondOrder && b && b.alpha <= 1) {
           errors.push(`${info.label}: lực nén vượt lực tới hạn (α_th = ${b.alpha.toFixed(3)} ≤ 1) — thanh mất ổn định, không tồn tại trạng thái cân bằng uốn bậc hai.`);
           continue;

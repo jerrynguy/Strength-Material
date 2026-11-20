@@ -8,7 +8,7 @@ import { SectionView } from '../SectionView';
 import { BucklingChart } from '../stability/BucklingChart';
 import type { StabModel } from '../stability/StabilityApp';
 import { sectionRows } from './BeamReport';
-import { StiffenerChecks, StiffenerInputs } from './StiffenerReport';
+import { StiffenerChecks, StiffenerInputs, TubeReport } from './StiffenerReport';
 import { RConclusion, RFig, RKV, RSection, RSteps, RTable, Verdict, type ReportParts } from './primitives';
 
 export function StabReport({ model, parts, local: lopt }: { model: StabModel; parts: ReportParts; local: LocalOptions }) {
@@ -21,7 +21,7 @@ export function StabReport({ model, parts, local: lopt }: { model: StabModel; pa
     E: model.material.E, allowable: model.material.allowable, params: model.params, nRequired: model.nReq,
     Aeff: aeffIfClass4(model.section, model.material, lopt.fy, lopt.stiffenerSpacing),
   });
-  const local = checkLocal(model.section, model.material, [{ N: -(sw ? sw.Nbase : model.N), Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }], lopt);
+  const local = checkLocal(model.section, model.material, [{ N: -(sw ? sw.Nbase : model.N), Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }], { ...lopt, length: model.L * 1e3 });
   const E = model.material.E * 1e3;
   const xMax = Math.max(200, Math.ceil(r.lambdaMax / 50) * 50);
   const sig: [number, number][] = [];
@@ -37,7 +37,7 @@ export function StabReport({ model, parts, local: lopt }: { model: StabModel; pa
           ...(sw ? [{ label: 'Bền tại chân cột (N + G)/A', ok: (sw.Nbase * 1e3) / sec.A <= model.material.allowable, detail: `σ = ${fmt((sw.Nbase * 1e3) / sec.A, 2)} MPa so với [σ] = ${model.material.allowable} MPa` }] : []),
           { label: 'Ổn định theo hệ số φ', ok: r.okPhi, detail: `σ = ${fmt(r.sigma, 2)} MPa so với φ[σ] = ${fmt(r.allowPhi, 2)} MPa` },
           { label: 'Ổn định theo hệ số an toàn', ok: r.okN, detail: `n_ôđ = ${fmt(r.nActual, 3)} so với [n_ôđ] = ${model.nReq}` },
-          ...(local.applicable ? [{ label: 'Ổn định cục bộ', ok: local.ok, detail: `tiết diện loại ${local.sectionClass || '—'}` }] : []),
+          ...(local.applicable ? [{ label: 'Ổn định cục bộ', ok: local.ok, detail: `tiết diện loại ${local.sectionClass || '—'}${local.tube?.governs ? `; vỏ trụ ${fmt(local.tube.util * 100, 0)}%` : ''}` }] : []),
         ]} />
       </RSection>
       {parts.inputs && (
@@ -86,7 +86,7 @@ export function StabReport({ model, parts, local: lopt }: { model: StabModel; pa
           <p>Tiết diện loại 4 khi nén: A_eff = {fmt(local.effective.N.Aeff, 1)} mm² ({fmt((local.effective.N.Aeff / sec.A) * 100, 1)}% A); kiểm tra ổn định dùng σ = N/A_eff.</p>
         )}
         <StiffenerChecks local={local} steps={parts.steps} />
-        {local.tube && <p>Ống tròn: D/t = {fmt(local.tube.Dt, 1)} → loại {local.tube.cls}.</p>}
+        {local.tube && <TubeReport tube={local.tube} steps={parts.steps} />}
       </RSection>
     </>
   );

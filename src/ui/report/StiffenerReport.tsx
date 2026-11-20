@@ -1,8 +1,8 @@
-import type { LocalResult } from '../../core/localBuckling';
+import type { LocalResult, TubeResult } from '../../core/localBuckling';
 import { geometry } from '../../core/localBuckling';
 import { fmt } from '../../core/stress';
 import type { SectionSpec } from '../../core/types';
-import { RSteps, RSub, RTable, Verdict } from './primitives';
+import { RKV, RSteps, RSub, RTable, Verdict } from './primitives';
 
 /** Bảng dữ liệu sườn dọc (phần dữ liệu đầu vào). */
 export function StiffenerInputs({ spec }: { spec: SectionSpec }) {
@@ -63,5 +63,24 @@ export function StiffenerChecks({ local, steps, title }: { local: LocalResult | 
       )}
       {steps && <RSteps lines={stepLines} />}
     </RSub>
+  );
+}
+
+/** Ống tròn: phân loại D/t và kiểm tra vỏ trụ (EN 1993-1-6) */
+export function TubeReport({ tube, steps }: { tube: TubeResult; steps: boolean }) {
+  return (
+    <>
+      <p>Ống tròn: D/t = {fmt(tube.Dt, 1)}; giới hạn loại 1/2/3 = {tube.limits.map((l) => fmt(l, 1)).join(' / ')} (50ε², 70ε², 90ε²) → loại {tube.cls}.</p>
+      {tube.sigma > 0 && (
+        <>
+          <RKV rows={[
+            ['Vỏ trụ (EN 1993-1-6, cấp B)', `ω = ${fmt(tube.omega, 1)} (trụ ${tube.lengthKind}); C_x = ${fmt(tube.Cx, 3)}; σ_x,Rcr = ${fmt(tube.sigmaRcr, 0)} MPa`],
+            ['α_x · λ̄_x · χ_x', `${fmt(tube.alpha, 3)} · ${fmt(tube.lambda, 3)} · ${fmt(tube.chi, 3)}`],
+            ['σ_x,Ed so với χ_x[σ]', <Verdict ok={tube.util <= 1}>{fmt(tube.sigma, 2)} {tube.util <= 1 ? '≤' : '>'} {fmt(tube.allow, 2)} MPa{tube.governs ? '' : ' (ống loại 1–3: tham khảo)'}</Verdict>],
+          ]} />
+          {steps && <RSteps lines={tube.steps} />}
+        </>
+      )}
+    </>
   );
 }

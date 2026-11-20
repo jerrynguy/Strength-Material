@@ -22,7 +22,7 @@ export function LtbCard({ model, res, opt, setOpt }: {
       <div className="row">
         <Select label="Điểm đặt tải" value={opt.loadHeight} onChange={(v: LoadHeight) => setOpt({ ...opt, loadHeight: v })}
           options={[{ value: 'top', label: 'Cánh trên (bất lợi)' }, { value: 'sc', label: 'Tâm cắt' }, { value: 'bottom', label: 'Cánh dưới (có lợi)' }]} />
-        <NumField label="f_y" unit="MPa" value={opt.fy} width={100} onChange={(v) => setOpt({ ...opt, fy: v })} />
+        <NumField label="f_y" unit="MPa" value={opt.fy} width={100} onChange={(v) => setOpt({ ...opt, fy: v })} title="Dùng chung với thẻ ổn định cục bộ" />
         <Select label="Đường cong ổn định" value={opt.curve} onChange={(v: 'auto' | LtbCurve) => setOpt({ ...opt, curve: v })}
           options={[{ value: 'auto', label: 'Tự động' }, ...(Object.keys(LTB_CURVES) as LtbCurve[]).map((k) => ({ value: k, label: `${k} (α_LT = ${LTB_CURVES[k]})` }))]} />
       </div>

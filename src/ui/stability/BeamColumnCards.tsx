@@ -1,3 +1,4 @@
+import type { BeamStabParams } from '../../core/beamAxial';
 import { useMemo, useState, type ReactNode } from 'react';
 import { checkBeamColumn, checkFrameMember, frameAnalyses, type BeamColumnResult } from '../../core/beamColumn';
 import { memberLocal, withYield, type FrameModel, type FrameResult } from '../../core/frame';
@@ -80,9 +81,10 @@ const HINT = (
   </p>
 );
 
-export function BeamBeamColumnCard({ model, local }: { model: Model; local?: LocalOptions }) {
-  const [n, setN] = useState(1.5);
-  const [mat, setMat] = useState<BucklingMaterial>('CT3');
+export function BeamBeamColumnCard({ model, local, params, setParams }: { model: Model; local?: LocalOptions; params: BeamStabParams; setParams: (p: BeamStabParams) => void }) {
+  const n = params.bcN, mat = params.bcMat;
+  const setN = (v: number) => setParams({ ...params, bcN: v });
+  const setMat = (v: BucklingMaterial) => setParams({ ...params, bcMat: v });
   const r = useMemo(() => checkBeamColumn(model, n, BUCKLING_MATERIALS[mat], local), [model, n, mat, local]);
   if (!r || r.planes.every((p) => !p.M1)) return null;
   const all = r.ok2 && r.okN && r.okInter;

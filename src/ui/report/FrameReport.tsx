@@ -1,3 +1,4 @@
+import type { FrameMu } from '../frame/FrameApp';
 import type { ReactNode } from 'react';
 import { checkFrameMember, frameAnalyses } from '../../core/beamColumn';
 import { analyzeFrame, DIST_DIR_LABELS, memberLocal, withFrameSelfWeight, withYield, type FrameModel } from '../../core/frame';
@@ -17,7 +18,7 @@ const STATUS = { 'tinh-dinh': 'tĩnh định', 'sieu-tinh': 'siêu tĩnh', 'bien
 const SUP = { fixed: 'Ngàm', pin: 'Gối cố định', roller: 'Gối di động', custom: 'Tuỳ chỉnh' };
 const toIF = (s: { N: number; Q: number; M: number }): InternalForces => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 });
 
-export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; parts: ReportParts; local: LocalOptions }) {
+export function FrameReport({ model, parts, local: lopt, mu }: { model: FrameModel; parts: ReportParts; local: LocalOptions; mu?: FrameMu }) {
   const res = analyzeFrame(model, { buckling: true });
   let n = 0;
   const N = () => String(++n);
@@ -39,13 +40,15 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
     for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
     const mat = mr.material;
     const mloc = memberLocal(lopt, model.members.find((x) => x.id === mr.id), mat);
-    const muIn = res.buckling && Nc > 0 ? (Math.PI / mr.L) * Math.sqrt((mat.E * 1e9 * mr.section.Iz * 1e-12) / (res.buckling.alpha * Nc * 1e3)) : 1;
+    const muUser = mu?.in[mr.id];
+    const muOutM = mu?.out[mr.id] ?? 1;
+    const muIn = muUser !== undefined ? muUser : res.buckling && Nc > 0 ? (Math.PI / mr.L) * Math.sqrt((mat.E * 1e9 * mr.section.Iz * 1e-12) / (res.buckling.alpha * Nc * 1e3)) : 1;
     const axial = Nc > 0 ? checkStability(mr.section, {
-      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: mat.E, allowable: mat.allowable, params: withYield(BUCKLING_MATERIALS.CT3, mloc.fy), nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, mat, mloc.fy, mloc.stiffenerSpacing),
+      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: muOutM, E: mat.E, allowable: mat.allowable, params: withYield(BUCKLING_MATERIALS.CT3, mloc.fy), nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, mat, mloc.fy, mloc.stiffenerSpacing),
     }) : null;
-    const bc = a && Nc > 0 ? checkFrameMember(a, mr.id, 1, model, withYield(BUCKLING_MATERIALS.CT3, mloc.fy), mloc) : null;
-    const local = parts.stability ? checkLocal(mr.sectionSpec, mat, mr.samples.map(toIF), mloc) : null;
-    return { mr, sig, x, Nc, muIn, axial, bc, local, mloc };
+    const bc = a && Nc > 0 ? checkFrameMember(a, mr.id, muOutM, model, withYield(BUCKLING_MATERIALS.CT3, mloc.fy), mloc) : null;
+    const local = parts.stability ? checkLocal(mr.sectionSpec, mat, mr.samples.map(toIF), { ...mloc, length: mr.L * 1e3 }) : null;
+    return { mr, sig, x, Nc, muIn, muOutM, muUser: muUser !== undefined, axial, bc, local, mloc };
   });
   const concl: { label: string; ok: boolean | null; detail: ReactNode }[] = [];
   const worstSig = rows.reduce((p, r) => (Math.abs(r.sig) > Math.abs(p.sig) ? r : p), rows[0]);
@@ -150,10 +153,10 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
             </>
           )}
           {comp.length > 0 && (
-            <RTable head={['Thanh', 'N nén (kN)', 'μ (từ α_th)', 'λ', 'φ', 'σ (MPa)', 'φ[σ] (MPa)', 'Kết luận']}
-              rows={comp.map((r) => [r.mr.name, fmt(r.Nc, 2), fmt(r.muIn, 3), fmt(r.axial!.lambdaMax, 1), r.axial!.phi === null ? '—' : fmt(r.axial!.phi, 3),
+            <RTable head={['Thanh', 'N nén (kN)', 'μ trong / ngoài', 'λ', 'φ', 'σ (MPa)', 'φ[σ] (MPa)', 'Kết luận']}
+              rows={comp.map((r) => [r.mr.name, fmt(r.Nc, 2), `${fmt(r.muIn, 3)}${r.muUser ? '' : ' (α_th)'} / ${fmt(r.muOutM, 3)}`, fmt(r.axial!.lambdaMax, 1), r.axial!.phi === null ? '—' : fmt(r.axial!.phi, 3),
                 fmt(r.axial!.sigma, 2), fmt(r.axial!.allowPhi, 2), <Verdict ok={r.axial!.okPhi}>{r.axial!.okPhi ? 'đạt' : 'không đạt'}</Verdict>])}
-              note="μ trong mặt phẳng suy từ α_th của cả khung; μ ngoài mặt phẳng lấy bằng 1 (giả thiết có giằng ở hai đầu thanh). Bảng φ thép CT3." />
+              note="μ trong mặt phẳng: giá trị nhập ở thẻ ổn định, nếu chưa nhập thì suy từ α_th của cả khung (ghi “α_th”); μ ngoài mặt phẳng theo thẻ nén – uốn (mặc định 1 — có giằng ở hai đầu thanh). Bảng φ thép CT3, σ_ch theo f_y từng thanh." />
           )}
           {bcs.length > 0 && (
             <RTable head={['Thanh', 'σ bậc 2 (MPa)', 'σ tải × 1.5 (MPa)', 'σ tương tác (MPa)']}

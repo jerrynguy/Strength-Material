@@ -14,7 +14,7 @@ import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
 import { aeffIfClass4, checkEffective, effectiveSection } from './effective';
 import { checkLocal, type LocalOptions } from './localBuckling';
 import { checkLTB, type LtbOptions } from './ltb';
-import { BUCKLING_MATERIALS, beamSelfWeightNtd, checkStability } from './stability';
+import { BUCKLING_MATERIALS, beamEquivalentAxial, checkStability } from './stability';
 import { maxNormalOnSection, stressAt } from './stress';
 import { densityOf, selfWeightPerM, type InternalForces, type Material, type Model, type SectionSpec } from './types';
 
@@ -29,6 +29,8 @@ export interface DesignOptions {
   stability: boolean;
   /** Hệ số chiều dài tính toán μ (dầm/cột); với khung: μ mặc định cho mọi thanh */
   mu: number;
+  /** dầm/cột: μ lấy tự động theo gối tựa của mô hình (bài toán trị riêng) thay cho μ nhập tay */
+  muAuto?: boolean;
   /** μ riêng cho từng thanh khung */
   memberMu?: Record<string, number>;
   /** Kiểm tra ổn định uốn – xoắn (chỉ dầm) */
@@ -71,9 +73,10 @@ function tauMax(sec: SectionProps, F: InternalForces, mat: Model['material']): n
 }
 
 /** Hệ số sử dụng theo ổn định cho lực nén Nc (kN, dương) */
-function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number, E: number, allowable: number, Aeff?: number, fy?: number): { util: number; lambda: number } {
+function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number | [number, number], E: number, allowable: number, Aeff?: number, fy?: number): { util: number; lambda: number } {
   if (!(Nc > 0)) return { util: 0, lambda: 0 };
-  const r = checkStability(sec, { N: Nc, Lz: L, Ly: L, muZ: mu, muY: mu, E, allowable, params: fy ? withYield(BUCKLING_MATERIALS.CT3, fy) : BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff });
+  const [muZ, muY] = Array.isArray(mu) ? mu : [mu, mu];
+  const r = checkStability(sec, { N: Nc, Lz: L, Ly: L, muZ, muY, E, allowable, params: fy ? withYield(BUCKLING_MATERIALS.CT3, fy) : BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff });
   return { util: r.phi === null ? Infinity : r.sigma / r.allowPhi, lambda: r.lambdaMax };
 }
 
@@ -111,9 +114,11 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     let defl = 0;
     for (const d of res.dispSamples) defl = Math.max(defl, Math.hypot(d.v, d.w));
     const deflLimit = opt.deflRatio > 0 ? (model.length * 1e3) / opt.deflRatio : 0;
-    // cột có trọng lượng bản thân dọc trục: dùng N_tđ (lực tương đương ở đỉnh)
-    const swc = opt.stability && Nc > 0 ? beamSelfWeightNtd({ ...model, section: spec, loads }, res, opt.mu) : null;
-    const st = opt.stability ? stabUtilOf(sec, swc ? swc.Ntd : Nc, model.length, opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240, opt.local?.stiffenerSpacing ?? 0) : undefined) : { util: 0, lambda: 0 };
+    // lực nén thay đổi dọc thanh (lực giữa thân, trọng lượng bản thân...): dùng N_tđ = N_th,đều/α_th; μ tự động nếu chọn
+    const eq = opt.stability && Nc > 0 ? beamEquivalentAxial({ ...model, section: spec, loads }, res) : null;
+    const pz = eq?.planes.find((q) => q.plane === 'z'), py = eq?.planes.find((q) => q.plane === 'y');
+    const muUse: number | [number, number] = opt.muAuto && eq ? [(pz ?? py)!.mu, (py ?? pz)!.mu] : opt.mu;
+    const st = opt.stability ? stabUtilOf(sec, eq ? eq.Ntd : Nc, model.length, muUse, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240, opt.local?.stiffenerSpacing ?? 0) : undefined) : { util: 0, lambda: 0 };
     let ltbUtil = 0;
     if (opt.ltb) {
       const l = checkLTB({ ...model, section: spec, loads }, res, opt.ltb);
@@ -121,10 +126,10 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     }
     let localUtil = 0, sectionClass = 0;
     if (opt.local) {
-      const lc = checkLocal(spec, model.material, res.forceSamples, opt.local);
+      const lc = checkLocal(spec, model.material, res.forceSamples, { ...opt.local, length: model.length * 1e3 });
       if (lc.applicable) {
         sectionClass = lc.sectionClass;
-        localUtil = lc.shear ? lc.shear.util : 0;
+        localUtil = Math.max(lc.shear ? lc.shear.util : 0, lc.tube?.governs ? lc.tube.util : 0);
         if (lc.sectionClass === 4) {
           const ec = checkEffective(effectiveSection(spec, model.material, opt.local.fy, opt.local.stiffenerSpacing), res.forceSamples, model.material.allowable);
           if (ec) localUtil = Math.max(localUtil, ec.util);
@@ -168,10 +173,10 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
       const mat = mr.material ?? model.material;
       const mloc = opt.local ? memberLocal(opt.local, model.members.find((x) => x.id === mr.id), mat) : null;
       if (opt.local) {
-        const lc = checkLocal(spec, mat, mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), mloc!);
+        const lc = checkLocal(spec, mat, mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), { ...mloc!, length: mr.L * 1e3 });
         if (lc.applicable) {
           sectionClass = Math.max(sectionClass, lc.sectionClass);
-          localUtil = Math.max(localUtil, lc.shear ? lc.shear.util : 0);
+          localUtil = Math.max(localUtil, lc.shear ? lc.shear.util : 0, lc.tube?.governs ? lc.tube.util : 0);
           if (lc.sectionClass === 4) {
             const ec = checkEffective(effectiveSection(spec, mat, mloc!.fy, mloc!.stiffenerSpacing), mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), mat.allowable);
             if (ec) localUtil = Math.max(localUtil, ec.util);

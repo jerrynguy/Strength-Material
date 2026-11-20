@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { analyze, withSelfWeight } from '../../core/analysis';
 import { checkBeamColumn } from '../../core/beamColumn';
 import { classify } from '../../core/classify';
-import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { checkLTB, type LtbOptions } from '../../core/ltb';
-import { BUCKLING_MATERIALS, beamSelfWeightNtd, checkStability } from '../../core/stability';
+import { BUCKLING_MATERIALS } from '../../core/stability';
+import { DEFAULT_BEAM_STAB, beamAxialCheck, type BeamStabParams } from '../../core/beamAxial';
 import { equilibriumSteps, sectionSteps } from '../../core/steps';
 import { fmt, maxNormalOnSection, stressAt } from '../../core/stress';
 import { SUPPORT_LABELS, effectiveRestraints, type InternalForces, type Model, densityOf } from '../../core/types';
@@ -13,8 +13,7 @@ import { BeamView } from '../BeamView';
 import { Diagram } from '../Diagram';
 import { SectionView } from '../SectionView';
 import { quickPoints } from '../results';
-import { guessMu } from '../stability/StabilityChecks';
-import { StiffenerChecks, StiffenerInputs } from './StiffenerReport';
+import { StiffenerChecks, StiffenerInputs, TubeReport } from './StiffenerReport';
 import { RConclusion, RFig, RKV, RSection, RSteps, RSub, RTable, Verdict, type ReportParts } from './primitives';
 
 const STATUS = { 'tinh-dinh': 'tĩnh định', 'sieu-tinh': 'siêu tĩnh', 'bien-hinh': 'biến hình' };
@@ -29,7 +28,7 @@ export function sectionRows(sec: NonNullable<ReturnType<typeof analyze>['section
   ];
 }
 
-export function BeamReport({ model, parts, ltbOpt, local: lopt }: { model: Model; parts: ReportParts; ltbOpt: LtbOptions; local: LocalOptions }) {
+export function BeamReport({ model, parts, ltbOpt, local: lopt, stab = DEFAULT_BEAM_STAB }: { model: Model; parts: ReportParts; ltbOpt: LtbOptions; local: LocalOptions; stab?: BeamStabParams }) {
   const res = analyze(model);
   const sec = res.section;
   let n = 0;
@@ -78,19 +77,18 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt }: { model: Model
 
   let Nc = 0;
   for (const s of res.forceSamples) Nc = Math.max(Nc, -s.N);
-  const mu = guessMu(model);
-  const swCol = Nc > 0 ? beamSelfWeightNtd(model, res, mu) : null;
-  const axial = Nc > 0 ? checkStability(sec, {
-    N: swCol ? swCol.Ntd : Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 2, Aeff: aeffIfClass4(model.section, model.material, lopt.fy, lopt.stiffenerSpacing),
-  }) : null;
-  const bc = parts.stability && Nc > 0 ? checkBeamColumn(model, 1.5, BUCKLING_MATERIALS.CT3, lopt) : null;
+  const ac = Nc > 0 ? beamAxialCheck(model, res, sec, stab, lopt) : null;
+  const axial = ac?.r ?? null;
+  const varying = !!ac?.eq?.varying;
+  const muTxt = ac ? (ac.muZ === ac.muY ? `μ = ${fmt(ac.muZ, 3)}` : `μ_z = ${fmt(ac.muZ, 3)}, μ_y = ${fmt(ac.muY, 3)}`) + (ac.auto ? ' theo gối tựa của mô hình' : ' nhập tay') : '';
+  const bc = parts.stability && Nc > 0 ? checkBeamColumn(model, stab.bcN, BUCKLING_MATERIALS[stab.bcMat], lopt) : null;
   const ltb = parts.stability ? checkLTB(model, res, ltbOpt) : null;
-  const local = parts.stability ? checkLocal(model.section, model.material, res.forceSamples, lopt) : null;
-  if (swCol) conclusions.push({ label: 'Bền tại chân cột (N + G)/A', ok: (Nc * 1e3) / sec.A <= allow, detail: `σ = ${fmt((Nc * 1e3) / sec.A, 2)} MPa so với [σ] = ${allow} MPa` });
-  if (axial) conclusions.push({ label: `Ổn định nén đúng tâm (μ = ${mu}${swCol ? ', N_tđ có kể trọng lượng bản thân' : ''})`, ok: axial.okPhi, detail: `σ = ${fmt(axial.sigma, 2)} MPa so với φ[σ] = ${fmt(axial.allowPhi, 2)} MPa (λ = ${fmt(axial.lambdaMax, 1)})` });
+  const local = parts.stability ? checkLocal(model.section, model.material, res.forceSamples, { ...lopt, length: model.length * 1e3 }) : null;
+  if (ac && varying) conclusions.push({ label: 'Bền tại mặt cắt nén lớn nhất N_max/A', ok: ac.okBase, detail: `σ = ${fmt(ac.sigBase, 2)} MPa so với [σ] = ${allow} MPa` });
+  if (ac && axial) conclusions.push({ label: `Ổn định nén đúng tâm (${muTxt}${varying ? '; lực nén đều tương đương N_tđ' : ''})`, ok: axial.okPhi && axial.okN, detail: `σ = ${fmt(axial.sigma, 2)} MPa so với φ[σ] = ${fmt(axial.allowPhi, 2)} MPa (λ = ${fmt(axial.lambdaMax, 1)}); n_ôđ = ${fmt(axial.nActual, 3)} so với [n_ôđ] = ${stab.nReq}` });
   if (bc && bc.planes.some((p) => p.M1)) conclusions.push({ label: 'Nén – uốn đồng thời (bậc hai, giáo trình)', ok: bc.ok2 && bc.okN, detail: `σ_II = ${bc.sigma2 === null ? '—' : fmt(bc.sigma2, 2)} MPa; σ(n·tải) = ${bc.sigmaN === null ? '—' : fmt(bc.sigmaN, 2)} MPa${bc.sigmaInter !== null ? `; công thức tương tác ${fmt((bc.sigmaInter / allow) * 100, 1)}%${bc.okInter ? '' : ' (không đạt — thiên về an toàn)'}` : ''}` });
   if (ltb?.applicable) conclusions.push({ label: 'Ổn định uốn – xoắn', ok: ltb.ok, detail: `|M| = ${fmt(Math.abs(ltb.Mmax), 2)} kN·m so với χ_LT·W·[σ] = ${fmt(ltb.Mrd, 2)} kN·m (M_cr = ${fmt(ltb.Mcr, 2)})` });
-  if (local?.applicable) conclusions.push({ label: model.section.kind === 'I' && model.section.stiffeners?.length ? 'Ổn định cục bộ (bụng có sườn dọc)' : 'Ổn định cục bộ', ok: local.ok, detail: `Tiết diện loại ${local.sectionClass || '—'}${local.effCheck ? `; tiết diện hữu hiệu ${fmt(local.effCheck.util * 100, 0)}%` : ''}${local.shear?.needCheck ? `; bụng chịu cắt ${fmt(local.shear.util * 100, 0)}%` : ''}` });
+  if (local?.applicable) conclusions.push({ label: model.section.kind === 'I' && model.section.stiffeners?.length ? 'Ổn định cục bộ (bụng có sườn dọc)' : 'Ổn định cục bộ', ok: local.ok, detail: `Tiết diện loại ${local.sectionClass || '—'}${local.effCheck ? `; tiết diện hữu hiệu ${fmt(local.effCheck.util * 100, 0)}%` : ''}${local.shear?.needCheck ? `; bụng chịu cắt ${fmt(local.shear.util * 100, 0)}%` : ''}${local.tube?.governs ? `; vỏ trụ ${fmt(local.tube.util * 100, 0)}%` : ''}` });
 
   const fs = res.forceSamples, ds = res.dispSamples;
   const any = (k: keyof InternalForces) => fs.some((s) => s[k] !== 0);
@@ -199,16 +197,17 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt }: { model: Model
 
       {parts.stability && (axial || ltb?.applicable || local?.applicable) && (
         <RSection n={N()} title="Kiểm tra ổn định">
-          {axial && (
-            <RSub title={swCol
-              ? `Ổn định nén đúng tâm (cột có trọng lượng bản thân: N đỉnh = ${fmt(swCol.Nbase - swCol.G, 2)} kN, G = ${fmt(swCol.G, 3)} kN, N_tđ = ${fmt(swCol.Ntd, 2)} kN; μ = ${mu}, bảng φ thép CT3)`
-              : `Ổn định nén đúng tâm (N = ${fmt(Nc, 2)} kN, μ = ${mu} đoán từ liên kết, bảng φ thép CT3)`}>
+          {ac && axial && (
+            <RSub title={varying
+              ? `Ổn định nén đúng tâm (lực nén thay đổi dọc thanh: N_max = ${fmt(ac.Nmax, 2)} kN${ac.G > 0 ? `, có G = ${fmt(ac.G, 3)} kN` : ''}, N_tđ = ${fmt(ac.Ncheck, 2)} kN; ${muTxt}; ${BUCKLING_MATERIALS[stab.mat].label})`
+              : `Ổn định nén đúng tâm (N = ${fmt(Nc, 2)} kN, ${muTxt}; ${BUCKLING_MATERIALS[stab.mat].label})`}>
               <RKV rows={[
                 ['λ_max · chế độ', `${fmt(axial.lambdaMax, 2)} · ${axial.regime === 'euler' ? 'Euler' : axial.regime === 'empirical' ? 'Iasinski' : 'thanh ngắn'}`],
                 ['σ_th · P_th · n_ôđ', `${fmt(axial.sigmaCr, 2)} MPa · ${fmt(axial.Pcr, 2)} kN · ${fmt(axial.nActual, 3)}`],
-                ['σ = N/A so với φ[σ]', <Verdict ok={axial.okPhi}>{fmt(axial.sigma, 2)} {axial.okPhi ? '≤' : '>'} {fmt(axial.allowPhi, 2)} MPa</Verdict>],
+                ['n_ôđ so với [n_ôđ]', <Verdict ok={axial.okN}>{fmt(axial.nActual, 3)} so với {stab.nReq}</Verdict>],
+                [`σ = ${varying ? 'N_tđ' : 'N'}/A so với φ[σ]`, <Verdict ok={axial.okPhi}>{fmt(axial.sigma, 2)} {axial.okPhi ? '≤' : '>'} {fmt(axial.allowPhi, 2)} MPa</Verdict>],
               ]} />
-              {parts.steps && <RSteps lines={[...(swCol?.steps ?? []), ...axial.steps]} />}
+              {parts.steps && <RSteps lines={[...(ac.eq?.steps ?? []), ...axial.steps]} />}
             </RSub>
           )}
           {bc && bc.planes.some((p) => p.M1) && (
@@ -235,7 +234,7 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt }: { model: Model
           )}
           {local?.applicable && (
             <RSub title={`Ổn định cục bộ (f_y = ${lopt.fy} MPa; ${lopt.stiffenerSpacing > 0 ? `sườn ngang a = ${lopt.stiffenerSpacing} mm` : 'không có sườn ngang'}) — tiết diện loại ${local.sectionClass || '—'}`}>
-              {local.tube && <p>Ống tròn: D/t = {fmt(local.tube.Dt, 1)}; giới hạn loại 1/2/3 = {local.tube.limits.map((l) => fmt(l, 1)).join(' / ')} → loại {local.tube.cls}.</p>}
+              {local.tube && <TubeReport tube={local.tube} steps={parts.steps} />}
               {local.plates.length > 0 && <RTable head={['Tấm', 'c/t', 'Giới hạn 1/2/3', 'ψ · k_σ', 'σ nén', 'σ_cr', 'Loại']}
                 rows={local.plates.filter((p, i, a) => a.findIndex((q) => q.name.replace(/ – (trái|phải)$/, '') === p.name.replace(/ – (trái|phải)$/, '') && q.s1 === p.s1) === i)
                   .map((p) => [p.name.replace(/ – (trái|phải)$/, ''), fmt(p.ct, 1), p.cls ? p.limits.map((l) => fmt(l, 1)).join(' / ') : '—',

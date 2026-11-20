@@ -10,6 +10,10 @@ import { Card, NumField, Select } from './fields';
 /** Chọn số hiệu thép hình thoả điều kiện bền và độ cứng. */
 export function DesignCard(props: {
   allowable: number;
+  /** Ghi chú [σ] thay cho một giá trị chung (vd. khung có vật liệu riêng từng thanh) */
+  allowableLabel?: string;
+  /** Cho chọn μ tự động theo gối tựa của mô hình (dầm/cột) */
+  autoMu?: boolean;
   run: (opt: DesignOptions) => Candidate[];
   apply: (spec: SectionSpec) => void;
   extraControls?: ReactNode;
@@ -21,7 +25,7 @@ export function DesignCard(props: {
   /** f_y và khoảng cách sườn ngang dùng cho ổn định cục bộ */
   localOpt?: LocalOptions;
 }) {
-  const [opt, setOpt] = useState<DesignOptions>({ family: 'I_GOST', rotate: false, deflRatio: 250, selfWeight: true, stability: true, mu: 1 });
+  const [opt, setOpt] = useState<DesignOptions>({ family: 'I_GOST', rotate: false, deflRatio: 250, selfWeight: true, stability: true, mu: 1, muAuto: !!props.autoMu });
   const [rows, setRows] = useState<Candidate[] | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [useLtb, setUseLtb] = useState(true);
@@ -42,7 +46,10 @@ export function DesignCard(props: {
       <div className="row checks">
         <label className="check"><input type="checkbox" checked={opt.selfWeight} onChange={(e) => { setOpt({ ...opt, selfWeight: e.target.checked }); setRows(null); }} />kể trọng lượng bản thân</label>
         <label className="check"><input type="checkbox" checked={opt.stability} onChange={(e) => { setOpt({ ...opt, stability: e.target.checked }); setRows(null); }} />kiểm tra ổn định (φ, thép CT3)</label>
-        {opt.stability && props.showMu !== false && (
+        {opt.stability && props.showMu !== false && props.autoMu && (
+          <label className="check"><input type="checkbox" checked={!!opt.muAuto} onChange={(e) => { setOpt({ ...opt, muAuto: e.target.checked }); setRows(null); }} />μ tự động theo gối tựa</label>
+        )}
+        {opt.stability && props.showMu !== false && !opt.muAuto && (
           <NumField label="μ" value={opt.mu} width={70} onChange={(v) => { setOpt({ ...opt, mu: v }); setRows(null); }} title="Hệ số chiều dài tính toán" />
         )}
         {props.ltb && (
@@ -89,7 +96,7 @@ export function DesignCard(props: {
         </>
       )}
       <p className="hint">
-        Điều kiện: |σ|max ≤ [σ] = {fmt(props.allowable)} MPa; τmax ≤ [σ]/√3; độ võng ≤ L/n; ổn định σ_nén ≤ φ[σ] với chiều dài tính toán μL. Kết cấu được tính lại với từng tiết diện
+        Điều kiện: |σ|max ≤ [σ] {props.allowableLabel ?? `= ${fmt(props.allowable)} MPa`}; τmax ≤ [σ]/√3; độ võng ≤ L/n; ổn định σ_nén ≤ φ[σ] với chiều dài tính toán μL (lực nén thay đổi dọc thanh quy về N_tđ = N_th,đều/α_th). Kết cấu được tính lại với từng tiết diện
         (đúng cả với hệ siêu tĩnh). {props.note ?? ''} Uốn – xoắn: |M| ≤ χ_LT·W·[σ] (EN 1993-1-1). Cục bộ: tấm loại 4 σ ≤ ρ[σ], bụng chịu cắt τ ≤ χ_w[σ]/√3.
       </p>
     </Card>

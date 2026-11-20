@@ -145,7 +145,7 @@ export function StabilityApp({ model, setModel, local, setLocal }: { model: Stab
         {r && sec ? (
           <>
             <ResultCard r={r} model={model} sw={sw} sec={sec} />
-            <LocalCard spec={model.section} material={model.material} forces={[{ N: -(sw ? sw.Nbase : model.N), Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }]} title="Ổn định cục bộ bản cánh, bản bụng (nén đúng tâm)" opt={local} setOpt={setLocal} />
+            <LocalCard spec={model.section} material={model.material} forces={[{ N: -(sw ? sw.Nbase : model.N), Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }]} title="Ổn định cục bộ bản cánh, bản bụng (nén đúng tâm)" opt={local} setOpt={setLocal} length={model.L * 1e3} />
             <Card title="Đồ thị φ(λ) và σ_th(λ)">
               <Charts r={r} model={model} />
             </Card>

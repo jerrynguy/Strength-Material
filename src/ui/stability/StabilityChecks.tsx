@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { AnalysisResult } from '../../core/analysis';
 import { memberLocal, withYield, type FrameModel, type FrameResult } from '../../core/frame';
 import { aeffIfClass4 } from '../../core/effective';
 import { DEFAULT_LOCAL, type LocalOptions } from '../../core/localBuckling';
-import { BUCKLING_MATERIALS, beamSelfWeightNtd, checkStability, type BucklingMaterial } from '../../core/stability';
+import { BUCKLING_MATERIALS, beamEquivalentAxial, checkStability, type BucklingMaterial } from '../../core/stability';
+import { beamAxialCheck, type BeamStabParams } from '../../core/beamAxial';
 import { fmt } from '../../core/stress';
 import { effectiveRestraints, type Model, type SectionSpec } from '../../core/types';
 import { Card, NumField, Select } from '../fields';
@@ -38,58 +39,69 @@ export interface StabOpenRequest {
   selfWeight?: boolean;
 }
 
-export function BeamStabilityCard({ res, model, onOpen, local = DEFAULT_LOCAL }: { res: AnalysisResult; model: Model; onOpen: (r: StabOpenRequest) => void; local?: LocalOptions }) {
-  const [mu, setMu] = useState(() => guessMu(model));
-  const [mat, setMat] = useState<BucklingMaterial>('CT3');
-  const [nReq, setNReq] = useState(2);
+export function BeamStabilityCard({ res, model, onOpen, local = DEFAULT_LOCAL, params, setParams }: {
+  res: AnalysisResult; model: Model; onOpen: (r: StabOpenRequest) => void; local?: LocalOptions;
+  params: BeamStabParams; setParams: (p: BeamStabParams) => void;
+}) {
+  const eq = useMemo(() => (res.ok ? beamEquivalentAxial(model, res) : null), [model, res]);
   if (!res.ok || !res.section) return null;
-  let Nc = 0;
-  for (const s of res.forceSamples) Nc = Math.max(Nc, -s.N);
-  if (!(Nc > 0)) return null;
-  // cột có trọng lượng bản thân dọc trục: dùng lực tương đương ở đỉnh N_tđ (giống chế độ Ổn định)
-  const sw = beamSelfWeightNtd(model, res, mu);
-  const Ncheck = sw ? sw.Ntd : Nc;
-  const sigBase = (Nc * 1e3) / res.section.A;
-  const r = checkStability(res.section, {
-    N: Ncheck, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: model.material.allowable,
-    params: BUCKLING_MATERIALS[mat], nRequired: nReq, Aeff: aeffIfClass4(model.section, model.material, local.fy, local.stiffenerSpacing),
-  });
-  const ok = r.okPhi && r.okN && (!sw || sigBase <= model.material.allowable);
+  const c = beamAxialCheck(model, res, res.section, params, local, eq);
+  if (!c) return null;
+  const { r } = c;
+  const varying = !!c.eq?.varying;
+  const allow = model.material.allowable;
+  const Nlbl = varying ? 'N_tđ' : 'N';
   return (
     <Card title="Kiểm tra ổn định (thanh có lực nén)">
       <div className="row">
-        <NumField label="μ (đoán từ liên kết)" value={mu} width={90} onChange={setMu} />
-        <Select label="Bảng φ" value={mat} onChange={setMat}
+        <Select label="μ" value={params.muAuto ? 'auto' : 'manual'} onChange={(v) => setParams({ ...params, muAuto: v === 'auto', mu: v === 'manual' && params.muAuto ? c.muZ : params.mu })}
+          options={[{ value: 'auto', label: 'tự động (theo gối tựa của mô hình)' }, { value: 'manual', label: 'nhập tay' }]} />
+        {params.muAuto && c.auto ? (
+          <span className="hint">μ_z = {fmt(c.muZ, 3)}; μ_y = {fmt(c.muY, 3)}</span>
+        ) : (
+          <>
+            <NumField label="μ" value={params.mu} width={80} onChange={(v) => setParams({ ...params, mu: v })} />
+            <button onClick={() => setParams({ ...params, mu: guessMu(model) })} title="Đoán từ liên kết hai đầu">đoán ({guessMu(model)})</button>
+          </>
+        )}
+        <Select label="Bảng φ" value={params.mat} onChange={(v) => setParams({ ...params, mat: v })}
           options={(Object.keys(BUCKLING_MATERIALS) as BucklingMaterial[]).map((k) => ({ value: k, label: BUCKLING_MATERIALS[k].label }))} />
-        <NumField label="[n_ôđ]" value={nReq} width={80} onChange={setNReq} />
+        <NumField label="[n_ôđ]" value={params.nReq} width={80} onChange={(v) => setParams({ ...params, nReq: v })} />
       </div>
       <table className="kv wide">
         <tbody>
-          {sw ? (
+          <tr><th>Lực nén lớn nhất N_max</th><td>{fmt(c.Nmax, 2)} kN{c.G > 0 ? ` (có trọng lượng bản thân G = ${fmt(c.G, 3)} kN)` : ''}</td></tr>
+          {varying && c.eq && (
             <>
-              <tr><th>Lực ở đỉnh · trọng lượng bản thân G</th><td>{fmt(sw.Nbase - sw.G, 2)} kN · {fmt(sw.G, 3)} kN (lực nén tại chân N + G = {fmt(Nc, 2)} kN)</td></tr>
-              <tr><th>Lực tương đương ở đỉnh N_tđ</th><td><b>{fmt(sw.Ntd, 2)} kN</b>{sw.planes.some((p) => p.exact) ? ` = N_th,đỉnh/α_th (tương đương N + ${fmt((sw.Ntd - (sw.Nbase - sw.G)) / (sw.G || 1), 3)}·G)` : ' = N + G (μ không chuẩn — thiên về an toàn)'}</td></tr>
-              <tr><th>Bền tại chân cột (N + G)/A ≤ [σ]</th><td className={sigBase <= model.material.allowable ? 'good' : 'bad'}>{fmt(sigBase, 2)} {sigBase <= model.material.allowable ? '≤' : '>'} {model.material.allowable} MPa</td></tr>
+              <tr><th>Lực nén đều tương đương N_tđ</th><td><b>{fmt(c.Ncheck, 2)} kN</b> = N_th,đều/α_th ({fmt((c.Ncheck / c.Nmax) * 100, 1)}% N_max) — lực nén thay đổi dọc thanh</td></tr>
+              <tr><th>Bền tại mặt cắt nén lớn nhất N_max/A ≤ [σ]</th><td className={c.okBase ? 'good' : 'bad'}>{fmt(c.sigBase, 2)} {c.okBase ? '≤' : '>'} {allow} MPa</td></tr>
             </>
-          ) : (
-            <tr><th>Lực nén lớn nhất N</th><td>{fmt(Nc, 2)} kN</td></tr>
           )}
+          {c.eq && <tr><th>Hệ số tới hạn α_th (tải thật)</th><td>{c.eq.planes.map((q) => `${q.plane}: ${fmt(q.alpha, 3)}`).join('; ')} → P_th thực = α_th·N_max = {fmt(Math.min(...c.eq.planes.map((q) => q.alpha)) * c.Nmax, 1)} kN (Euler, chưa xét đàn – dẻo)</td></tr>}
           <tr><th>λ_max = μL/i_min</th><td>{fmt(r.lambdaMax, 2)} ({REG[r.regime]})</td></tr>
           <tr><th>σ_th · P_th</th><td>{fmt(r.sigmaCr, 2)} MPa · {fmt(r.Pcr, 2)} kN</td></tr>
-          <tr><th>n_ôđ = P_th/{sw ? 'N_tđ' : 'N'}</th><td className={r.okN ? 'good' : 'bad'}>{fmt(r.nActual, 3)}</td></tr>
-          <tr><th>σ = {sw ? 'N_tđ' : 'N'}/A ≤ φ[σ]</th><td className={r.okPhi ? 'good' : 'bad'}>{fmt(r.sigma, 2)} {r.okPhi ? '≤' : '>'} {r.phi === null ? '—' : `${fmt(r.phi, 3)}·${model.material.allowable} = ${fmt(r.allowPhi, 2)}`} MPa</td></tr>
+          <tr><th>n_ôđ = P_th/{Nlbl}</th><td className={r.okN ? 'good' : 'bad'}>{fmt(r.nActual, 3)}</td></tr>
+          <tr><th>σ = {Nlbl}/A ≤ φ[σ]</th><td className={r.okPhi ? 'good' : 'bad'}>{fmt(r.sigma, 2)} {r.okPhi ? '≤' : '>'} {r.phi === null ? '—' : `${fmt(r.phi, 3)}·${allow} = ${fmt(r.allowPhi, 2)}`} MPa</td></tr>
         </tbody>
       </table>
-      <p className={ok ? 'ok' : 'error'}>{ok ? 'Thanh đủ ổn định.' : 'Thanh KHÔNG đủ ổn định.'}</p>
+      <p className={c.ok ? 'ok' : 'error'}>{c.ok ? 'Thanh đủ ổn định.' : 'Thanh KHÔNG đủ ổn định.'}</p>
       {r.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
-      {sw && <details><summary>Lời giải trọng lượng bản thân</summary><ul className="steps">{sw.steps.map((l, i) => <li key={i}>{l}</li>)}</ul></details>}
+      {!c.eq && params.muAuto && <p className="hint">Không giải được bài toán trị riêng cho mô hình này — dùng μ nhập tay.</p>}
+      {c.eq && <details><summary>Lời giải lực nén tương đương và μ</summary><ul className="steps">{c.eq.steps.map((l, i) => <li key={i}>{l}</li>)}</ul></details>}
       {model.selfWeight === 'y' && (
         <p className="hint">Trọng lượng bản thân đang tác dụng ngang (−y); nếu đây là cột đứng, chọn “cột đứng, chân tại x = 0” ở phần tải trọng để kể đúng lực dọc.</p>
       )}
       {res.forceSamples.some((s) => s.Mz !== 0 || s.My !== 0) && (
         <p className="hint">Thanh chịu nén kèm uốn: kiểm tra trên chỉ xét nén đúng tâm; cần kiểm tra thêm nén – uốn đồng thời.</p>
       )}
-      <button onClick={() => onOpen({ N: sw ? sw.Nbase - sw.G : Nc, L: model.length, mu, section: model.section, material: model.material, title: model.title, selfWeight: model.selfWeight === 'x' })}>
+      <button onClick={() => {
+        // chỉ có lực ở đỉnh + trọng lượng bản thân → mục Ổn định tự kể G; trường hợp khác chuyển N_tđ và μ tương ứng
+        const tol = 1e-6 * Math.max(1, model.length);
+        const otherAxial = model.loads.some((l) => (l.type === 'force' && l.Fx !== 0 && l.x < model.length - tol) || (l.type === 'distributed' && l.dir === 'x'));
+        const swOnly = model.selfWeight === 'x' && !otherAxial;
+        const Ntop = Math.max(0, -res.internalAt(model.length, 'left').N);
+        onOpen({ N: swOnly ? Ntop : varying ? c.Ncheck : c.Nmax, L: model.length, mu: c.muZ, section: model.section, material: model.material, title: model.title, selfWeight: swOnly });
+      }}>
         Mở chi tiết trong mục Ổn định →
       </button>
     </Card>

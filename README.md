@@ -123,7 +123,14 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - IPE 600 chịu nén: A_eff = A − c(1 − ρ)t_w.
   - Cánh vươn mảnh: A_eff = A − 4(1 − ρ)c·t, khoét ở mép tự do.
   - Dầm bụng mảnh chịu uốn: b_e1 = 0.4·b_eff đo từ mép nén, vòng lặp hội tụ.
-- **Giới hạn:** chưa có sườn dọc; chưa áp dụng cho vỏ trụ (ống tròn loại 4 theo EN 1993-1-6). Với thép GOST cánh dốc, phần khoét lấy theo bề dày trung bình.
+- **Giới hạn:** với thép GOST cánh dốc, phần khoét lấy theo bề dày trung bình. Ống tròn loại 4 không dùng tiết diện hữu hiệu mà kiểm tra theo vỏ trụ (mục dưới).
+
+## Ống tròn loại 4 — mất ổn định vỏ trụ (EN 1993-1-6)
+
+- Áp dụng khi D/t > 90ε², ứng suất dọc trục do N và M (phụ lục D.1.2, cấp chế tạo B, Q = 25).
+- ω = l/√(rt), l lấy bằng chiều dài thanh (khung: chiều dài từng thanh). Trụ ngắn C_x = 1,36 − 1,83/ω + 2,07/ω²; trụ trung bình C_x = 1; trụ dài C_x,N = 1 + (0,2/C_xb)(1 − 2ωt/r) ≥ 0,6 với C_xb = 3, khi có uốn lấy trung bình theo phần ứng suất do N.
+- σ_x,Rcr = 0,605·E·C_x·t/r; Δw_k = (1/Q)√(r/t)·t; α_x = 0,62/(1 + 1,91(Δw_k/t)^1,44); λ̄_0 = 0,2, β = 0,6, η = 1, λ̄_p = √(α/(1 − β)); χ_x theo ba miền.
+- Điều kiện σ_x,Ed ≤ χ_x[σ]. Có trong thẻ ổn định cục bộ, báo cáo PDF và chọn số hiệu thép; ống loại 1–3 chỉ hiện để tham khảo.
 
 ## Sườn dọc bản bụng
 
@@ -169,7 +176,16 @@ Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, r�
   - Kiểm tra thêm bền tại chân cột (N + G)/A ≤ [σ]; ổn định cục bộ dùng N + G.
   - Chọn tiết diện thử dần tính G theo từng số hiệu.
   - Kiểm chứng Greenhill: công-xôn (qL)_th = 7,837EI/L²; hai đầu khớp 18,6EI/L².
-  - Áp dụng cả trong chế độ thanh thẳng: với cột bật trọng lượng bản thân dọc trục, thẻ “Kiểm tra ổn định”, báo cáo và chọn số hiệu thép dùng N_tđ (lực ở đỉnh lấy tại x = L⁻), kèm kiểm tra bền tại chân cột.
+- **Lực dọc thay đổi dọc thanh (chế độ thanh thẳng):** lực đặt giữa thân cột, tải phân bố dọc trục, trọng lượng bản thân, hoặc kết hợp.
+  - Quy về lực nén đều tương đương N_tđ = N_th,đều/α_th. α_th là hệ số tới hạn của mô hình thật (đúng gối tựa, đủ mọi tải dọc trục). N_th,đều là lực tới hạn khi nén đều toàn chiều dài trên cùng gối tựa.
+  - μ tự động = (π/L)·√(EI/N_th,đều), tính riêng cho hai phương, đúng cả với gối giữa nhịp. Vẫn có thể chọn “nhập tay” (có nút đoán μ từ liên kết hai đầu).
+  - Kiểm tra thêm bền tại mặt cắt nén lớn nhất N_max/A ≤ [σ].
+  - Dùng chung cho thẻ “Kiểm tra ổn định”, báo cáo PDF và chọn số hiệu thép (ô “μ tự động theo gối tựa”).
+  - Kiểm chứng: N không đổi → N_tđ = N, μ = 1; công-xôn có lực giữa thân → N_tđ = P/4, μ = 2; công-xôn chỉ có trọng lượng bản thân → N_tđ ≈ 0,315·G (Greenhill).
+- **Báo cáo dùng đúng thông số trên giao diện:**
+  - Chế độ dầm: μ, bảng φ, [n_ôđ] của thẻ ổn định; n và bảng φ của thẻ nén – uốn.
+  - Chế độ khung: μ trong mặt phẳng nhập ở thẻ ổn định (chưa nhập thì suy từ α_th), μ ngoài mặt phẳng ở thẻ nén – uốn.
+  - f_y của thẻ uốn – xoắn và thẻ ổn định cục bộ là một giá trị chung.
 - **Khung: mỗi thanh một vật liệu riêng.**
   - Thẻ “Thư viện vật liệu” có các mẫu (thép CT3, S355/Q345, bê tông B20, gỗ — giá trị [σ] chỉ để tham khảo); mỗi thanh chọn vật liệu ở mục “Thanh”, bỏ trống thì dùng vật liệu chung.
   - E của từng thanh được dùng khi giải khung (độ cứng, P-Δ, bài toán ổn định); [σ], ν, f_y của vật liệu thanh được dùng cho kiểm tra bền, ổn định, nén – uốn, cục bộ và chọn số hiệu thép (hệ số sử dụng theo [σ] từng thanh).

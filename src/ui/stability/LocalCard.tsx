@@ -33,6 +33,8 @@ export function LocalCard(props: {
   /** Nhãn ô khoảng cách sườn ngang / ô f_y */
   aLabel?: string;
   fyLabel?: string;
+  /** chiều dài thanh (mm) — cho kiểm tra vỏ trụ của ống tròn */
+  length?: number;
 }) {
   const [own, setOwn] = useState<LocalOptions>(DEFAULT_LOCAL);
   const cur = props.opt ?? own;
@@ -40,7 +42,7 @@ export function LocalCard(props: {
   const fy = cur.fy, a = cur.stiffenerSpacing;
   const setFy = (v: number) => setCur({ ...cur, fy: v });
   const setA = (v: number) => setCur({ ...cur, stiffenerSpacing: v });
-  const r = useMemo(() => checkLocal(props.spec, props.material, props.forces, { fy, stiffenerSpacing: a }), [props.spec, props.material, props.forces, fy, a]);
+  const r = useMemo(() => checkLocal(props.spec, props.material, props.forces, { fy, stiffenerSpacing: a, length: props.length }), [props.spec, props.material, props.forces, fy, a, props.length]);
   const rows = merge(r.plates);
   return (
     <Card title={props.title ?? 'Ổn định cục bộ bản cánh, bản bụng'}>
@@ -100,6 +102,18 @@ export function LocalCard(props: {
               Ống tròn: D/t = {fmt(r.tube.Dt, 1)}; giới hạn loại 1/2/3 = {r.tube.limits.map((l) => fmt(l, 1)).join(' / ')} (50ε², 70ε², 90ε²) →
               loại {r.tube.cls}. Ứng suất tới hạn cổ điển của vỏ trụ σ_cr = 0.605·E·t/R = {fmt(r.tube.sigmaCr, 0)} MPa (thực tế thấp hơn do khuyết tật).
             </p>
+          )}
+          {r.tube && r.tube.sigma > 0 && (
+            <>
+              <table className="kv wide">
+                <tbody>
+                  <tr><th>Vỏ trụ (EN 1993-1-6, cấp chế tạo B)</th><td>ω = {fmt(r.tube.omega, 1)} (trụ {r.tube.lengthKind}); C_x = {fmt(r.tube.Cx, 3)}; σ_x,Rcr = {fmt(r.tube.sigmaRcr, 0)} MPa</td></tr>
+                  <tr><th>α_x · λ̄_x · χ_x</th><td>{fmt(r.tube.alpha, 3)} · {fmt(r.tube.lambda, 3)} · {fmt(r.tube.chi, 3)}</td></tr>
+                  <tr><th>σ_x,Ed ≤ χ_x[σ]</th><td className={r.tube.util <= 1 ? 'good' : 'bad'}>{fmt(r.tube.sigma, 2)} {r.tube.util <= 1 ? '≤' : '>'} {fmt(r.tube.allow, 2)} MPa ({fmt(r.tube.util * 100, 1)}%){r.tube.governs ? '' : ' — ống loại 1–3: chỉ tham khảo'}</td></tr>
+                </tbody>
+              </table>
+              <details><summary>Lời giải vỏ trụ</summary><ul className="steps">{r.tube.steps.map((l, i) => <li key={i}>{l}</li>)}</ul></details>
+            </>
           )}
           {r.angleNote && <p className="hint">{r.angleNote}</p>}
           {r.shear && (

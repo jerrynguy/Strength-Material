@@ -271,7 +271,7 @@ export interface LocalResult {
   plates: PlateResult[];
   sectionClass: 0 | 1 | 2 | 3 | 4;
   shear?: ShearResult;
-  tube?: { Dt: number; limits: [number, number, number]; cls: 1 | 2 | 3 | 4; sigmaCr: number };
+  tube?: TubeResult;
   angleNote?: string;
   /** Tiết diện hữu hiệu và kiểm tra σ = N/A_eff + M/W_eff (chỉ khi loại 4) */
   effective?: EffectiveResult;
@@ -286,6 +286,80 @@ export interface LocalOptions {
   fy: number;
   /** khoảng cách sườn ngang (mm); 0 = không có sườn */
   stiffenerSpacing: number;
+  /** chiều dài đoạn vỏ trụ giữa hai liên kết/sườn (mm) — chỉ dùng cho ống tròn (EN 1993-1-6); thường lấy bằng chiều dài thanh */
+  length?: number;
+}
+
+/** Ống tròn: phân loại D/t và kiểm tra mất ổn định vỏ trụ khi nén dọc trục (EN 1993-1-6, phụ lục D, cấp chế tạo B) */
+export interface TubeResult {
+  Dt: number;
+  limits: [number, number, number];
+  cls: 1 | 2 | 3 | 4;
+  /** σ_cr cổ điển 0.605·E·t/r (MPa) */
+  sigmaCr: number;
+  r: number;
+  t: number;
+  /** l (mm), ω = l/√(rt), loại chiều dài */
+  l: number;
+  omega: number;
+  lengthKind: 'ngắn' | 'trung bình' | 'dài';
+  Cx: number;
+  /** σ_x,Rcr = 0.605·E·C_x·t/r (MPa) */
+  sigmaRcr: number;
+  dwk: number;
+  alpha: number;
+  lambda: number;
+  lambdaP: number;
+  chi: number;
+  /** ứng suất nén dọc lớn nhất σ_x,Ed (MPa) và phần do lực dọc */
+  sigma: number;
+  sigmaN: number;
+  /** σ ≤ χ·[σ] */
+  allow: number;
+  util: number;
+  /** chỉ bắt buộc với ống loại 4 */
+  governs: boolean;
+  steps: string[];
+}
+
+/** EN 1993-1-6 phụ lục D.1.2: mất ổn định vỏ trụ (ứng suất dọc trục), cấp chế tạo B (Q = 25); C_xb = 3 cho thanh dài. */
+export function tubeShellBuckling(D: number, t: number, E: number, fy: number, allowable: number, l: number, sigma: number, sigmaN: number): Omit<TubeResult, 'Dt' | 'limits' | 'cls' | 'sigmaCr' | 'governs'> {
+  const r = (D - t) / 2;
+  const L = l > 0 ? l : 0;
+  const omega = L > 0 ? L / Math.sqrt(r * t) : Infinity;
+  const Cxb = 3;
+  let Cx: number, lengthKind: TubeResult['lengthKind'];
+  if (omega <= 1.7) { Cx = 1.36 - 1.83 / omega + 2.07 / (omega * omega); lengthKind = 'ngắn'; }
+  else if (omega <= 0.5 * (r / t)) { Cx = 1; lengthKind = 'trung bình'; }
+  else {
+    lengthKind = 'dài';
+    const CxN = Number.isFinite(omega) ? Math.max(0.6, 1 + (0.2 / Cxb) * (1 - (2 * omega * t) / r)) : 0.6;
+    // EN 1993-1-6:2025 (D.13): khi có cả uốn, trọng số theo phần ứng suất do lực dọc
+    const wN = sigma > 0 ? Math.min(1, Math.max(0, sigmaN / sigma)) : 1;
+    Cx = CxN * wN + (1 - wN);
+  }
+  const sigmaRcr = 0.605 * E * Cx * (t / r);
+  const Q = 25;
+  const dwk = (1 / Q) * Math.sqrt(r / t) * t;
+  const alpha = 0.62 / (1 + 1.91 * Math.pow(dwk / t, 1.44));
+  const lambda0 = 0.2, beta = 0.6, eta = 1;
+  const lambdaP = Math.sqrt(alpha / (1 - beta));
+  const lambda = Math.sqrt(fy / sigmaRcr);
+  const chi = lambda <= lambda0 ? 1 : lambda < lambdaP ? 1 - beta * Math.pow((lambda - lambda0) / (lambdaP - lambda0), eta) : alpha / (lambda * lambda);
+  const allow = chi * allowable;
+  const f = (v: number, d = 3) => (Number.isFinite(v) ? Number(v.toFixed(d)).toString() : '∞');
+  const steps = [
+    `r = (D − t)/2 = ${f(r, 2)} mm; ω = l/√(rt) = ${L > 0 ? `${f(L, 0)}/√(${f(r, 1)}·${f(t, 2)}) = ${f(omega, 1)}` : '∞ (chưa biết chiều dài — coi là trụ dài)'} → trụ ${lengthKind}`,
+    lengthKind === 'ngắn' ? `C_x = 1.36 − 1.83/ω + 2.07/ω² = ${f(Cx)}`
+      : lengthKind === 'trung bình' ? 'C_x = 1 (1.7 < ω ≤ 0.5r/t)'
+        : `C_x,N = 1 + (0.2/C_xb)(1 − 2ωt/r) ≥ 0.6 với C_xb = ${Cxb}${sigma > 0 && sigmaN < sigma * (1 - 1e-9) ? `; có uốn: C_x = C_x,N·σ_N/σ + σ_M/σ (σ_N = ${f(sigmaN, 1)} MPa)` : ''} → C_x = ${f(Cx)}`,
+    `σ_x,Rcr = 0.605·E·C_x·t/r = ${f(sigmaRcr, 1)} MPa`,
+    `Cấp chế tạo B (Q = 25): Δw_k = (1/Q)√(r/t)·t = ${f(dwk, 3)} mm; α_x = 0.62/(1 + 1.91(Δw_k/t)^1.44) = ${f(alpha)}`,
+    `λ̄_x = √(f_y/σ_x,Rcr) = ${f(lambda)}; λ̄_0 = 0.2; λ̄_p = √(α/(1 − β)) = ${f(lambdaP)} (β = 0.6, η = 1)`,
+    `χ_x = ${lambda <= lambda0 ? '1 (λ̄ ≤ λ̄_0)' : lambda < lambdaP ? `1 − β((λ̄ − λ̄_0)/(λ̄_p − λ̄_0))^η = ${f(chi)}` : `α/λ̄² = ${f(chi)}`}`,
+    `σ_x,Ed = ${f(sigma, 2)} MPa ${sigma <= allow ? '≤' : '>'} χ_x·[σ] = ${f(chi)}·${allowable} = ${f(allow, 2)} MPa`,
+  ];
+  return { r, t, l: L, omega, lengthKind, Cx, sigmaRcr, dwk, alpha, lambda, lambdaP, chi, sigma, sigmaN, allow, util: sigma / allow, steps };
 }
 
 function classify(pl: PlateDef, c1: number, c2: number, psi: number, tipMax: boolean, k: number, eps: number): { cls: 0 | 1 | 2 | 3 | 4; limits: [number, number, number] } {
@@ -387,7 +461,16 @@ export function checkLocal(spec: SectionSpec, mat: Material, forces: ({ x?: numb
     const lim: [number, number, number] = [50 * eps * eps, 70 * eps * eps, 90 * eps * eps];
     const cls = (Dt <= lim[0] ? 1 : Dt <= lim[1] ? 2 : Dt <= lim[2] ? 3 : 4) as 1 | 2 | 3 | 4;
     const R = (geo.tube.D - geo.tube.t) / 2;
-    tube = { Dt, limits: lim, cls, sigmaCr: (0.605 * E * geo.tube.t) / R };
+    const Ro = geo.tube.D / 2;
+    // ứng suất nén dọc lớn nhất trên thành ống (σ = s0 + a·y + b·z, nén < 0)
+    let sig = 0, sigN = 0;
+    for (const F of forces) {
+      const [s0, a, b] = neutralAxisCoeffs(sec, F);
+      const c = -s0 + Ro * Math.hypot(a, b);
+      if (c > sig) { sig = c; sigN = Math.max(0, -s0); }
+    }
+    const sh = tubeShellBuckling(geo.tube.D, geo.tube.t, E, fy, mat.allowable, opt.length ?? 0, sig, sigN);
+    tube = { Dt, limits: lim, cls, sigmaCr: (0.605 * E * geo.tube.t) / R, ...sh, governs: cls === 4 && sig > 0 };
     if (forces.some((F) => F.N < 0 || F.Mz || F.My)) sectionClass = cls;
   }
   let angleNote: string | undefined;
@@ -440,7 +523,7 @@ export function checkLocal(spec: SectionSpec, mat: Material, forces: ({ x?: numb
     effective = effectiveSection(spec, mat, fy, opt.stiffenerSpacing);
     effCheck = checkEffective(effective, forces, mat.allowable);
   }
-  const ok = (effCheck ? effCheck.ok : plates.every((p) => p.cls < 4 || p.util <= 1)) && (!shear || shear.ok);
-  if (sectionClass === 4) warnings.push('Tiết diện loại 4: mất ổn định cục bộ xảy ra trước khi đạt giới hạn chảy — kiểm tra bền dùng tiết diện hữu hiệu (A_eff, W_eff).');
+  const ok = (effCheck ? effCheck.ok : plates.every((p) => p.cls < 4 || p.util <= 1)) && (!shear || shear.ok) && (!tube?.governs || tube.util <= 1);
+  if (sectionClass === 4) warnings.push(tube ? 'Ống tròn loại 4: thành ống mất ổn định cục bộ (vỏ trụ) trước khi chảy — kiểm tra σ_x,Ed ≤ χ_x[σ] theo EN 1993-1-6.' : 'Tiết diện loại 4: mất ổn định cục bộ xảy ra trước khi đạt giới hạn chảy — kiểm tra bền dùng tiết diện hữu hiệu (A_eff, W_eff).');
   return { applicable: true, fy, eps, plates, sectionClass, shear, tube, angleNote, effective, effCheck, ok, warnings };
 }
