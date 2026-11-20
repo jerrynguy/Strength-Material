@@ -15,7 +15,7 @@
 import { luFactor, rank, smallestEigen, solve, zeros, type Matrix } from './linalg';
 import { computeSection, validateSection, type SectionProps } from './section';
 import {
-  alphaTOf, effectiveRestraints, selfWeightPerM, type DistributedLoad, type InternalForces, type Model, type Restraints,
+  alphaTOf, effectiveRestraints, isSpring, selfWeightPerM, springOf, type DistributedLoad, type InternalForces, type Model, type Restraints,
 } from './types';
 
 export type SubKey = 'axial' | 'bendY' | 'bendZ' | 'torsion';
@@ -222,6 +222,9 @@ interface SubLoads {
   /** chuyển vị cưỡng bức tại nút bị chặn (lún gối): tịnh tiến (m) và xoay (rad) */
   prescT?: Map<number, number>;
   prescR?: Map<number, number>;
+  /** lò xo (gối đàn hồi) tại nút: tịnh tiến (N/m) và xoay (N·m/rad) */
+  springT?: Map<number, number>;
+  springR?: Map<number, number>;
 }
 
 interface SubSolution {
@@ -275,11 +278,14 @@ function solveSub(
   free.forEach((d, i) => (u[d] = sol[i]));
   const R = K.map((row, i) => row.reduce((s, kij, j) => s + kij * u[j], 0) - Fnode[i]);
   const reac: [number, number][] = xs.map((_, i) => {
-    const f = fixed.has(vIdx[i]) ? R[vIdx[i]] : 0;
+    // phản lực của liên kết cứng; lò xo tính riêng theo chuyển vị (R = −k·u) — R ở đây trừ phần lò xo
+    const kt = loads.springT?.get(i) ?? 0;
+    const f = fixed.has(vIdx[i]) ? R[vIdx[i]] - kt * u[vIdx[i]] : 0;
     let m = 0;
     if (kind === 'beam') {
-      if (fixed.has(tL[i])) m += R[tL[i]];
-      if (tR[i] !== tL[i] && fixed.has(tR[i])) m += R[tR[i]];
+      const kr = loads.springR?.get(i) ?? 0;
+      if (fixed.has(tL[i])) m += R[tL[i]] - kr * u[tL[i]];
+      if (tR[i] !== tL[i] && fixed.has(tR[i])) m += R[tR[i]] - kr * u[tR[i]];
     }
     return [f, m];
   });
@@ -293,10 +299,10 @@ function solveSub(
 
 /** Bài toán ổn định: K_E·x = α·(−K_G)·x → hệ số tới hạn α nhỏ nhất và dạng mất ổn định */
 function bucklingSub(
-  xs: number[], hingeNodes: Set<number>, EI: number, restrT: Set<number>, restrR: Set<number>, Ne: number[],
+  xs: number[], hingeNodes: Set<number>, EI: number, restrT: Set<number>, restrR: Set<number>, Ne: number[], springs?: Pick<SubLoads, 'springT' | 'springR'>,
 ): { alpha: number; mode: number[] } | null {
   if (!Ne.some((n) => n < 0)) return null;
-  const empty: SubLoads = { nodeF: new Array(xs.length).fill(0), nodeC: new Array(xs.length).fill(0), elemQ: xs.slice(1).map(() => [0, 0] as [number, number]) };
+  const empty: SubLoads = { nodeF: new Array(xs.length).fill(0), nodeC: new Array(xs.length).fill(0), elemQ: xs.slice(1).map(() => [0, 0] as [number, number]), ...springs };
   const a = assembleSub('beam', xs, hingeNodes, EI, restrT, restrR, empty, Ne);
   const { K, KG, free, vIdx } = a;
   if (!KG || !free.length) return null;
@@ -304,10 +310,13 @@ function bucklingSub(
   if (!lu) return null;
   const G = free.map((r) => free.map((c) => -KG[r][c]));
   const applyG = (y: number[]) => G.map((row) => row.reduce((s, g, j) => s + g * y[j], 0));
-  // vectơ khởi đầu: dạng nửa sóng sin trên chuyển vị ngang
+  // vectơ khởi đầu: tổ hợp nhiều nửa sóng sin (cả đối xứng lẫn phản đối xứng) để không bỏ sót dạng mất ổn định thấp nhất
+  // khi kết cấu đối xứng (gối/lò xo giữa nhịp: dạng thấp nhất là phản đối xứng)
   const start = free.map((d) => {
     const i = vIdx.indexOf(d);
-    return i >= 0 ? Math.sin((Math.PI * (xs[i] - xs[0])) / (xs[xs.length - 1] - xs[0])) + 0.1 : 0.01;
+    if (i < 0) return 0.01;
+    const t = (xs[i] - xs[0]) / (xs[xs.length - 1] - xs[0]);
+    return Math.sin(Math.PI * t) + 0.7 * Math.sin(2 * Math.PI * t) + 0.4 * Math.sin(3 * Math.PI * t) + 0.25 * Math.sin(4 * Math.PI * t) + 0.1;
   });
   const r = smallestEigen(lu, applyG, free.length, start);
   if (!r || !(r.lambda > 0)) return null;
@@ -366,6 +375,8 @@ function assembleSub(
       if (k0) { F[ids[1]] -= EI * k0; F[ids[3]] += EI * k0; }
     }
   }
+  for (const [i, k] of loads.springT ?? []) K[vIdx[i]][vIdx[i]] += k;
+  if (kind === 'beam') for (const [i, k] of loads.springR ?? []) { K[tL[i]][tL[i]] += k; if (tR[i] !== tL[i]) K[tR[i]][tR[i]] += k; }
   const Fnode = [...F];
   for (let i = 0; i < n; i++) {
     Fnode[vIdx[i]] += loads.nodeF[i];
@@ -606,7 +617,7 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
   let settleScale = 0;
   for (const s of model.supports) {
     const st = s.settle;
-    if (!st) continue;
+    if (!st || isSpring(s)) continue;
     settleScale = Math.max(settleScale,
       (rigidity.EA * Math.abs(st.dx ?? 0)) / 1e3 / L / KN,
       (12 * Math.max(rigidity.EIz, rigidity.EIy) * Math.max(Math.abs(st.dy ?? 0), Math.abs(st.dz ?? 0))) / 1e3 / L ** 3 / KN,
@@ -674,19 +685,27 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
       const restrT = new Set<number>();
       const restrR = new Set<number>();
       for (const s of model.supports) {
-        const r = effectiveRestraints(s);
         const n = nodeAt(s.x);
+        if (isSpring(s)) {
+          // gối đàn hồi: lò xo cộng vào độ cứng, không chặn cứng
+          const k = springOf(s);
+          const sl = subLoads[sub.key];
+          if (k[sub.trans] > 0) (sl.springT ??= new Map()).set(n, (sl.springT.get(n) ?? 0) + k[sub.trans] * KN);
+          if (sub.rot && k[sub.rot] > 0) (sl.springR ??= new Map()).set(n, (sl.springR.get(n) ?? 0) + k[sub.rot] * KN);
+          continue;
+        }
+        const r = effectiveRestraints(s);
         if (r[sub.trans]) restrT.add(n);
         if (sub.rot && r[sub.rot]) restrR.add(n);
       }
       if (info.selfEquilibrated) restrT.add(0);
       const bend = sub.key === 'bendY' || sub.key === 'bendZ';
       if (bend && wantBuckling && Ne.some((v) => v < 0)) {
-        const b = bucklingSub(xs, hingeNodes, rig[sub.key], restrT, restrR, Ne);
+        const b = bucklingSub(xs, hingeNodes, rig[sub.key], restrT, restrR, Ne, subLoads[sub.key]);
         if (b) {
           const bp: BucklingPlane = { alpha: b.alpha, mode: xs.map((x, i) => ({ x, v: b.mode[i] })) };
           if (opts.bucklingUniform) {
-            const u = bucklingSub(xs, hingeNodes, rig[sub.key], restrT, restrR, Ne.map(() => -1));
+            const u = bucklingSub(xs, hingeNodes, rig[sub.key], restrT, restrR, Ne.map(() => -1), subLoads[sub.key]);
             if (u) bp.NcrUniform = u.alpha / KN;
           }
           buckling[sub.key as 'bendY' | 'bendZ'] = bp;
@@ -717,6 +736,20 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
   for (const s of model.supports) {
     const n = nodeAt(s.x);
     const r: Reaction = { supportId: s.id, name: s.name, x: s.x, Fx: 0, Fy: 0, Fz: 0, Mx: 0, My: 0, Mz: 0 };
+    if (isSpring(s)) {
+      // gối đàn hồi: R = −k·u (góc xoay: cộng hai phía nếu nút là khớp nối)
+      const k = springOf(s);
+      const d = (key: SubKey) => solutions[key]?.d[n] ?? 0;
+      const th = (key: SubKey) => { const so = solutions[key]; if (!so) return 0; return hingeNodes.has(n) ? so.thL[n] + so.thR[n] : so.thL[n]; };
+      r.Fx = -k.ux * d('axial');
+      r.Fy = -k.uy * d('bendY');
+      r.Fz = -k.uz * d('bendZ');
+      r.Mx = -k.rx * d('torsion');
+      r.Mz = -k.rz * th('bendY');
+      r.My = k.ry * th('bendZ'); // hệ con uốn z dùng θ = −r_y
+      reactions.push(r);
+      continue;
+    }
     if (!usedNodes.has(n)) {
       usedNodes.add(n);
       const get = (k: SubKey) => solutions[k]?.reac[n] ?? [0, 0];

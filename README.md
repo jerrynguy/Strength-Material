@@ -125,6 +125,15 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
 - Có trong hình vẽ, báo cáo PDF (bảng liên kết có cột lún gối, bảng tải có dòng nhiệt độ), bài mẫu “Dầm liên tục: lún gối và nhiệt độ”.
 - **Kiểm chứng:** ngàm – ngàm N = −EAα_tΔT (cả khi nung nửa thanh: −EAα_tΔT/2), M = −EIα_tΔT/h; dầm đơn giản giãn α_tΔTL, võng κ₀L²/8 không nội lực; lún gối ngàm – ngàm R = 12EIΔ/L³, M = 6EIΔ/L²; dầm liên tục hai nhịp gối giữa lún R = 6EIΔ/L³; xoay cưỡng bức M = 4EIθ/L; lún theo phương tự do không có tác dụng.
 
+## Chế độ thanh thẳng: gối đàn hồi
+
+- Loại gối “Gối đàn hồi (lò xo)” với k_x, k_y, k_z (kN/m) và k_φx (xoắn), k_φy, k_φz (kN·m/rad); k = 0 là tự do theo phương đó.
+- Mỗi lò xo cộng vào ma trận độ cứng của hệ con tương ứng (kéo/nén, uốn đứng, uốn ngang, xoắn); phản lực R = −k·u, báo riêng cho từng gối kể cả khi đặt trùng vị trí với gối khác (ví dụ gối khớp + lò xo xoay = ngàm đàn hồi).
+- Khi phân tích cấu tạo hình học, lò xo được tính là một liên kết (công-xôn + lò xo ở đầu tự do là siêu tĩnh bậc 1).
+- Bài toán ổn định (hệ số tới hạn, μ tự động, N_tđ) có kể lò xo. Đồng thời sửa vectơ khởi đầu của phép lặp trị riêng (thêm các nửa sóng phản đối xứng) — trước đây dầm/cột đối xứng có gối giữa nhịp có thể bỏ sót dạng mất ổn định thấp nhất.
+- Bài mẫu “Dầm trên các gối đàn hồi (lò xo)”.
+- **Kiểm chứng:** công-xôn tựa lò xo R = P·k/(k + 3EI/L³); dầm đơn giản có lò xo giữa nhịp R = (5qL⁴/384EI)/(1/k + L³/48EI); khớp + lò xo xoay M_A = θ₀/(L/3EI + 1/k) → qL²/8 khi k → ∞; lò xo dọc trục và xoắn phân phối theo độ cứng; cột khớp hai đầu có lò xo ngang giữa cột rất cứng N_th = 4π²EI/L².
+
 ## Bền dẻo: W_pl cho tiết diện loại 1, 2
 
 - **W_pl và trục trung hoà dẻo** tính số trên đa giác thật của mặt cắt (cả lượn, lỗ, sườn): tìm trục chia đôi diện tích bằng chia đôi khoảng, rồi W_pl = S_trên + S_dưới. Hiện ở bảng đặc trưng mặt cắt và báo cáo (W_pl,z, W_pl,y, hệ số hình dạng W_pl/W_el).

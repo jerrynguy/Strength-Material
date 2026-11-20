@@ -3,7 +3,7 @@ import { dist, force, moment, support, uid } from '../core/presets';
 import { SECTION_DEFAULTS, SECTION_LABELS, computeSection, validateSection, plasticProps } from '../core/section';
 import { fmt } from '../core/stress';
 import {
-  SUPPORT_DEFAULTS, SUPPORT_LABELS, effectiveRestraints, type Load, type Model, type Restraints, type SectionSpec, type Support, type SupportKind, alphaTOf, densityOf, selfWeightPerM,
+  NO_SPRINGS, SUPPORT_LABELS, effectiveRestraints, type Load, type Springs, type Model, type Restraints, type SectionSpec, type Support, type SupportKind, alphaTOf, densityOf, selfWeightPerM,
 } from '../core/types';
 import { Card, NumField, Select, TextField } from './fields';
 import { SectionView } from './SectionView';
@@ -166,7 +166,12 @@ export function SupportsEditor({ model, set }: { model: Model; set: Setter }) {
               label="Loại"
               value={s.kind}
               options={(Object.keys(SUPPORT_LABELS) as SupportKind[]).map((k) => ({ value: k, label: SUPPORT_LABELS[k] }))}
-              onChange={(k) => upd(s.id, { kind: k, restraints: k === 'custom' ? { ...(s.kind === 'custom' ? s.restraints : SUPPORT_DEFAULTS[s.kind]) } : s.restraints })}
+              onChange={(k) => upd(s.id, {
+                kind: k,
+                restraints: k === 'custom' ? { ...effectiveRestraints(s) } : s.restraints,
+                ...(k === 'spring' && !s.springs ? { springs: { ...NO_SPRINGS, ky: 10000 } } : {}),
+                ...(k === 'spring' ? { settle: undefined } : {}),
+              })}
             />
             <button className="del" title="Xoá" onClick={() => set((m) => ({ ...m, supports: m.supports.filter((x) => x.id !== s.id) }))}>✕</button>
           </div>
@@ -182,7 +187,17 @@ export function SupportsEditor({ model, set }: { model: Model; set: Setter }) {
               ))}
             </div>
           )}
-          {(() => {
+          {s.kind === 'spring' && (() => {
+            const k = s.springs ?? NO_SPRINGS;
+            const f: [keyof Springs, string, string][] = [['ky', 'k_y', 'kN/m'], ['kx', 'k_x', 'kN/m'], ['kz', 'k_z', 'kN/m'], ['krz', 'k_φz', 'kN·m/rad'], ['kry', 'k_φy', 'kN·m/rad'], ['krx', 'k_φx (xoắn)', 'kN·m/rad']];
+            return (
+              <div className="row">
+                <span className="muted">Lò xo:</span>
+                {f.map(([key, l, u]) => <NumField key={key} label={l} unit={u} width={100} value={k[key]} onChange={(v) => upd(s.id, { springs: { ...k, [key]: Math.max(0, v) } })} title="0 = tự do theo phương này" />)}
+              </div>
+            );
+          })()}
+          {s.kind !== 'spring' && (() => {
             const r = effectiveRestraints(s);
             const st = s.settle ?? {};
             const set1 = (k: keyof NonNullable<Support['settle']>, v: number) => {
@@ -219,7 +234,8 @@ export function SupportsEditor({ model, set }: { model: Model; set: Setter }) {
         Ngàm chặn mọi chuyển vị và góc xoay. Gối cố định chặn u<sub>x</sub>, u<sub>y</sub>, u<sub>z</sub>. Gối di động chặn u<sub>y</sub>, u<sub>z</sub>.
         Chọn <b>Tuỳ chỉnh</b> để tự chọn từng liên kết (ví dụ ổ đỡ chặn xoắn θ<sub>x</sub>).
         Lún gối: chuyển vị cưỡng bức theo các phương gối chặn (mm, góc tính bằng phần nghìn radian); dầm tĩnh định lún gối chỉ gây chuyển vị,
-        dầm siêu tĩnh phát sinh nội lực.
+        dầm siêu tĩnh phát sinh nội lực. Gối đàn hồi: lò xo theo từng phương (k = 0 là tự do), phản lực R = −k·u; có thể đặt cùng vị trí với
+        gối khác (ví dụ gối khớp + lò xo xoay k_φz = ngàm đàn hồi; dầm trên nền đàn hồi rời rạc).
       </p>
     </Card>
   );

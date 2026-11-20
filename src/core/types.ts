@@ -28,7 +28,7 @@ export interface Restraints {
   rz: boolean;
 }
 
-export type SupportKind = 'fixed' | 'pin' | 'roller' | 'custom';
+export type SupportKind = 'fixed' | 'pin' | 'roller' | 'custom' | 'spring';
 
 export interface Support {
   id: string;
@@ -37,9 +37,27 @@ export interface Support {
   kind: SupportKind;
   /** Chỉ dùng khi kind = 'custom'. Với các loại khác, lấy theo mặc định. */
   restraints: Restraints;
+  /** Gối đàn hồi (kind = 'spring'): lò xo tịnh tiến kx, ky, kz (kN/m) và xoay krx, kry, krz (kN·m/rad); 0 = tự do */
+  springs?: Springs;
   /** Lún gối / chuyển vị cưỡng bức theo các phương gối chặn: dx, dy, dz (mm); rz, ry (rad·10⁻³) */
   settle?: { dx?: number; dy?: number; dz?: number; rz?: number; ry?: number };
 }
+
+export interface Springs {
+  kx: number;
+  ky: number;
+  kz: number;
+  krx: number;
+  kry: number;
+  krz: number;
+}
+export const NO_SPRINGS: Springs = { kx: 0, ky: 0, kz: 0, krx: 0, kry: 0, krz: 0 };
+
+/** Độ cứng lò xo theo từng liên kết (kN/m hoặc kN·m/rad) */
+export const springOf = (s: Support): Record<keyof Restraints, number> => {
+  const k = s.springs ?? NO_SPRINGS;
+  return { ux: k.kx, uy: k.ky, uz: k.kz, rx: k.krx, ry: k.kry, rz: k.krz };
+};
 
 export interface Hinge {
   id: string;
@@ -154,7 +172,7 @@ export interface Model {
   selfWeight?: 'y' | 'x';
 }
 
-export const SUPPORT_DEFAULTS: Record<Exclude<SupportKind, 'custom'>, Restraints> = {
+export const SUPPORT_DEFAULTS: Record<Exclude<SupportKind, 'custom' | 'spring'>, Restraints> = {
   fixed: { ux: true, uy: true, uz: true, rx: true, ry: true, rz: true },
   pin: { ux: true, uy: true, uz: true, rx: false, ry: false, rz: false },
   roller: { ux: false, uy: true, uz: true, rx: false, ry: false, rz: false },
@@ -165,11 +183,22 @@ export const SUPPORT_LABELS: Record<SupportKind, string> = {
   pin: 'Gối cố định (khớp)',
   roller: 'Gối di động',
   custom: 'Tuỳ chỉnh',
+  spring: 'Gối đàn hồi (lò xo)',
 };
 
+/**
+ * Các liên kết của gối. Gối đàn hồi: phương có lò xo (k > 0) được coi là liên kết khi phân tích cấu tạo hình học,
+ * nhưng khi giải thì là lò xo (không chặn cứng) — xem isSpring.
+ */
 export function effectiveRestraints(s: Support): Restraints {
+  if (s.kind === 'spring') {
+    const k = springOf(s);
+    return { ux: k.ux > 0, uy: k.uy > 0, uz: k.uz > 0, rx: k.rx > 0, ry: k.ry > 0, rz: k.rz > 0 };
+  }
   return s.kind === 'custom' ? s.restraints : SUPPORT_DEFAULTS[s.kind];
 }
+
+export const isSpring = (s: Support) => s.kind === 'spring';
 
 /** Nội lực tại một mặt cắt (đơn vị kN, kN·m). */
 export interface InternalForces {

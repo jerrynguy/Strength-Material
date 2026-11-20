@@ -8,7 +8,7 @@ import { BUCKLING_MATERIALS } from '../../core/stability';
 import { DEFAULT_BEAM_STAB, beamAxialCheck, type BeamStabParams } from '../../core/beamAxial';
 import { equilibriumSteps, sectionSteps } from '../../core/steps';
 import { fmt, maxNormalOnSection, stressAt } from '../../core/stress';
-import { SUPPORT_LABELS, alphaTOf, effectiveRestraints, type InternalForces, type Model, densityOf } from '../../core/types';
+import { SUPPORT_LABELS, alphaTOf, effectiveRestraints, springOf, type InternalForces, type Model, densityOf } from '../../core/types';
 import { BeamView } from '../BeamView';
 import { plasticProps } from '../../core/section';
 import { Diagram } from '../Diagram';
@@ -125,7 +125,8 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt, stab = DEFAULT_B
             <RKV rows={sectionRows(sec, densityOf(model.material))} />
           </div>
           <StiffenerInputs spec={model.section} />
-          <RTable head={['Liên kết', 'Loại', 'x (m)', 'Chặn', 'Lún gối']} rows={model.supports.map((s) => [s.name, SUPPORT_LABELS[s.kind], fmt(s.x, 3), restr(s),
+          <RTable head={['Liên kết', 'Loại', 'x (m)', 'Chặn / lò xo', 'Lún gối']} rows={model.supports.map((s) => [s.name, SUPPORT_LABELS[s.kind], fmt(s.x, 3),
+            s.kind === 'spring' ? (Object.entries(springOf(s)) as [string, number][]).filter(([, v]) => v > 0).map(([k, v]) => `k_${k.startsWith('r') ? 'φ' + k[1] : k[1]} = ${fmt(v, 1)} ${k.startsWith('r') ? 'kN·m/rad' : 'kN/m'}`).join('; ') || '—' : restr(s),
             s.settle && Object.values(s.settle).some((v) => v) ? [s.settle.dx && `Δx = ${fmt(s.settle.dx, 2)} mm`, s.settle.dy && `Δy = ${fmt(s.settle.dy, 2)} mm`, s.settle.dz && `Δz = ${fmt(s.settle.dz, 2)} mm`, s.settle.rz && `φz = ${fmt(s.settle.rz, 3)}‰`, s.settle.ry && `φy = ${fmt(s.settle.ry, 3)}‰`].filter(Boolean).join('; ') : '—'])}
             note={model.hinges.length ? `Khớp nối: ${model.hinges.map((h) => `${h.name} (x = ${fmt(h.x, 3)} m)`).join(', ')}` : undefined} />
           <RTable head={['Tải', 'Loại', 'Vị trí', 'Giá trị']} rows={withSelfWeight(model).loads.map(loadRow)}

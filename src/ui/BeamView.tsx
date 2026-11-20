@@ -86,6 +86,16 @@ export function BeamView({ model, cursorX }: { model: Model; cursorX?: number | 
         g.push(<line key="g" x1={x - 18} y1={by + 31} x2={x + 18} y2={by + 31} className="support" />);
         for (let i = -16; i <= 12; i += 7) g.push(<line key={i} x1={x + i} y1={by + 31} x2={x + i - 6} y2={by + 38} className="support thin" />);
       }
+    } else if (s.kind === 'spring') {
+      const k = s.springs;
+      if (k?.ky) {
+        g.push(<polyline key="z" points={`${x},${by + 6} ${x},${by + 11} ${x - 7},${by + 14} ${x + 7},${by + 19} ${x - 7},${by + 24} ${x + 7},${by + 29} ${x},${by + 32} ${x},${by + 38}`} className="support" fill="none" />);
+        g.push(<line key="g" x1={x - 16} y1={by + 38} x2={x + 16} y2={by + 38} className="support" />);
+      }
+      if (k?.kx) g.push(<polyline key="zx" points={`${x},${by} ${x - 5},${by} ${x - 8},${by - 6} ${x - 13},${by + 6} ${x - 18},${by - 6} ${x - 23},${by + 6} ${x - 26},${by} ${x - 30},${by}`} className="support" fill="none" />);
+      if (k?.krz || k?.kry || k?.krx) g.push(<path key="zr" d={`M ${x} ${by - 10} a 10 10 0 1 0 0.1 0`} className="support thin" fill="none" />);
+      const lab = [k?.ky && 'k_y', k?.kx && 'k_x', k?.kz && 'k_z', k?.krz && 'k_φz', k?.kry && 'k_φy', k?.krx && 'k_φx'].filter(Boolean).join(',');
+      g.push(<text key="l" x={x + 10} y={by + 26} className="lbl tiny">{lab || '∅'}</text>);
     } else {
       const lab = (Object.keys(r) as (keyof typeof r)[]).filter((k) => r[k]).join(',');
       g.push(<rect key="r" x={x - 10} y={by + 8} width={20} height={20} className="support-fill" />);

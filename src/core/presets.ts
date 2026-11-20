@@ -1,5 +1,5 @@
 import { SECTION_DEFAULTS } from './section';
-import { SUPPORT_DEFAULTS, type Load, type Material, type Model, type Support, type SupportKind } from './types';
+import { NO_SPRINGS, SUPPORT_DEFAULTS, type Load, type Material, type Model, type Support, type SupportKind } from './types';
 
 let counter = 0;
 export const uid = (p = 'id') => `${p}_${Date.now().toString(36)}_${(counter++).toString(36)}`;
@@ -9,7 +9,8 @@ export const STEEL: Material = { name: 'Thép CT3 / CCT34', E: 200, nu: 0.3, all
 export function support(name: string, x: number, kind: SupportKind): Support {
   return {
     id: uid('s'), name, x, kind,
-    restraints: { ...(kind === 'custom' ? SUPPORT_DEFAULTS.pin : SUPPORT_DEFAULTS[kind]) },
+    restraints: { ...(kind === 'custom' || kind === 'spring' ? SUPPORT_DEFAULTS.pin : SUPPORT_DEFAULTS[kind]) },
+    ...(kind === 'spring' ? { springs: { ...NO_SPRINGS, ky: 10000 } } : {}),
   };
 }
 
@@ -141,6 +142,23 @@ export const PRESETS: Preset[] = [
       supports: [support('A', 0, 'pin'), { ...support('B', 6, 'roller'), settle: { dy: -10 } }, support('C', 12, 'roller')],
       hinges: [],
       loads: [dist('q', 0, 12, -10), { id: uid('t'), type: 'temp', name: 't', x1: 0, x2: 12, Ttop: 30, Tbot: 10 }],
+    }),
+  },
+  {
+    key: 'springs',
+    label: 'Dầm trên các gối đàn hồi (lò xo)',
+    build: () => ({
+      title: 'Dầm tựa trên 5 lò xo k = 5000 kN/m, đầu trái có lò xo xoay',
+      length: 8,
+      material: { ...STEEL },
+      section: { kind: 'catalog', family: 'I_GOST', name: 'I30', rotate: false },
+      supports: [
+        { ...support('A', 0, 'pin') },
+        { ...support('Aφ', 0, 'spring'), springs: { ...NO_SPRINGS, krz: 20000 } },
+        ...[2, 4, 6, 8].map((x, i) => ({ ...support(`S${i + 1}`, x, 'spring'), springs: { ...NO_SPRINGS, ky: 5000 } })),
+      ],
+      hinges: [],
+      loads: [force('P', 3, -60), dist('q', 0, 8, -5)],
     }),
   },
   {
