@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { dist, force, moment, support, uid } from '../core/presets';
-import { SECTION_DEFAULTS, SECTION_LABELS, computeSection, validateSection } from '../core/section';
+import { SECTION_DEFAULTS, SECTION_LABELS, computeSection, validateSection, plasticProps } from '../core/section';
 import { fmt } from '../core/stress';
 import {
   SUPPORT_DEFAULTS, SUPPORT_LABELS, type Load, type Model, type Restraints, type SectionSpec, type Support, type SupportKind, densityOf, selfWeightPerM,
@@ -117,6 +117,7 @@ export function SectionSpecEditor({ spec: s, onChange: setSec, size = 200, densi
               {props.Iyz !== 0 && <tr><th>I<sub>yz</sub></th><td>{fmt(props.Iyz, 0)} mm⁴</td></tr>}
               <tr><th>W<sub>z</sub> = I<sub>z</sub>/y<sub>max</sub></th><td>{fmt(props.Iz / Math.max(props.yMax, -props.yMin), 0)} mm³</td></tr>
               <tr><th>W<sub>y</sub></th><td>{fmt(props.Iy / Math.max(props.zMax, -props.zMin), 0)} mm³</td></tr>
+              <tr><th>W<sub>pl,z</sub> · W<sub>pl,y</sub> (dẻo)</th><td>{fmt(plasticProps(props, 'z').Wpl, 0)} · {fmt(plasticProps(props, 'y').Wpl, 0)} mm³ (W<sub>pl</sub>/W<sub>el</sub> = {fmt(plasticProps(props, 'z').shape, 3)})</td></tr>
               <tr><th>Trọng tâm cách đáy</th><td>{fmt(-props.yMin, 2)} mm</td></tr>
               <tr><th>Khối lượng{density ? '' : ' (thép)'}</th><td>{fmt(props.A * 1e-6 * (density ?? 7850), 2)} kg/m</td></tr>
               <tr><th>J (xoắn)</th><td>{props.torsion.J ? `${fmt(props.torsion.J, 0)} mm⁴` : '—'}</td></tr>

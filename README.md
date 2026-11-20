@@ -103,7 +103,18 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - λ̄_op = √(α_ult,k/α_cr,op); χ_op = min(χ_z, χ_LT) (6.3.4(4)a; χ_z theo bảng 6.2 trục z–z); điều kiện χ_op·α_ult,k ≥ f_y/[σ].
   - Có trong báo cáo PDF và chọn số hiệu thép cho khung (lấy hệ số sử dụng lớn hơn của §6.3.2 và §6.3.4).
   - Kiểm chứng: nén thuần α_cr,op·P = min(N_cr,z, N_cr,T); uốn thuần trùng M_cr của thẻ uốn – xoắn; nén + mô men đều khớp nghiệm (P_y − αP)(P_T − αP) = α²M²/r₀².
-  - Giới hạn: thép chữ U, góc bỏ qua độ lệch tâm cắt theo phương z; mặt cắt dùng công thức đàn hồi (không dùng W_pl cho loại 1, 2).
+  - Giới hạn: thép chữ U, góc bỏ qua độ lệch tâm cắt theo phương z.
+
+## Bền dẻo: W_pl cho tiết diện loại 1, 2
+
+- **W_pl và trục trung hoà dẻo** tính số trên đa giác thật của mặt cắt (cả lượn, lỗ, sườn): tìm trục chia đôi diện tích bằng chia đôi khoảng, rồi W_pl = S_trên + S_dưới. Hiện ở bảng đặc trưng mặt cắt và báo cáo (W_pl,z, W_pl,y, hệ số hình dạng W_pl/W_el).
+- **Đường tương tác dẻo N–M chính xác** (EN 1993-1-1 6.2.9.1) cho mặt cắt bất kỳ: ứng suất ±f_y hai phía trục trung hoà, N = f_y(A_kéo − A_nén), M quanh trọng tâm; lập bảng 41 điểm cho mỗi chiều mô men (mặt cắt đối xứng một trục có hai nhánh khác nhau).
+- **Áp dụng:**
+  - Uốn – xoắn (§6.3.2, dầm và thanh khung): loại 1, 2 dùng W_pl; loại 3 dùng W_el; loại 4 dùng W_eff — cho λ̄_LT và χ_LT·W·[σ]. Loại tiết diện xác định khi uốn.
+  - Phương pháp tổng quát (§6.3.4): loại 1, 2 lấy α_ult,k là giao của tia (αN, αM) với đường tương tác dẻo; loại 3 dùng N/A + M/W_el; loại 4 dùng A_eff, W_eff. Loại tiết diện xác định theo nội lực thực của thanh (N và M đồng thời).
+  - Chọn số hiệu thép (dầm, khung) theo các kiểm tra trên.
+- **Giữ đàn hồi:** kiểm tra bền theo [σ] kiểu giáo trình, công thức nén – uốn của giáo trình và ổn định cục bộ.
+- **Kiểm chứng:** chữ nhật W_pl = bh²/4, M_N = M_pl(1 − n²); chữ I hàn W_pl = b·t_f(h_w + t_f) + t_w·h_w²/4; chữ T trục trung hoà dẻo chia đôi diện tích; tròn đặc D³/6; α dẻo của chữ nhật với (N, M) khớp nghiệm α²n² + αm = 1.
 
 ## Ổn định cục bộ bản cánh, bản bụng
 

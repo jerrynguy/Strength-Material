@@ -58,7 +58,8 @@ export function LtbCard({ model, res, opt, setOpt }: {
               <tr><th>I_y · I_t · I_w</th><td>{fmt(r.Iweak, 0)} mm⁴ · {fmt(r.It, 0)} mm⁴ · {fmt(r.Iw, 0)} mm⁶</td></tr>
               <tr><th>Độ mảnh λ̄_LT = √(W·f_y/M_cr)</th><td>{fmt(r.lambdaLT, 3)} — đường cong {r.curve} (α_LT = {LTB_CURVES[r.curve]})</td></tr>
               <tr><th>Hệ số giảm χ_LT</th><td>{fmt(r.chi, 4)}</td></tr>
-              <tr><th>Mô men cho phép không / có kể uốn – xoắn</th><td>{fmt(r.Mel, 2)} → {fmt(r.Mrd, 2)} kN·m</td></tr>
+              <tr><th>Loại tiết diện · W dùng</th><td>loại {r.sectionClass} → {r.wKind === 'W_pl' ? 'W_pl (dẻo)' : r.wKind === 'W_eff' ? 'W_eff (hữu hiệu)' : 'W_el (đàn hồi)'} = {fmt(r.W, 0)} mm³ (W_el = {fmt(r.Wel, 0)}, W_pl = {fmt(r.Wpl, 0)})</td></tr>
+              <tr><th>Mô men cho phép không / có kể uốn – xoắn</th><td>W·[σ] = {fmt(r.Mel, 2)} → χ_LT·W·[σ] = {fmt(r.Mrd, 2)} kN·m</td></tr>
             </tbody>
           </table>
           {r.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
@@ -76,7 +77,8 @@ export function LtbCard({ model, res, opt, setOpt }: {
         M_cr tính bằng phần tử hữu hạn với biểu đồ mô men thực (không cần tra C1, C2). Giả thiết: tại gối dầm được chặn chuyển vị ngang và
         xoắn (gối chạc); ngàm chặn cả vênh. Kiểm tra theo phương pháp tổng quát EN 1993-1-1 §6.3.2.2, dùng [σ] thay cho f_y/γ_M1.
         Dầm có sàn bê tông/tôn liên kết chặt vào cánh nén thì thường không cần kiểm tra. Mặt cắt chỉ đối xứng một trục: có kể hiệu ứng
-        Wagner (β_y) — cánh lớn chịu nén làm tăng M_cr, cánh nhỏ chịu nén làm giảm.
+        Wagner (β_y) — cánh lớn chịu nén làm tăng M_cr, cánh nhỏ chịu nén làm giảm. W lấy theo loại tiết diện khi uốn: loại 1, 2 dùng W_pl,
+        loại 3 dùng W_el, loại 4 dùng W_eff (EN 1993-1-1 6.3.2.1).
       </p>
     </Card>
   );
@@ -187,7 +189,7 @@ export function FrameLtbCard({ model, res, opt, setOpt, local }: {
           <h3 className="sub-title">Phương pháp tổng quát — nén, uốn và uốn – xoắn ngoài mặt phẳng (EN 1993-1-1 §6.3.4)</h3>
           <div className="table-scroll">
             <table className="grid">
-              <thead><tr><th>Thanh</th><th>Giằng</th><th>α_ult,k</th><th>α_cr,op</th><th>λ̄_op</th><th>χ_z</th><th>χ_LT</th><th>χ_op</th><th>χ_op·α_ult,k</th><th>Kết luận</th><th></th></tr></thead>
+              <thead><tr><th>Thanh</th><th>Giằng</th><th>Loại · bền</th><th>α_ult,k</th><th>α_cr,op</th><th>λ̄_op</th><th>χ_z</th><th>χ_LT</th><th>χ_op</th><th>χ_op·α_ult,k</th><th>Kết luận</th><th></th></tr></thead>
               <tbody>
                 {op.rows.map(({ mr, r: q }) => (
                   <tr key={mr.id} className={oc && mr.id === oc.mr.id ? 'sel-row' : undefined}>
@@ -195,12 +197,12 @@ export function FrameLtbCard({ model, res, opt, setOpt, local }: {
                     <td>{bracesInput(mr.id)}</td>
                     {q.applicable ? (
                       <>
-                        <td>{fmt(q.alphaUlt, 3)}</td><td>{fmt(q.alphaCrOp, 3)}</td><td>{fmt(q.lambdaOp, 3)}</td><td>{fmt(q.chiZ, 3)}</td><td>{fmt(q.chiLT, 3)}</td>
+                        <td>{q.sectionClass} · {q.plastic ? 'dẻo' : q.sectionClass === 4 ? 'hữu hiệu' : 'đàn hồi'}</td><td>{fmt(q.alphaUlt, 3)}</td><td>{fmt(q.alphaCrOp, 3)}</td><td>{fmt(q.lambdaOp, 3)}</td><td>{fmt(q.chiZ, 3)}</td><td>{fmt(q.chiLT, 3)}</td>
                         <td>{fmt(q.chiOp, 3)}</td><td>{fmt(q.chiOp * q.alphaUlt, 3)}</td>
                         <td className={q.ok ? 'good' : 'bad'}>{q.ok ? 'đạt ✓' : 'không đạt ✗'} ({fmt(q.util * 100, 0)}%)</td>
                       </>
                     ) : (
-                      <td colSpan={8} className="muted">{q.reason}</td>
+                      <td colSpan={9} className="muted">{q.reason}</td>
                     )}
                     <td><button onClick={() => setOpSel(mr.id)}>Chi tiết</button></td>
                   </tr>
@@ -221,7 +223,7 @@ export function FrameLtbCard({ model, res, opt, setOpt, local }: {
             </>
           )}
           <p className="hint">
-            α_ult,k: hệ số tải để mặt cắt bất lợi nhất đạt f_y, với nội lực trong mặt phẳng {op.secondOrder ? 'từ phân tích bậc hai P-Δ' : '(bậc nhất — phân tích bậc hai không hội tụ)'}.
+            α_ult,k: hệ số tải để mặt cắt bất lợi nhất đạt bền (loại 1, 2: đường tương tác dẻo N–M chính xác; loại 3: N/A + M/W_el; loại 4: A_eff, W_eff), với nội lực trong mặt phẳng {op.secondOrder ? 'từ phân tích bậc hai P-Δ' : '(bậc nhất — phân tích bậc hai không hội tụ)'}.
             α_cr,op: hệ số tới hạn ngoài mặt phẳng khi tăng đồng thời N và M của thanh (uốn ngang quanh trục yếu, xoắn, uốn – xoắn; có Wagner và tải lệch tâm cắt).
             λ̄_op = √(α_ult,k/α_cr,op), χ_op = min(χ_z, χ_LT); điều kiện χ_op·α_ult,k ≥ f_y/[σ]. Thép chữ U, góc: bỏ qua độ lệch tâm cắt theo phương z.
           </p>

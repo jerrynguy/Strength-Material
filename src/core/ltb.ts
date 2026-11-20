@@ -22,6 +22,8 @@
  */
 import type { AnalysisResult } from './analysis';
 import { aeffIfClass4, weffZ } from './effective';
+import { checkLocal } from './localBuckling';
+import { plasticAlpha, plasticProps } from './section';
 import { luFactor, luSolve, zeros } from './linalg';
 
 /** Số pivot âm khi khử Gauss không hoán vị (= số trị riêng âm của ma trận đối xứng) */
@@ -82,7 +84,13 @@ export interface LtbResult {
   Iw: number; // mm⁶
   It: number; // mm⁴
   Iweak: number; // mm⁴
+  /** W dùng kiểm tra: W_pl (loại 1, 2), W_el (loại 3) hoặc W_eff (loại 4) */
   W: number; // mm³
+  wKind: 'W_pl' | 'W_el' | 'W_eff';
+  Wel: number;
+  Wpl: number;
+  /** loại tiết diện khi uốn (EN 1993-1-1 bảng 5.2) */
+  sectionClass: number;
   lambdaLT: number;
   curve: LtbCurve;
   chi: number;
@@ -98,7 +106,7 @@ export interface LtbResult {
 }
 
 const NA = (reason: string): LtbResult => ({
-  applicable: false, reason, Mmax: 0, xMax: 0, Mcr: 0, alpha: 0, Iw: 0, It: 0, Iweak: 0, W: 0, lambdaLT: 0, curve: 'd', chi: 1,
+  applicable: false, reason, Mmax: 0, xMax: 0, Mcr: 0, alpha: 0, Iw: 0, It: 0, Iweak: 0, W: 0, wKind: 'W_el', Wel: 0, Wpl: 0, sectionClass: 0, lambdaLT: 0, curve: 'd', chi: 1,
   Mrd: 0, Mel: 0, util: 0, ok: true, mode: [], betaY: 0, steps: [], warnings: [],
 });
 
@@ -257,6 +265,12 @@ export function checkFrameMemberLTB(model: FrameModel, res: FrameResult, memberI
  * K_G gồm mô men (∫M·u″φ, Wagner ½∫−Mβ_yφ′²), tải ngang lệch tâm cắt và — nếu có — lực dọc ½∫N[u′² − 2y₀u′φ′ + r₀²φ′²].
  * alpha0: ước lượng để chọn dịch chuyển; checkLowest: kiểm tra quán tính Sylvester để chắc là trị riêng dương nhỏ nhất.
  */
+/** Loại tiết diện (EN 1993-1-1 bảng 5.2) với các trạng thái nội lực cho trước; mặt cắt đặc / không có tấm mảnh → loại 1 */
+function classOf(spec: SectionSpec, mat: Material, forces: { N: number; Qy: number; Qz: number; T: number; Mz: number; My: number }[], fy: number, a: number, Lm: number): number {
+  const lc = checkLocal(spec, mat, forces, { fy, stiffenerSpacing: a, length: Lm * 1e3 });
+  return lc.applicable ? lc.sectionClass || 1 : 1;
+}
+
 /** khoảng cách điểm đặt tải ngang so với tâm cắt (m, dương: phía +y) */
 const loadEccentricity = (sec: SectionProps, lp: LtbProps, h: LoadHeight) =>
   ((h === 'top' ? sec.yMax : h === 'bottom' ? sec.yMin : lp.ySc) - lp.ySc) / 1e3;
@@ -413,8 +427,11 @@ export function solveLTB(pb: LtbProblem): LtbResult {
     return NA('Thanh uốn quanh trục yếu (I_z ≤ I_y): không xảy ra mất ổn định uốn – xoắn.');
   }
   const Wel = sec.Iz / Math.max(sec.yMax, -sec.yMin);
-  const Weff = weffZ(pb.spec, pb.material, opt.fy, Math.sign(Mmax) || 1, opt.stiffenerSpacing ?? 0);
-  const W = Weff && Weff < Wel ? Weff : Wel;
+  const Wpl = plasticProps(sec, 'z').Wpl;
+  const sectionClass = classOf(pb.spec, pb.material, [{ N: 0, Qy: 0, Qz: 0, T: 0, Mz: Math.sign(Mmax) || 1, My: 0 }], opt.fy, opt.stiffenerSpacing ?? 0, L);
+  const Weff = sectionClass === 4 ? weffZ(pb.spec, pb.material, opt.fy, Math.sign(Mmax) || 1, opt.stiffenerSpacing ?? 0) : undefined;
+  const wKind: LtbResult['wKind'] = sectionClass <= 2 ? 'W_pl' : Weff && Weff < Wel ? 'W_eff' : 'W_el';
+  const W = wKind === 'W_pl' ? Wpl : wKind === 'W_eff' ? Weff! : Wel;
   const E = pb.material.E * 1e9;
   const G = E / (2 * (1 + pb.material.nu));
   const EIy = E * sec.Iy * 1e-12;
@@ -445,7 +462,7 @@ export function solveLTB(pb: LtbProblem): LtbResult {
   const Mrd = chi * Mel;
   const util = Math.abs(Mmax) / Mrd;
 
-  steps.push(`I_y (trục yếu) = ${fmt(sec.Iy, 0)} mm⁴; I_t = ${fmt(sec.torsion.J, 0)} mm⁴; I_w = ${fmt(lp.Iw, 0)} mm⁶; W = ${fmt(W, 0)} mm³${W < Wel ? ` (tiết diện loại 4: W_eff, W_el = ${fmt(Wel, 0)})` : ''}`);
+  steps.push(`I_y (trục yếu) = ${fmt(sec.Iy, 0)} mm⁴; I_t = ${fmt(sec.torsion.J, 0)} mm⁴; I_w = ${fmt(lp.Iw, 0)} mm⁶; W = ${fmt(W, 0)} mm³ — tiết diện loại ${sectionClass} khi uốn → ${wKind === 'W_pl' ? `W_pl (dẻo; W_el = ${fmt(Wel, 0)}, hệ số hình dạng ${fmt(Wpl / Wel, 3)})` : wKind === 'W_eff' ? `W_eff (W_el = ${fmt(Wel, 0)})` : `W_el (W_pl = ${fmt(Wpl, 0)} không dùng cho loại 3)`}`);
   if (lp.monosym) steps.push(`Mặt cắt đối xứng một trục — hiệu ứng Wagner: β_y = (1/I_z)∫y(y² + z²)dA − 2y_0 = ${fmt(betaY, 2)} mm (y_0 = ${fmt(lp.ySc, 2)} mm); số hạng ½∫(GI_t − M·β_y)φ′²dx — ${betaY * Mmax < 0 ? 'cánh lớn chịu nén làm tăng' : 'cánh nhỏ chịu nén làm giảm'} M_cr`);
   steps.push(`Tải đặt ${opt.loadHeight === 'top' ? 'ở cánh trên' : opt.loadHeight === 'bottom' ? 'ở cánh dưới' : 'tại tâm cắt'}: e = ${fmt(e * 1e3, 1)} mm so với tâm cắt`);
   steps.push(`Ước lượng (mô men đều, gối chạc, chiều dài L): M_cr,0 = π²EI_y/L²·√(I_w/I_y + L²GI_t/(π²EI_y)) = ${fmt(Mcr0 / 1e3, 2)} kN·m`);
@@ -456,7 +473,7 @@ export function solveLTB(pb: LtbProblem): LtbResult {
   steps.push(`Hệ số an toàn ổn định uốn – xoắn (đàn hồi): n = M_cr/|M|max = ${fmt(alpha, 3)}`);
 
   return {
-    applicable: true, Mmax, xMax, Mcr, alpha, Iw: lp.Iw, It: sec.torsion.J, Iweak: sec.Iy, W, lambdaLT: lam, curve, chi, Mrd, Mel,
+    applicable: true, Mmax, xMax, Mcr, alpha, Iw: lp.Iw, It: sec.torsion.J, Iweak: sec.Iy, W, wKind, Wel, Wpl, sectionClass, lambdaLT: lam, curve, chi, Mrd, Mel,
     util, ok: util <= 1, mode, betaY, steps, warnings,
   };
 }
@@ -473,6 +490,9 @@ const chiOf = (alpha: number, lam: number) => {
 export interface OpResult {
   applicable: boolean;
   reason?: string;
+  /** loại tiết diện và có dùng bền dẻo (loại 1, 2) không */
+  sectionClass: number;
+  plastic: boolean;
   /** hệ số tải đến bền mặt cắt (trong mặt phẳng) và vị trí, nội lực tại đó */
   alphaUlt: number;
   xUlt: number;
@@ -496,7 +516,7 @@ export interface OpResult {
 }
 
 const NAop = (reason: string): OpResult => ({
-  applicable: false, reason, alphaUlt: 0, xUlt: 0, NUlt: 0, MUlt: 0, A: 0, W: 0, alphaCrOp: 0, lambdaOp: 0, curveZ: 'c', chiZ: 1, curveLT: 'd', chiLT: 1,
+  applicable: false, reason, sectionClass: 0, plastic: false, alphaUlt: 0, xUlt: 0, NUlt: 0, MUlt: 0, A: 0, W: 0, alphaCrOp: 0, lambdaOp: 0, curveZ: 'c', chiZ: 1, curveLT: 'd', chiLT: 1,
   chiOp: 1, util: 0, ok: true, mode: [], steps: [], warnings: [],
 });
 
@@ -529,19 +549,29 @@ export function checkFrameMemberOp(model: FrameModel, res: FrameResult, memberId
   const restraints = memberRestraints(model, fm, mr.L, opt);
   if (!restraints.length) return NAop('Thanh không có liên kết chống xoắn.');
   const warnings: string[] = [];
-  // α_ult,k (bền mặt cắt, đàn hồi; loại 4 dùng A_eff, W_eff)
+  // α_ult,k: loại 1, 2 — tương tác dẻo N–M chính xác (6.2.9.1); loại 3 — đàn hồi; loại 4 — A_eff, W_eff
   const Wel = sec.Iz / Math.max(sec.yMax, -sec.yMin);
-  const Aeff = aeffIfClass4(mr.sectionSpec, mat, fy, stiffenerSpacing);
-  const WeffP = weffZ(mr.sectionSpec, mat, fy, 1, stiffenerSpacing), WeffN = weffZ(mr.sectionSpec, mat, fy, -1, stiffenerSpacing);
-  let uMax = 0, xUlt = 0, NUlt = 0, MUlt = 0, AUse = sec.A, WUse = Wel;
+  const sectionClass = classOf(mr.sectionSpec, mat, mr.samples.map((q) => ({ N: q.N, Qy: q.Q, Qz: 0, T: 0, Mz: q.M, My: 0 })), fy, stiffenerSpacing, mr.L);
+  const plastic = sectionClass <= 2;
+  const Aeff = sectionClass === 4 ? aeffIfClass4(mr.sectionSpec, mat, fy, stiffenerSpacing) : undefined;
+  const WeffP = sectionClass === 4 ? weffZ(mr.sectionSpec, mat, fy, 1, stiffenerSpacing) : undefined;
+  const WeffN = sectionClass === 4 ? weffZ(mr.sectionSpec, mat, fy, -1, stiffenerSpacing) : undefined;
+  const Wpl = plasticProps(sec, 'z').Wpl;
+  let alphaUlt = Infinity, xUlt = 0, NUlt = 0, MUlt = 0, AUse = sec.A, WUse = plastic ? Wpl : Wel;
   for (const q of mr.samples) {
-    const A = q.N < 0 && Aeff ? Aeff : sec.A;
-    const W = q.M > 0 ? Math.min(Wel, WeffP ?? Wel) : q.M < 0 ? Math.min(Wel, WeffN ?? Wel) : Wel;
-    const u = (Math.abs(q.N) * 1e3) / (A * fy) + (Math.abs(q.M) * 1e6) / (W * fy);
-    if (u > uMax) { uMax = u; xUlt = q.s; NUlt = q.N; MUlt = q.M; AUse = A; WUse = W; }
+    let a: number, A = sec.A, W = Wel;
+    if (plastic) {
+      a = plasticAlpha(sec, q.N, q.M, fy, 'z');
+      W = Wpl;
+    } else {
+      A = q.N < 0 && Aeff ? Aeff : sec.A;
+      W = q.M > 0 ? Math.min(Wel, WeffP ?? Wel) : q.M < 0 ? Math.min(Wel, WeffN ?? Wel) : Wel;
+      const u = (Math.abs(q.N) * 1e3) / (A * fy) + (Math.abs(q.M) * 1e6) / (W * fy);
+      a = u > 0 ? 1 / u : Infinity;
+    }
+    if (a < alphaUlt) { alphaUlt = a; xUlt = q.s; NUlt = q.N; MUlt = q.M; AUse = A; WUse = W; }
   }
-  if (!(uMax > 0)) return NAop('Thanh không có nội lực.');
-  const alphaUlt = 1 / uMax;
+  if (!Number.isFinite(alphaUlt)) return NAop('Thanh không có nội lực.');
   // α_cr,op
   const L = mr.L;
   const Ncrz = (Math.PI ** 2 * EIy) / (L * L);
@@ -567,8 +597,11 @@ export function checkFrameMemberOp(model: FrameModel, res: FrameResult, memberId
   if (lp.closed) warnings.push('Mặt cắt kín: mất ổn định ngoài mặt phẳng chủ yếu là uốn dọc quanh trục yếu.');
   const f = fmt;
   const steps = [
-    `Nội lực trong mặt phẳng: mặt cắt bất lợi x = ${f(xUlt, 3)} m, N = ${f(NUlt, 2)} kN, M = ${f(MUlt, 2)} kN·m; A = ${f(AUse, 0)} mm², W = ${f(WUse, 0)} mm³${AUse < sec.A || WUse < Wel ? ' (tiết diện hữu hiệu)' : ''}`,
-    `α_ult,k = 1/[|N|/(A·f_y) + |M|/(W·f_y)] = 1/(${f((Math.abs(NUlt) * 1e3) / (AUse * fy), 4)} + ${f((Math.abs(MUlt) * 1e6) / (WUse * fy), 4)}) = ${f(alphaUlt, 4)} (f_y = ${fy} MPa)`,
+    `Nội lực trong mặt phẳng: mặt cắt bất lợi x = ${f(xUlt, 3)} m, N = ${f(NUlt, 2)} kN, M = ${f(MUlt, 2)} kN·m; tiết diện loại ${sectionClass}`,
+    plastic
+      ? `Loại ${sectionClass}: bền dẻo — N_pl = A·f_y = ${f((sec.A * fy) / 1e3, 1)} kN, M_pl = W_pl·f_y = ${f((Wpl * fy) / 1e6, 2)} kN·m (W_pl = ${f(Wpl, 0)} mm³, W_el = ${f(Wel, 0)}); ` +
+        `đường tương tác dẻo N–M chính xác của mặt cắt (6.2.9.1): tia (αN, αM) chạm đường cong tại α_ult,k = ${f(alphaUlt, 4)} (f_y = ${fy} MPa)`
+      : `α_ult,k = 1/[|N|/(A·f_y) + |M|/(W·f_y)] = 1/(${f((Math.abs(NUlt) * 1e3) / (AUse * fy), 4)} + ${f((Math.abs(MUlt) * 1e6) / (WUse * fy), 4)}) = ${f(alphaUlt, 4)} (f_y = ${fy} MPa; A = ${f(AUse, 0)} mm², W = ${f(WUse, 0)} mm³${AUse < sec.A || WUse < Wel ? ', tiết diện hữu hiệu' : ', đàn hồi'})`,
     `α_cr,op: bài toán trị riêng ngoài mặt phẳng với N(x) và M(x) thực của thanh — K_G gồm ∫M·u″φ, ½∫N[u′² − 2y₀u′φ′ + r₀²φ′²]${lp.monosym ? ', Wagner ½∫−Mβ_yφ′²' : ''}${opt.loadHeight !== 'sc' ? ', tải ngang lệch tâm cắt' : ''} → α_cr,op = ${f(alphaCrOp, 4)}`,
     `Tham khảo: N_cr,z = π²EI_y/L² = ${f(Ncrz / 1e3, 1)} kN${Pmax > 0 ? ` (α = ${f(Ncrz / (Pmax * 1e3), 3)} nếu chỉ nén)` : ''}${Mabs > 0 ? `; M_cr,0 = ${f(Mcr0 / 1e3, 1)} kN·m` : ''}`,
     `λ̄_op = √(α_ult,k/α_cr,op) = √(${f(alphaUlt, 4)}/${f(alphaCrOp, 4)}) = ${f(lambdaOp, 4)}`,
@@ -576,7 +609,7 @@ export function checkFrameMemberOp(model: FrameModel, res: FrameResult, memberId
     `Điều kiện χ_op·α_ult,k ≥ f_y/[σ]: ${f(chiOp * alphaUlt, 4)} ${util <= 1 ? '≥' : '<'} ${f(fy / allow, 4)} → hệ số sử dụng ${f(util * 100, 1)}%`,
   ];
   return {
-    applicable: true, alphaUlt, xUlt, NUlt, MUlt, A: AUse, W: WUse, alphaCrOp, lambdaOp, curveZ, chiZ, curveLT, chiLT, chiOp,
+    applicable: true, sectionClass, plastic, alphaUlt, xUlt, NUlt, MUlt, A: AUse, W: WUse, alphaCrOp, lambdaOp, curveZ, chiZ, curveLT, chiLT, chiOp,
     util, ok: util <= 1, mode: eg.mode, steps, warnings,
   };
 }

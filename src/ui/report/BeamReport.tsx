@@ -10,6 +10,7 @@ import { equilibriumSteps, sectionSteps } from '../../core/steps';
 import { fmt, maxNormalOnSection, stressAt } from '../../core/stress';
 import { SUPPORT_LABELS, effectiveRestraints, type InternalForces, type Model, densityOf } from '../../core/types';
 import { BeamView } from '../BeamView';
+import { plasticProps } from '../../core/section';
 import { Diagram } from '../Diagram';
 import { SectionView } from '../SectionView';
 import { quickPoints } from '../results';
@@ -23,6 +24,7 @@ export function sectionRows(sec: NonNullable<ReturnType<typeof analyze>['section
     ['Diện tích A', `${fmt(sec.A, 1)} mm²`],
     ['I_z (trục ngang) · I_y (trục đứng)', `${fmt(sec.Iz, 0)} · ${fmt(sec.Iy, 0)} mm⁴`],
     ['W_z · W_y', `${fmt(sec.Iz / Math.max(sec.yMax, -sec.yMin), 0)} · ${fmt(sec.Iy / Math.max(sec.zMax, -sec.zMin), 0)} mm³`],
+    ['W_pl,z · W_pl,y (dẻo)', `${fmt(plasticProps(sec, 'z').Wpl, 0)} · ${fmt(plasticProps(sec, 'y').Wpl, 0)} mm³ (hệ số hình dạng ${fmt(plasticProps(sec, 'z').shape, 3)})`],
     ['Mô men quán tính xoắn I_t', sec.torsion.J ? `${fmt(sec.torsion.J, 0)} mm⁴` : '—'],
     ['Khối lượng', `${fmt(sec.A * 1e-6 * density, 2)} kg/m (ρ = ${fmt(density, 0)} kg/m³)`],
   ];
@@ -87,7 +89,7 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt, stab = DEFAULT_B
   if (ac && varying) conclusions.push({ label: 'Bền tại mặt cắt nén lớn nhất N_max/A', ok: ac.okBase, detail: `σ = ${fmt(ac.sigBase, 2)} MPa so với [σ] = ${allow} MPa` });
   if (ac && axial) conclusions.push({ label: `Ổn định nén đúng tâm (${muTxt}${varying ? '; lực nén đều tương đương N_tđ' : ''})`, ok: axial.okPhi && axial.okN, detail: `σ = ${fmt(axial.sigma, 2)} MPa so với φ[σ] = ${fmt(axial.allowPhi, 2)} MPa (λ = ${fmt(axial.lambdaMax, 1)}); n_ôđ = ${fmt(axial.nActual, 3)} so với [n_ôđ] = ${stab.nReq}` });
   if (bc && bc.planes.some((p) => p.M1)) conclusions.push({ label: 'Nén – uốn đồng thời (bậc hai, giáo trình)', ok: bc.ok2 && bc.okN, detail: `σ_II = ${bc.sigma2 === null ? '—' : fmt(bc.sigma2, 2)} MPa; σ(n·tải) = ${bc.sigmaN === null ? '—' : fmt(bc.sigmaN, 2)} MPa${bc.sigmaInter !== null ? `; công thức tương tác ${fmt((bc.sigmaInter / allow) * 100, 1)}%${bc.okInter ? '' : ' (không đạt — thiên về an toàn)'}` : ''}` });
-  if (ltb?.applicable) conclusions.push({ label: 'Ổn định uốn – xoắn', ok: ltb.ok, detail: `|M| = ${fmt(Math.abs(ltb.Mmax), 2)} kN·m so với χ_LT·W·[σ] = ${fmt(ltb.Mrd, 2)} kN·m (M_cr = ${fmt(ltb.Mcr, 2)})` });
+  if (ltb?.applicable) conclusions.push({ label: 'Ổn định uốn – xoắn', ok: ltb.ok, detail: `|M| = ${fmt(Math.abs(ltb.Mmax), 2)} kN·m so với χ_LT·W·[σ] = ${fmt(ltb.Mrd, 2)} kN·m (M_cr = ${fmt(ltb.Mcr, 2)}; loại ${ltb.sectionClass}, ${ltb.wKind})` });
   if (local?.applicable) conclusions.push({ label: model.section.kind === 'I' && model.section.stiffeners?.length ? 'Ổn định cục bộ (bụng có sườn dọc)' : 'Ổn định cục bộ', ok: local.ok, detail: `Tiết diện loại ${local.sectionClass || '—'}${local.effCheck ? `; tiết diện hữu hiệu ${fmt(local.effCheck.util * 100, 0)}%` : ''}${local.shear?.needCheck ? `; bụng chịu cắt ${fmt(local.shear.util * 100, 0)}%` : ''}${local.tube?.governs ? `; vỏ trụ ${fmt(local.tube.util * 100, 0)}%` : ''}` });
 
   const fs = res.forceSamples, ds = res.dispSamples;
@@ -227,7 +229,7 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt, stab = DEFAULT_B
               <RKV rows={[
                 ['M_cr · n = M_cr/|M|max', `${fmt(ltb.Mcr, 2)} kN·m · ${fmt(ltb.alpha, 3)}`],
                 ['λ̄_LT · đường cong · χ_LT', `${fmt(ltb.lambdaLT, 3)} · ${ltb.curve} · ${fmt(ltb.chi, 4)}`],
-                ['|M|max so với χ_LT·W·[σ]', <Verdict ok={ltb.ok}>{fmt(Math.abs(ltb.Mmax), 2)} {ltb.ok ? '≤' : '>'} {fmt(ltb.Mrd, 2)} kN·m</Verdict>],
+                [`|M|max so với χ_LT·${ltb.wKind}·[σ] (loại ${ltb.sectionClass})`, <Verdict ok={ltb.ok}>{fmt(Math.abs(ltb.Mmax), 2)} {ltb.ok ? '≤' : '>'} {fmt(ltb.Mrd, 2)} kN·m</Verdict>],
               ]} />
               {parts.steps && <RSteps lines={ltb.steps} />}
             </RSub>

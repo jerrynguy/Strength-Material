@@ -188,8 +188,8 @@ export function FrameReport({ model, parts, local: lopt, mu, ltb: ltbOpt = defau
           ))}
           {ltbs.length > 0 && (
             <RSub title={`Ổn định uốn – xoắn các thanh (EN 1993-1-1 §6.3.2.2; tải ngang đặt ${ltbOpt.loadHeight === 'top' ? 'phía +y (cánh trên)' : ltbOpt.loadHeight === 'bottom' ? 'phía −y (cánh dưới)' : 'tại tâm cắt'})`}>
-              <RTable head={['Thanh', 'L (m)', 'Giằng', 'f_y', '|M|max (kN·m)', 'M_cr (kN·m)', 'λ̄_LT · χ_LT', 'χ·W·[σ] (kN·m)', 'Kết luận']}
-                rows={ltbs.map(({ mr, ml, r }) => [mr.name, fmt(mr.L, 3), ltbOpt.braces[mr.id] ?? 0, fmt(ml.fy, 0), fmt(Math.abs(r.Mmax), 2), fmt(r.Mcr, 1),
+              <RTable head={['Thanh', 'L (m)', 'Giằng', 'f_y · W', '|M|max (kN·m)', 'M_cr (kN·m)', 'λ̄_LT · χ_LT', 'χ·W·[σ] (kN·m)', 'Kết luận']}
+                rows={ltbs.map(({ mr, ml, r }) => [mr.name, fmt(mr.L, 3), ltbOpt.braces[mr.id] ?? 0, `${fmt(ml.fy, 0)} · ${r.wKind}`, fmt(Math.abs(r.Mmax), 2), fmt(r.Mcr, 1),
                   `${fmt(r.lambdaLT, 3)} · ${fmt(r.chi, 3)}`, fmt(r.Mrd, 2), <Verdict ok={r.ok}>{fmt(r.util * 100, 0)}%</Verdict>])}
                 note="Hai đầu thanh là gối chạc (chặn ngoài mặt phẳng và xoắn, vênh tự do), đầu tự do của công-xôn không có liên kết; giằng chia đều nhịp. M_cr tính bằng bài toán trị riêng với biểu đồ mô men thực của thanh; mặt cắt đối xứng một trục có kể hiệu ứng Wagner." />
               {parts.steps && ltbs.map(({ mr, r }) => <RSteps key={mr.id} lines={r.steps.map((l) => `${mr.name}: ${l}`)} />)}
@@ -197,10 +197,10 @@ export function FrameReport({ model, parts, local: lopt, mu, ltb: ltbOpt = defau
           )}
           {opApp.length > 0 && (
             <RSub title="Phương pháp tổng quát — nén, uốn và uốn – xoắn ngoài mặt phẳng (EN 1993-1-1 §6.3.4)">
-              <RTable head={['Thanh', 'Giằng', 'α_ult,k', 'α_cr,op', 'λ̄_op', 'χ_z · χ_LT', 'χ_op', 'χ_op·α_ult,k', 'Kết luận']}
-                rows={opApp.map(({ mr, r }) => [mr.name, ltbOpt.braces[mr.id] ?? 0, fmt(r.alphaUlt, 3), fmt(r.alphaCrOp, 3), fmt(r.lambdaOp, 3),
+              <RTable head={['Thanh', 'Giằng', 'Loại · bền', 'α_ult,k', 'α_cr,op', 'λ̄_op', 'χ_z · χ_LT', 'χ_op', 'χ_op·α_ult,k', 'Kết luận']}
+                rows={opApp.map(({ mr, r }) => [mr.name, ltbOpt.braces[mr.id] ?? 0, `${r.sectionClass} · ${r.plastic ? 'dẻo' : r.sectionClass === 4 ? 'hữu hiệu' : 'đàn hồi'}`, fmt(r.alphaUlt, 3), fmt(r.alphaCrOp, 3), fmt(r.lambdaOp, 3),
                   `${fmt(r.chiZ, 3)} · ${fmt(r.chiLT, 3)}`, fmt(r.chiOp, 3), fmt(r.chiOp * r.alphaUlt, 3), <Verdict ok={r.ok}>{fmt(r.util * 100, 0)}%</Verdict>])}
-                note={`α_ult,k = 1/max[|N|/(A·f_y) + |M|/(W·f_y)] với nội lực ${ops.secondOrder ? 'bậc hai P-Δ' : 'bậc nhất'}; α_cr,op từ bài toán trị riêng ngoài mặt phẳng khi tăng đồng thời N và M của thanh; λ̄_op = √(α_ult,k/α_cr,op); χ_op = min(χ_z, χ_LT) (6.3.4(4)a); điều kiện χ_op·α_ult,k ≥ f_y/[σ].`} />
+                note={`α_ult,k: loại 1, 2 theo đường tương tác dẻo N–M chính xác của mặt cắt (6.2.9.1); loại 3 = 1/max[|N|/(A·f_y) + |M|/(W_el·f_y)]; loại 4 dùng A_eff, W_eff; nội lực ${ops.secondOrder ? 'bậc hai P-Δ' : 'bậc nhất'}; α_cr,op từ bài toán trị riêng ngoài mặt phẳng khi tăng đồng thời N và M của thanh; λ̄_op = √(α_ult,k/α_cr,op); χ_op = min(χ_z, χ_LT) (6.3.4(4)a); điều kiện χ_op·α_ult,k ≥ f_y/[σ].`} />
               {parts.steps && opApp.map(({ mr, r }) => <RSteps key={mr.id} lines={r.steps.map((l) => `${mr.name}: ${l}`)} />)}
             </RSub>
           )}

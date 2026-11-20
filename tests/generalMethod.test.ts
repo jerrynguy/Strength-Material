@@ -3,7 +3,7 @@ import { analyzeFrame, type FrameModel } from '../src/core/frame';
 import { fmember, fnode, fnodeLoad, fsupport } from '../src/core/framePresets';
 import { checkFrameMemberLTB, checkFrameMemberOp, type FrameLtbOptions } from '../src/core/ltb';
 import { STEEL } from '../src/core/presets';
-import { computeSection } from '../src/core/section';
+import { computeSection, plasticProps } from '../src/core/section';
 import type { SectionSpec } from '../src/core/types';
 
 const spec: SectionSpec = { kind: 'catalog', family: 'IPE', name: 'IPE 300', rotate: false };
@@ -47,8 +47,10 @@ describe('Phương pháp tổng quát EN 1993-1-1 §6.3.4 (α_ult,k, α_cr,op)',
     const op = checkFrameMemberOp(fr, res, fr.members[0].id, opt, fy);
     const lt = checkFrameMemberLTB(fr, res, fr.members[0].id, opt, fy);
     expect(Math.abs(op.alphaCrOp / lt.alpha - 1)).toBeLessThan(1e-6);
-    const W = sec.Iz / sec.yMax;
-    expect(op.alphaUlt).toBeCloseTo((W * fy) / 50e6, 6);
+    // IPE 300 loại 1 khi uốn → bền dẻo: α_ult,k = W_pl·f_y/M
+    expect(op.sectionClass).toBe(1);
+    expect(op.plastic).toBe(true);
+    expect(op.alphaUlt).toBeCloseTo((plasticProps(sec).Wpl * fy) / 50e6, 6);
   });
   it('nén + mô men đều: (P_y − αP)(P_T − αP) = α²M²/r₀² (gối chạc, đối xứng hai trục)', () => {
     const P = 200, M = 40;

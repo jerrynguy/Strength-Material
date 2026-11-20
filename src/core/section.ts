@@ -645,3 +645,106 @@ function ltbProps(s: SectionSpec, p: SectionProps): LtbProps | undefined {
       return undefined;
   }
 }
+
+// ───────── Đặc trưng dẻo: W_pl và đường tương tác dẻo N–M ─────────
+
+export interface PlasticProps {
+  /** mô men kháng dẻo W_pl = S_trên + S_dưới quanh trục trung hoà dẻo (mm³) */
+  Wpl: number;
+  /** toạ độ trục trung hoà dẻo so với trọng tâm (mm) */
+  pna: number;
+  /** hệ số hình dạng W_pl/W_el */
+  shape: number;
+  /** đường tương tác dẻo cho M > 0 và M < 0: n = N/(A·f_y) (kéo +), w = M_N/f_y (mm³, mô men quanh trọng tâm) */
+  curvePos: { n: number; w: number }[];
+  curveNeg: { n: number; w: number }[];
+}
+
+/** Diện tích và mômen tĩnh (theo toạ độ của trục cắt) của phần mặt cắt có toạ độ ≥ v (above) hoặc ≤ v */
+function halfPart(rings: Ring[], axis: 0 | 1, v: number, above: boolean): { A: number; S: number } {
+  let A = 0, S = 0;
+  for (const r of rings) {
+    if (r.pts.length < 3) continue;
+    const pts = above ? r.pts : r.pts.map(([z, y]) => [-z, -y] as Pt);
+    const c = clipHalf(pts, axis, above ? v : -v);
+    if (c.length < 3) continue;
+    const raw = ringRaw(c);
+    const sg = r.hole ? -1 : 1;
+    A += sg * raw.A;
+    const m = axis === 1 ? raw.Sz : raw.Sy;
+    S += sg * (above ? m : -m);
+  }
+  return { A, S };
+}
+
+const plasticCache = new WeakMap<SectionProps, { z?: PlasticProps; y?: PlasticProps }>();
+
+/**
+ * Đặc trưng dẻo khi uốn quanh trục z (axis 'z': thớ theo y) hoặc trục y (thớ theo z), tính số trên đa giác mặt cắt.
+ * Ứng suất dẻo hoàn toàn ±f_y hai phía trục trung hoà v: N = f_y(A_kéo − A_nén), M = f_y·2·S_phía trên(v) (quanh trọng tâm).
+ */
+export function plasticProps(sec: SectionProps, axis: 'z' | 'y' = 'z'): PlasticProps {
+  const cached = plasticCache.get(sec)?.[axis];
+  if (cached) return cached;
+  const k: 0 | 1 = axis === 'z' ? 1 : 0;
+  const c = sec.centroid[k];
+  const lo = c + (axis === 'z' ? sec.yMin : sec.zMin), hi = c + (axis === 'z' ? sec.yMax : sec.zMax);
+  const A = sec.A;
+  /** tại trục v: phần trên (A, S quanh trọng tâm) */
+  const at = (v: number) => {
+    const up = halfPart(sec.rings, k, v, true);
+    return { Aup: up.A, w: 2 * (up.S - c * up.A) };
+  };
+  /** tìm v sao cho A_trên = target */
+  const vFor = (target: number) => {
+    let a = lo, b = hi;
+    for (let i = 0; i < 60; i++) {
+      const m = 0.5 * (a + b);
+      if (at(m).Aup > target) a = m; else b = m;
+    }
+    return 0.5 * (a + b);
+  };
+  const vp = vFor(A / 2);
+  const Wpl = at(vp).w;
+  const K = 40;
+  const curvePos: { n: number; w: number }[] = [];
+  const curveNeg: { n: number; w: number }[] = [];
+  for (let i = 0; i <= K; i++) {
+    // M > 0 nén phía trên: N = f_y(A_dưới − A_trên) → n = 1 − 2·A_trên/A
+    const n = -1 + (2 * i) / K;
+    const Aup = ((1 - n) / 2) * A;
+    const w = i === 0 || i === K ? 0 : at(vFor(Aup)).w;
+    curvePos.push({ n, w });
+    // M < 0 nén phía dưới: n = 2·A_trên/A − 1
+    const Aup2 = ((1 + n) / 2) * A;
+    const w2 = i === 0 || i === K ? 0 : at(vFor(Aup2)).w;
+    curveNeg.push({ n, w: w2 });
+  }
+  const Wel = axis === 'z' ? sec.Iz / Math.max(sec.yMax, -sec.yMin) : sec.Iy / Math.max(sec.zMax, -sec.zMin);
+  const r: PlasticProps = { Wpl, pna: vp - c, shape: Wpl / Wel, curvePos, curveNeg };
+  plasticCache.set(sec, { ...plasticCache.get(sec), [axis]: r });
+  return r;
+}
+
+/**
+ * Hệ số tải đến bền dẻo của mặt cắt với cặp nội lực (N kN kéo +, M kN·m): giao của tia (N, M)·α với đường tương tác dẻo
+ * (EN 1993-1-1 6.2.9.1, tính chính xác cho mặt cắt bất kỳ). Trả về Infinity nếu N = M = 0.
+ */
+export function plasticAlpha(sec: SectionProps, N: number, M: number, fy: number, axis: 'z' | 'y' = 'z'): number {
+  const pp = plasticProps(sec, axis);
+  const dn = (N * 1e3) / (sec.A * fy), dw = (Math.abs(M) * 1e6) / fy;
+  if (!dn && !dw) return Infinity;
+  const curve = M >= 0 ? pp.curvePos : pp.curveNeg;
+  let best = Infinity;
+  for (let i = 0; i + 1 < curve.length; i++) {
+    const P = curve[i], Q = curve[i + 1];
+    const ex = Q.n - P.n, ey = Q.w - P.w;
+    // t·d = P + u·e
+    const det = dn * -ey - dw * -ex;
+    if (Math.abs(det) < 1e-300) continue;
+    const t = (P.n * -ey - P.w * -ex) / det;
+    const u = (dn * P.w - dw * P.n) / det;
+    if (t > 0 && u >= -1e-12 && u <= 1 + 1e-12) best = Math.min(best, t);
+  }
+  return best;
+}
