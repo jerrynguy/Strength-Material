@@ -135,6 +135,16 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
 - Bài mẫu “Dầm trên các gối đàn hồi (lò xo)”.
 - **Kiểm chứng:** công-xôn tựa lò xo R = P·k/(k + 3EI/L³); dầm đơn giản có lò xo giữa nhịp R = (5qL⁴/384EI)/(1/k + L³/48EI); khớp + lò xo xoay M_A = θ₀/(L/3EI + 1/k) → qL²/8 khi k → ∞; lò xo dọc trục và xoắn phân phối theo độ cứng; cột khớp hai đầu có lò xo ngang giữa cột rất cứng N_th = 4π²EI/L².
 
+## Tâm cắt lệch theo z (thép U, thép góc) — mất ổn định xoắn và uốn – xoắn
+
+- **Tâm cắt:** thép U nằm phía ngoài bụng, cách đường tim bụng e = 3b²t_f/(6bt_f + ht_w); thép góc tại giao điểm đường tim hai cánh. Lưu cả y₀ và z₀ so với trọng tâm.
+- **Thanh chịu nén đúng tâm (mọi chế độ dùng hệ số φ):** thêm kiểm tra mất ổn định xoắn / uốn – xoắn cho mặt cắt hở, theo hệ trục quán tính chính:
+  (N₁ − P)(N₂ − P)·i₀²(N_T − P) − (N₁ − P)·P²c₁² − (N₂ − P)·P²c₂² = 0, i₀² = (I₁ + I₂)/A + c₁² + c₂², N_T = (GI_t + π²EI_w/(μ_T L)²)/i₀².
+  Nghiệm nhỏ nhất N_TF đổi thành độ mảnh tương đương λ_TF = π√(EA/N_TF) và đưa vào bảng các phương; nếu lớn hơn λ uốn thì quyết định φ. μ_T·L lấy giá trị lớn hơn của hai phương (an toàn).
+- **Phương pháp tổng quát (thanh khung):** r₀² trong số hạng lực dọc có thêm z₀² (chuyển vị trong mặt phẳng giữ bằng 0 — α_cr,op chỉ xét ngoài mặt phẳng).
+- **Uốn – xoắn của thép U uốn quanh trục mạnh:** U đối xứng qua trục mạnh nên β_y = 0, M_cr không đổi; tải đặt qua bụng (không qua tâm cắt) gây xoắn — là vấn đề bền, không phải ổn định.
+- **Kiểm chứng:** thép góc đều cạnh và thép U khớp công thức cổ điển N_TF = [(N + N_T) − √((N + N_T)² − 4βN·N_T)]/(2β), β = 1 − (c/i₀)²; mặt cắt đối xứng hai trục cho min(N₁, N₂, N_T); thép góc ngắn do uốn – xoắn quyết định, thép góc dài do uốn quanh trục yếu.
+
 ## Bền dẻo: W_pl cho tiết diện loại 1, 2
 
 - **W_pl và trục trung hoà dẻo** tính số trên đa giác thật của mặt cắt (cả lượn, lỗ, sườn): tìm trục chia đôi diện tích bằng chia đôi khoảng, rồi W_pl = S_trên + S_dưới. Hiện ở bảng đặc trưng mặt cắt và báo cáo (W_pl,z, W_pl,y, hệ số hình dạng W_pl/W_el).

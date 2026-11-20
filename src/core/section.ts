@@ -72,6 +72,8 @@ export interface LtbProps {
   Iw: number;
   /** Toạ độ y của tâm cắt so với trọng tâm (mm) */
   ySc: number;
+  /** Toạ độ z của tâm cắt so với trọng tâm (mm) — khác 0 với thép chữ U (phía ngoài bụng), thép góc (góc giao hai cánh) */
+  zSc?: number;
   /** Mặt cắt chỉ đối xứng một trục (bỏ qua hiệu ứng Wagner) */
   monosym: boolean;
   /** Mặt cắt kín (hộp, ống): hầu như không mất ổn định uốn – xoắn */
@@ -600,6 +602,7 @@ export const SECTION_DEFAULTS: Record<SectionSpec['kind'], SectionSpec> = {
 /** Hằng số quạt và tâm cắt (công thức thành mỏng). */
 function ltbProps(s: SectionSpec, p: SectionProps): LtbProps | undefined {
   const yc = p.centroid[1];
+  const zc = p.centroid[0];
   const H = p.yMax - p.yMin;
   switch (s.kind) {
     case 'rect':
@@ -621,10 +624,13 @@ function ltbProps(s: SectionSpec, p: SectionProps): LtbProps | undefined {
     case 'U': {
       const b = s.b - s.tw / 2, h = s.h - s.tf;
       const Iw = ((s.tf * b ** 3 * h * h) / 12) * ((3 * b * s.tf + 2 * h * s.tw) / (6 * b * s.tf + h * s.tw));
-      return { Iw, ySc: 0, monosym: false, closed: false, rolled: false, hOverB: s.h / s.b };
+      // tâm cắt nằm phía ngoài bụng, cách đường tim bụng e = 3b²t_f/(6b·t_f + h·t_w)
+      const e = (3 * b * b * s.tf) / (6 * b * s.tf + h * s.tw);
+      return { Iw, ySc: 0, zSc: s.tw / 2 - e - zc, monosym: false, closed: false, rolled: false, hOverB: s.h / s.b };
     }
     case 'L':
-      return { Iw: 0, ySc: s.t / 2 - yc, monosym: true, closed: false, rolled: false, hOverB: s.h / s.b };
+      // tâm cắt tại giao điểm đường tim hai cánh
+      return { Iw: 0, ySc: s.t / 2 - yc, zSc: s.t / 2 - zc, monosym: true, closed: false, rolled: false, hOverB: s.h / s.b };
     case 'box': case 'tube': case 'circle':
       return { Iw: 0, ySc: 0, monosym: false, closed: true, rolled: false, hOverB: 1 };
     case 'catalog': {
@@ -636,9 +642,10 @@ function ltbProps(s: SectionSpec, p: SectionProps): LtbProps | undefined {
       if (g.type === 'U') {
         const b = g.b - g.tw / 2, h = g.h - g.tf;
         const Iw = ((g.tf * b ** 3 * h * h) / 12) * ((3 * b * g.tf + 2 * h * g.tw) / (6 * b * g.tf + h * g.tw));
-        return { Iw, ySc: 0, monosym: false, closed: false, rolled: true, hOverB: g.h / g.b };
+        const e = (3 * b * b * g.tf) / (6 * b * g.tf + h * g.tw);
+        return { Iw, ySc: 0, zSc: g.tw / 2 - e - zc, monosym: false, closed: false, rolled: true, hOverB: g.h / g.b };
       }
-      if (g.type === 'L') return { Iw: 0, ySc: g.t / 2 - yc, monosym: true, closed: false, rolled: true, hOverB: 1 };
+      if (g.type === 'L') return { Iw: 0, ySc: g.t / 2 - yc, zSc: g.t / 2 - zc, monosym: true, closed: false, rolled: true, hOverB: 1 };
       return { Iw: 0, ySc: 0, monosym: false, closed: true, rolled: true, hOverB: 1 };
     }
     default:

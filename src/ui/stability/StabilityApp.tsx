@@ -184,6 +184,12 @@ function ResultCard({ r, model, sw, sec }: { r: StabilityResult; model: StabMode
       </table>
       <table className="kv wide">
         <tbody>
+          {r.torsional && (
+            <tr><th>Xoắn / uốn – xoắn (mặt cắt hở)</th><td className={r.governing.torsional ? 'bad' : undefined}>
+              N_T = {fmt(r.torsional.NT, 1)} kN; {r.torsional.coupled ? `tâm cắt lệch (c = ${fmt(Math.hypot(r.torsional.c1, r.torsional.c2), 1)} mm) → N_TF = ` : 'N_cr = '}{fmt(r.torsional.NTF, 1)} kN,
+              λ_TF = π√(EA/N_TF) = {fmt(r.torsional.lambda, 2)}{r.governing.torsional ? ' — quyết định' : ' — không quyết định'}
+            </td></tr>
+          )}
           <tr><th>Độ mảnh λ_max</th><td><b>{fmt(r.lambdaMax, 2)}</b> (λ₀ = {model.params.lambda0}{lambda1(model.params) ? `, λ₁ = ${fmt(lambda1(model.params), 1)}` : ''})</td></tr>
           <tr><th>Ứng suất tới hạn σ_th</th><td>{fmt(r.sigmaCr, 2)} MPa</td></tr>
           <tr><th>Lực tới hạn P_th</th><td>{fmt(r.Pcr, 2)} kN</td></tr>

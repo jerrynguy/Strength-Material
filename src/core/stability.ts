@@ -93,6 +93,8 @@ export interface PlaneResult {
   I: number; // mm⁴
   i: number; // mm
   lambda: number;
+  /** dạng xoắn / uốn – xoắn (λ tương đương; i = μL/λ) */
+  torsional?: boolean;
 }
 
 export interface StabilityInput {
@@ -111,6 +113,64 @@ export interface StabilityInput {
   nRequired: number;
   /** Diện tích hữu hiệu (tiết diện loại 4) — dùng thay A khi tính σ = N/A */
   Aeff?: number;
+  /** Hệ số Poisson (để tính G cho mất ổn định xoắn); mặc định 0.3 */
+  nu?: number;
+}
+
+/**
+ * Mất ổn định xoắn và uốn – xoắn của thanh nén đúng tâm (mặt cắt hở), theo hệ trục quán tính chính u₁, u₂:
+ *   (N₁ − P)(N₂ − P)·i₀²(N_T − P) − (N₁ − P)·P²·c₁² − (N₂ − P)·P²·c₂² = 0
+ * N_k = π²E·I_k/(μL)² — uốn theo phương chính k; c_k — toạ độ tâm cắt theo phương k (so với trọng tâm);
+ * i₀² = (I₁ + I₂)/A + c₁² + c₂²; N_T = (G·I_t + π²E·I_w/(μ_T·L)²)/i₀².
+ * Nghiệm nhỏ nhất nằm trong (0, min(N₁, N₂, N_T)] — tìm bằng chia đôi. Độ mảnh tương đương λ_TF = π√(E·A/N_TF).
+ */
+export interface TorsionalBuckling {
+  N1: number; N2: number; NT: number; NTF: number; // kN
+  c1: number; c2: number; i0: number; // mm
+  I1: number; I2: number;
+  LT: number; // m (μ_T·L)
+  lambda: number;
+  coupled: boolean;
+  steps: string[];
+}
+
+export function torsionalBuckling(sec: SectionProps, Eg: number, nu: number, len: (dir: [number, number]) => number, LT: number): TorsionalBuckling | null {
+  const lp = sec.ltb;
+  if (!lp || lp.closed) return null;
+  const E = Eg * 1e3, G = E / (2 * (1 + nu));
+  const J = sec.torsion.J;
+  if (!(J > 0)) return null;
+  // ma trận mô men quán tính trong hệ (z, y): S = [[I_y, I_yz], [I_yz, I_z]] (I_y = ∫z², I_z = ∫y²)
+  const a = sec.Iy, d = sec.Iz, b = sec.Iyz;
+  const avg = (a + d) / 2, R = Math.hypot((a - d) / 2, b);
+  const I1 = avg + R, I2 = avg - R;
+  const th = Math.abs(b) < 1e-12 * (a + d) ? (a >= d ? 0 : Math.PI / 2) : 0.5 * Math.atan2(2 * b, a - d);
+  const d1: [number, number] = [Math.cos(th), Math.sin(th)]; // (z, y)
+  const d2: [number, number] = [-Math.sin(th), Math.cos(th)];
+  const z0 = lp.zSc ?? 0, y0 = lp.ySc;
+  const c1 = z0 * d1[0] + y0 * d1[1], c2 = z0 * d2[0] + y0 * d2[1];
+  const i02 = (I1 + I2) / sec.A + c1 * c1 + c2 * c2;
+  const L1 = len(d1) * 1e3, L2 = len(d2) * 1e3, LTmm = LT * 1e3;
+  const N1 = (Math.PI ** 2 * E * I1) / (L1 * L1), N2 = (Math.PI ** 2 * E * I2) / (L2 * L2);
+  const NT = (G * J + (Math.PI ** 2 * E * lp.Iw) / (LTmm * LTmm)) / i02;
+  const fP = (P: number) => (N1 - P) * (N2 - P) * i02 * (NT - P) - (N1 - P) * P * P * c1 * c1 - (N2 - P) * P * P * c2 * c2;
+  // f(0) > 0, f(min) ≤ 0 → đúng một nghiệm trong (0, min] (các nghiệm xen kẽ N₁, N₂, N_T)
+  let lo = 0, hi = Math.min(N1, N2, NT);
+  if (fP(hi) <= 0) for (let k = 0; k < 200; k++) { const m = 0.5 * (lo + hi); if (fP(m) > 0) lo = m; else hi = m; }
+  const NTF = hi;
+  const lambda = Math.PI * Math.sqrt((E * sec.A) / NTF);
+  const coupled = Math.abs(c1) > 1e-6 || Math.abs(c2) > 1e-6;
+  const g = (v: number, k = 1) => f(v / 1e3, k);
+  const steps = [
+    `Mất ổn định xoắn / uốn – xoắn: tâm cắt lệch trọng tâm y₀ = ${f(y0, 2)} mm, z₀ = ${f(z0, 2)} mm${Math.abs(th) > 1e-9 ? `; trục chính lệch ${f((th * 180) / Math.PI, 2)}° (I₁ = ${f(I1, 0)}, I₂ = ${f(I2, 0)} mm⁴; c₁ = ${f(c1, 2)}, c₂ = ${f(c2, 2)} mm)` : ''}`,
+    `i₀² = (I₁ + I₂)/A + c₁² + c₂² = ${f(i02, 1)} mm²; I_t = ${f(J, 0)} mm⁴; I_w = ${f(lp.Iw, 0)} mm⁶; G = ${f(G, 0)} MPa`,
+    `N₁ = π²EI₁/(μL)² = ${g(N1)} kN; N₂ = ${g(N2)} kN; N_T = (GI_t + π²EI_w/(μ_T L)²)/i₀² = ${g(NT)} kN (μ_T L = ${f(LT, 3)} m)`,
+    coupled
+      ? `Phương trình (N₁ − P)(N₂ − P)i₀²(N_T − P) − (N₁ − P)P²c₁² − (N₂ − P)P²c₂² = 0 → N_TF = ${g(NTF)} kN (nhỏ hơn min(N₁, N₂, N_T) do tâm cắt lệch)`
+      : `Tâm cắt trùng trọng tâm → không ghép: N_cr = min(N₁, N₂, N_T) = ${g(NTF)} kN`,
+    `Độ mảnh tương đương λ_TF = π√(EA/N_TF) = π√(${f(E, 0)}·${f(sec.A, 1)}/${f(NTF, 0)}) = ${f(lambda, 2)}`,
+  ];
+  return { N1: N1 / 1e3, N2: N2 / 1e3, NT: NT / 1e3, NTF: NTF / 1e3, c1, c2, i0: Math.sqrt(i02), I1, I2, LT, lambda, coupled, steps };
 }
 
 export interface StabilityResult {
@@ -118,6 +178,8 @@ export interface StabilityResult {
   governing: PlaneResult;
   lambdaMax: number;
   principal: boolean;
+  /** kết quả mất ổn định xoắn / uốn – xoắn (mặt cắt hở) */
+  torsional?: TorsionalBuckling;
   regime: Regime;
   sigmaCr: number; // MPa
   Pcr: number; // kN
@@ -165,6 +227,21 @@ export function checkStability(sec: SectionProps, inp: StabilityInput): Stabilit
     p.lambda = (p.mu * p.L * 1e3) / p.i;
     steps.push(`${p.plane}: i = √(I/A) = √(${f(p.I, 0)}/${f(A, 1)}) = ${f(p.i, 2)} mm; λ = μL/i = ${p.mu}·${f(p.L * 1e3, 1)}/${f(p.i, 2)} = ${f(p.lambda, 2)}`);
   }
+  // Xoắn / uốn – xoắn (mặt cắt hở): chiều dài theo phương chính lấy theo phương gần y (trong mặt phẳng) hay z; μ_T·L lấy lớn hơn (an toàn)
+  const LzE = inp.muZ * inp.Lz, LyE = inp.muY * inp.Ly;
+  const tb = torsionalBuckling(sec, inp.E, inp.nu ?? 0.3, (dir) => (Math.abs(dir[1]) >= Math.abs(dir[0]) ? LzE : LyE), Math.max(LzE, LyE));
+  let torsional: TorsionalBuckling | undefined;
+  if (tb) {
+    const flexMax = Math.max(...planes.map((p) => p.lambda));
+    torsional = tb;
+    if (tb.lambda > flexMax * (1 + 1e-9)) {
+      planes.push({ plane: tb.coupled ? 'uốn – xoắn (tâm cắt lệch)' : 'xoắn', mu: Math.max(inp.muZ, inp.muY), L: Math.max(inp.Lz, inp.Ly), I: NaN, i: (Math.max(LzE, LyE) * 1e3) / tb.lambda, lambda: tb.lambda, torsional: true });
+      steps.push(...tb.steps);
+      steps.push(`λ_TF = ${f(tb.lambda, 2)} > λ uốn lớn nhất = ${f(flexMax, 2)} → dạng ${tb.coupled ? 'uốn – xoắn' : 'xoắn'} quyết định`);
+    } else {
+      steps.push(`Kiểm tra xoắn / uốn – xoắn: N_TF = ${f(tb.NTF, 1)} kN, λ_TF = ${f(tb.lambda, 2)} ≤ λ uốn lớn nhất = ${f(flexMax, 2)} → không quyết định`);
+    }
+  }
   const governing = planes.reduce((a, b) => (b.lambda > a.lambda ? b : a));
   const lambdaMax = governing.lambda;
   const { sigma: sigmaCr, regime } = criticalStress(inp.params, E, lambdaMax);
@@ -189,7 +266,7 @@ export function checkStability(sec: SectionProps, inp: StabilityInput): Stabilit
     steps.push(`σ = N/${Ause < A ? 'A_eff' : 'A'} = ${f(inp.N * 1e3, 0)}/${f(Ause, 1)} = ${f(sigma, 2)} MPa ${sigma <= allowPhi ? '≤' : '>'} φ[σ] = ${f(phi, 4)}·${inp.allowable} = ${f(allowPhi, 2)} MPa`);
   }
   return {
-    planes, governing, lambdaMax, principal, regime, sigmaCr, Pcr, nActual, phi, sigma, allowPhi,
+    planes, governing, lambdaMax, principal, regime, sigmaCr, Pcr, nActual, phi, sigma, allowPhi, torsional,
     okPhi: phi !== null && sigma <= allowPhi + 1e-9,
     okN: nActual >= inp.nRequired,
     Nallow: (allowPhi * Ause) / 1e3,

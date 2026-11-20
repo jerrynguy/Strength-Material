@@ -59,6 +59,7 @@ export function StabReport({ model, parts, local: lopt }: { model: StabModel; pa
         <RTable head={['Phương', 'μ', 'L (m)', 'I (mm⁴)', 'i (mm)', 'λ']}
           rows={r.planes.map((p) => [p.plane, p.mu, fmt(p.L, 3), fmt(p.I, 0), fmt(p.i, 2), fmt(p.lambda, 2)])} />
         <RKV rows={[
+          ...(r.torsional ? [['Xoắn / uốn – xoắn', `N_T = ${fmt(r.torsional.NT, 1)} kN; N_TF = ${fmt(r.torsional.NTF, 1)} kN${r.torsional.coupled ? ` (tâm cắt lệch c = ${fmt(Math.hypot(r.torsional.c1, r.torsional.c2), 1)} mm)` : ''}; λ_TF = ${fmt(r.torsional.lambda, 2)}${r.governing.torsional ? ' — quyết định' : ''}`] as [string, string]] : []),
           ['λ_max', fmt(r.lambdaMax, 2)],
           ['σ_th · P_th', `${fmt(r.sigmaCr, 2)} MPa · ${fmt(r.Pcr, 2)} kN`],
           ['n_ôđ = P_th/N', <Verdict ok={r.okN}>{fmt(r.nActual, 3)}</Verdict>],

@@ -285,7 +285,8 @@ function outOfPlaneEigen(pb: LtbProblem, alpha0: number, checkLowest: boolean): 
   const EIw = E * lp.Iw * 1e-18;
   const beta = lp.monosym ? wagnerBeta(sec, lp) / 1e3 : 0; // m
   const y0 = lp.ySc / 1e3; // m
-  const r02 = ((sec.Iy + sec.Iz) / sec.A + lp.ySc ** 2) * 1e-6; // m²
+  // r₀² có kể cả độ lệch tâm cắt theo z (thép U, góc); chuyển vị trong mặt phẳng v giữ = 0 (α_cr,op chỉ xét ngoài mặt phẳng)
+  const r02 = ((sec.Iy + sec.Iz) / sec.A + lp.ySc ** 2 + (lp.zSc ?? 0) ** 2) * 1e-6; // m²
   // Lưới
   const tol = 1e-9 * Math.max(1, L);
   const keys = new Set<number>([0, L, ...pb.keyPoints]);
