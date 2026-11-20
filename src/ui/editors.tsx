@@ -3,7 +3,7 @@ import { dist, force, moment, support, uid } from '../core/presets';
 import { SECTION_DEFAULTS, SECTION_LABELS, computeSection, validateSection, plasticProps } from '../core/section';
 import { fmt } from '../core/stress';
 import {
-  SUPPORT_DEFAULTS, SUPPORT_LABELS, type Load, type Model, type Restraints, type SectionSpec, type Support, type SupportKind, alphaTOf, densityOf, selfWeightPerM,
+  SUPPORT_DEFAULTS, SUPPORT_LABELS, effectiveRestraints, type Load, type Model, type Restraints, type SectionSpec, type Support, type SupportKind, alphaTOf, densityOf, selfWeightPerM,
 } from '../core/types';
 import { Card, NumField, Select, TextField } from './fields';
 import { SectionView } from './SectionView';
@@ -36,7 +36,7 @@ export function GeneralEditor({ model, set }: { model: Model; set: Setter }) {
         <TextField label="Tên bài toán" value={model.title} onChange={(v) => set((s) => ({ ...s, title: v }))} width={260} />
         <NumField label="Chiều dài L" unit="m" value={model.length} onChange={(v) => set((s) => ({ ...s, length: v }))} />
       </div>
-      <MaterialRow m={m} setMat={setMat} />
+      <MaterialRow thermal m={m} setMat={setMat} />
     </Card>
   );
 }
@@ -182,6 +182,25 @@ export function SupportsEditor({ model, set }: { model: Model; set: Setter }) {
               ))}
             </div>
           )}
+          {(() => {
+            const r = effectiveRestraints(s);
+            const st = s.settle ?? {};
+            const set1 = (k: keyof NonNullable<Support['settle']>, v: number) => {
+              const n = { ...st, [k]: v || undefined };
+              upd(s.id, { settle: Object.values(n).some((x) => x) ? n : undefined });
+            };
+            const fields: [keyof NonNullable<Support['settle']>, string, string, boolean][] = [
+              ['dy', 'Δy', 'mm', r.uy], ['dx', 'Δx', 'mm', r.ux], ['dz', 'Δz', 'mm', r.uz], ['rz', 'φ_z (↺ +)', '‰ rad', r.rz], ['ry', 'φ_y', '‰ rad', r.ry],
+            ];
+            const shown = fields.filter((f) => f[3]);
+            if (!shown.length) return null;
+            return (
+              <div className="row">
+                <span className="muted">Lún gối:</span>
+                {shown.map(([k, l, u]) => <NumField key={k} label={l} unit={u} width={88} value={st[k] ?? 0} onChange={(v) => set1(k, v)} title={k === 'dy' ? 'Âm = lún xuống' : undefined} />)}
+              </div>
+            );
+          })()}
         </div>
       ))}
       {model.hinges.map((h) => (
@@ -199,6 +218,8 @@ export function SupportsEditor({ model, set }: { model: Model; set: Setter }) {
       <p className="hint">
         Ngàm chặn mọi chuyển vị và góc xoay. Gối cố định chặn u<sub>x</sub>, u<sub>y</sub>, u<sub>z</sub>. Gối di động chặn u<sub>y</sub>, u<sub>z</sub>.
         Chọn <b>Tuỳ chỉnh</b> để tự chọn từng liên kết (ví dụ ổ đỡ chặn xoắn θ<sub>x</sub>).
+        Lún gối: chuyển vị cưỡng bức theo các phương gối chặn (mm, góc tính bằng phần nghìn radian); dầm tĩnh định lún gối chỉ gây chuyển vị,
+        dầm siêu tĩnh phát sinh nội lực.
       </p>
     </Card>
   );
@@ -246,6 +267,7 @@ export function LoadsEditor({ model, set }: { model: Model; set: Setter }) {
           <button onClick={() => set((m) => ({ ...m, loads: [...m.loads, force(nm('P'), m.length / 2, -10)] }))}>+ Lực tập trung</button>
           <button onClick={() => set((m) => ({ ...m, loads: [...m.loads, moment(nm('M'), m.length / 2, 10)] }))}>+ Mô men</button>
           <button onClick={() => set((m) => ({ ...m, loads: [...m.loads, dist(nm('q'), 0, m.length, -10)] }))}>+ Lực phân bố</button>
+          <button onClick={() => set((m) => ({ ...m, loads: [...m.loads, { id: uid('t'), type: 'temp', name: nm('t'), x1: 0, x2: m.length, Ttop: 30, Tbot: 30 }] }))}>+ Nhiệt độ</button>
         </>
       }
     >
@@ -253,9 +275,9 @@ export function LoadsEditor({ model, set }: { model: Model; set: Setter }) {
       {model.loads.map((ld) => (
         <div key={ld.id} className="item">
           <div className="row">
-            <span className="tag">{ld.type === 'force' ? 'Lực' : ld.type === 'moment' ? 'Mô men' : 'Phân bố'}</span>
+            <span className="tag">{ld.type === 'force' ? 'Lực' : ld.type === 'moment' ? 'Mô men' : ld.type === 'temp' ? 'Nhiệt độ' : 'Phân bố'}</span>
             <TextField label="Tên" value={ld.name} onChange={(v) => upd(ld.id, { name: v })} width={60} />
-            {ld.type !== 'distributed' ? (
+            {ld.type === 'force' || ld.type === 'moment' ? (
               <NumField label="x" unit="m" value={ld.x} onChange={(v) => upd(ld.id, { x: v })} />
             ) : (
               <>
@@ -274,6 +296,24 @@ export function LoadsEditor({ model, set }: { model: Model; set: Setter }) {
               <NumField label="My" unit="kN·m" value={ld.My} onChange={(v) => upd(ld.id, { My: v })} />
             </div>
           )}
+          {ld.type === 'temp' && (() => {
+            const sec = validateSection(model.section) ? null : computeSection(model.section);
+            const at = alphaTOf(model.material);
+            const hh = sec ? (sec.yMax - sec.yMin) / 1e3 : 0;
+            const Tc = sec ? ld.Tbot + ((ld.Ttop - ld.Tbot) * (-sec.yMin / 1e3)) / hh : (ld.Ttop + ld.Tbot) / 2;
+            return (
+              <>
+                <div className="row">
+                  <NumField label="ΔT thớ trên (+y)" unit="°C" value={ld.Ttop} onChange={(v) => upd(ld.id, { Ttop: v })} />
+                  <NumField label="ΔT thớ dưới" unit="°C" value={ld.Tbot} onChange={(v) => upd(ld.id, { Tbot: v })} />
+                </div>
+                <p className="hint">
+                  α_t = {at.toExponential(2)} 1/°C; h = {fmt(hh * 1e3, 1)} mm. Tại trọng tâm ΔT = {fmt(Tc, 2)} °C → ε₀ = {(at * Tc).toExponential(3)};
+                  κ₀ = α_t(T_dưới − T_trên)/h = {hh ? ((at * (ld.Tbot - ld.Ttop)) / hh).toExponential(3) : '—'} 1/m. Thanh tĩnh định giãn/cong tự do; siêu tĩnh phát sinh nội lực.
+                </p>
+              </>
+            );
+          })()}
           {ld.type === 'distributed' && (
             <div className="row">
               <Select label="Phương" value={ld.dir} onChange={(v) => upd(ld.id, { dir: v })}

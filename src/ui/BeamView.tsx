@@ -48,6 +48,19 @@ export function BeamView({ model, cursorX }: { model: Model; cursorX?: number | 
     }
   });
 
+  // Nhiệt độ: dải tô màu trên thanh + nhãn
+  model.loads.forEach((ld, i) => {
+    if (ld.type !== 'temp') return;
+    const x1 = X(ld.x1), x2 = X(ld.x2);
+    const yy = by - 84 - 14 * (i % 2);
+    els.push(<line key={ld.id} x1={x1} y1={yy} x2={x2} y2={yy} className="load dashed" />);
+    els.push(
+      <text key={ld.id + 't'} x={(x1 + x2) / 2} y={yy - 4} className="lbl load-lbl" textAnchor="middle">
+        {ld.Ttop === ld.Tbot ? `${ld.name}: ΔT = ${fmt(ld.Ttop, 1)} °C` : `${ld.name}: ΔT trên ${fmt(ld.Ttop, 1)} / dưới ${fmt(ld.Tbot, 1)} °C`}
+      </text>,
+    );
+  });
+
   // Thanh
   els.push(<rect key="beam" x={X(0)} y={by - 6} width={X(L) - X(0)} height={12} className="beam" />);
 
@@ -79,6 +92,12 @@ export function BeamView({ model, cursorX }: { model: Model; cursorX?: number | 
       g.push(<text key="l" x={x} y={by + 44} className="lbl tiny" textAnchor="middle">{lab || '∅'}</text>);
     }
     g.push(<text key="n" x={x} y={by + 62} className="lbl strong" textAnchor="middle">{s.name}</text>);
+    const st = s.settle;
+    if (st && Object.values(st).some((v) => v)) {
+      const parts = [st.dx && `Δx ${fmt(st.dx, 1)}`, st.dy && `Δy ${fmt(st.dy, 1)}`, st.dz && `Δz ${fmt(st.dz, 1)}`].filter(Boolean).join(', ');
+      const rot = [st.rz && `φz ${fmt(st.rz, 2)}‰`, st.ry && `φy ${fmt(st.ry, 2)}‰`].filter(Boolean).join(', ');
+      g.push(<text key="st" x={x} y={by + 76} className="lbl tiny load-lbl" textAnchor="middle">lún {parts}{parts ? ' mm' : ''}{rot ? ` ${rot}` : ''}</text>);
+    }
     els.push(<g key={s.id}>{g}</g>);
   });
 
@@ -141,7 +160,7 @@ export function BeamView({ model, cursorX }: { model: Model; cursorX?: number | 
 
   // Kích thước
   const pts = [...new Set([0, L, ...model.supports.map((s) => s.x), ...model.hinges.map((h) => h.x),
-    ...model.loads.flatMap((l) => (l.type === 'distributed' ? [l.x1, l.x2] : [l.x]))]
+    ...model.loads.flatMap((l) => (l.type === 'distributed' || l.type === 'temp' ? [l.x1, l.x2] : [l.x]))]
     .filter((x) => x >= 0 && x <= L).map((x) => Math.round(x * 1e6) / 1e6))].sort((a, b) => a - b);
   const dy = H - 22;
   els.push(<line key="dim" x1={X(0)} y1={dy} x2={X(L)} y2={dy} className="dim" />);

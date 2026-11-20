@@ -3,3 +3,15 @@
 
   ➜  Local:   http://localhost:5174/
   ➜  Network: use --host to expose
+11:55:30 AM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/editors.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/frame/FrameView.tsx, /src/ui/BeamView.tsx
+11:55:30 AM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/frame/FrameView.tsx
+11:55:41 AM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/frame/FrameView.tsx
+11:55:44 AM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/frame/FrameView.tsx
+11:56:43 AM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/frame/FrameView.tsx
+11:58:19 AM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/frame/FrameView.tsx
+11:58:49 AM [vite] (client) hmr update /src/ui/editors.tsx
+11:59:00 AM [vite] (client) hmr update /src/ui/editors.tsx
+11:59:18 AM [vite] (client) hmr update /src/ui/BeamView.tsx
+11:59:18 AM [vite] (client) hmr update /src/ui/report/BeamReport.tsx
+11:59:38 AM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/editors.tsx, /src/ui/stability/LtbCard.tsx
+12:01:17 PM [vite] (client) hmr update /src/ui/BeamView.tsx

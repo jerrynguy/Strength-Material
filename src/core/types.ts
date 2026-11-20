@@ -37,6 +37,8 @@ export interface Support {
   kind: SupportKind;
   /** Chỉ dùng khi kind = 'custom'. Với các loại khác, lấy theo mặc định. */
   restraints: Restraints;
+  /** Lún gối / chuyển vị cưỡng bức theo các phương gối chặn: dx, dy, dz (mm); rz, ry (rad·10⁻³) */
+  settle?: { dx?: number; dy?: number; dz?: number; rz?: number; ry?: number };
 }
 
 export interface Hinge {
@@ -79,7 +81,18 @@ export interface DistributedLoad {
   q2: number;
 }
 
-export type Load = PointForce | PointMoment | DistributedLoad;
+/** Nhiệt độ trên đoạn [x1, x2]: độ tăng nhiệt thớ trên (+y) và thớ dưới (°C), tuyến tính theo chiều cao */
+export interface TemperatureLoad {
+  id: string;
+  type: 'temp';
+  name: string;
+  x1: number;
+  x2: number;
+  Ttop: number;
+  Tbot: number;
+}
+
+export type Load = PointForce | PointMoment | DistributedLoad | TemperatureLoad;
 
 export interface Material {
   name: string;

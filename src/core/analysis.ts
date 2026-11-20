@@ -15,7 +15,7 @@
 import { luFactor, rank, smallestEigen, solve, zeros, type Matrix } from './linalg';
 import { computeSection, validateSection, type SectionProps } from './section';
 import {
-  effectiveRestraints, selfWeightPerM, type DistributedLoad, type InternalForces, type Model, type Restraints,
+  alphaTOf, effectiveRestraints, selfWeightPerM, type DistributedLoad, type InternalForces, type Model, type Restraints,
 } from './types';
 
 export type SubKey = 'axial' | 'bendY' | 'bendZ' | 'torsion';
@@ -217,6 +217,11 @@ interface SubLoads {
   nodeC: number[];
   /** cường độ phân bố tại hai đầu mỗi phần tử */
   elemQ: [number, number][];
+  /** biến dạng ban đầu của phần tử do nhiệt độ: ε₀ (thanh) hoặc độ cong κ₀ (dầm, 1/m) */
+  elemInit?: number[];
+  /** chuyển vị cưỡng bức tại nút bị chặn (lún gối): tịnh tiến (m) và xoay (rad) */
+  prescT?: Map<number, number>;
+  prescR?: Map<number, number>;
 }
 
 interface SubSolution {
@@ -259,10 +264,14 @@ function solveSub(
   const a = assembleSub(kind, xs, hingeNodes, EI, restrT, restrR, loads, Ne);
   const { K, KG, Fnode, vIdx, tL, tR, ndof, fixed, free } = a;
   if (KG) for (let i = 0; i < ndof; i++) for (let j = 0; j < ndof; j++) K[i][j] += KG[i][j];
-  const Kff = free.map((r) => free.map((c) => K[r][c]));
-  const sol = free.length ? solve(Kff, free.map((d) => Fnode[d])) : [];
-  if (!sol) return null;
+  // chuyển vị cưỡng bức tại các bậc tự do bị chặn (lún gối)
   const u = new Array<number>(ndof).fill(0);
+  for (const [i, v] of loads.prescT ?? []) if (fixed.has(a.vIdx[i])) u[a.vIdx[i]] = v;
+  if (kind === 'beam') for (const [i, v] of loads.prescR ?? []) { if (fixed.has(tL[i])) u[tL[i]] = v; if (fixed.has(tR[i])) u[tR[i]] = v; }
+  const Kff = free.map((r) => free.map((c) => K[r][c]));
+  const rhs = free.map((d) => Fnode[d] - K[d].reduce((s, kij, j) => (fixed.has(j) ? s + kij * u[j] : s), 0));
+  const sol = free.length ? solve(Kff, rhs) : [];
+  if (!sol) return null;
   free.forEach((d, i) => (u[d] = sol[i]));
   const R = K.map((row, i) => row.reduce((s, kij, j) => s + kij * u[j], 0) - Fnode[i]);
   const reac: [number, number][] = xs.map((_, i) => {
@@ -337,6 +346,8 @@ function assembleSub(
       for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) K[ids[a]][ids[b]] += ke[a][b];
       F[ids[0]] += (l * (2 * qa + qb)) / 6;
       F[ids[1]] += (l * (qa + 2 * qb)) / 6;
+      const e0 = loads.elemInit?.[e] ?? 0;
+      if (e0) { F[ids[0]] -= EI * e0; F[ids[1]] += EI * e0; }
     } else {
       const c = EI / l ** 3;
       const ids = [vIdx[e], tR[e], vIdx[e + 1], tL[e + 1]];
@@ -351,6 +362,8 @@ function assembleSub(
       F[ids[1]] += (l * l * (3 * qa + 2 * qb)) / 60;
       F[ids[2]] += (l * (3 * qa + 7 * qb)) / 20;
       F[ids[3]] -= (l * l * (2 * qa + 3 * qb)) / 60;
+      const k0 = loads.elemInit?.[e] ?? 0;
+      if (k0) { F[ids[1]] -= EI * k0; F[ids[3]] += EI * k0; }
     }
   }
   const Fnode = [...F];
@@ -442,7 +455,9 @@ function scaleLoads(m: Model, f: number): Model {
     loads: m.loads.map((l) =>
       l.type === 'force' ? { ...l, Fx: l.Fx * f, Fy: l.Fy * f, Fz: l.Fz * f }
         : l.type === 'moment' ? { ...l, Mx: l.Mx * f, My: l.My * f, Mz: l.Mz * f }
-          : { ...l, q1: l.q1 * f, q2: l.q2 * f }),
+          : l.type === 'temp' ? { ...l, Ttop: l.Ttop * f, Tbot: l.Tbot * f }
+            : { ...l, q1: l.q1 * f, q2: l.q2 * f }),
+    supports: m.supports.map((s) => (s.settle ? { ...s, settle: Object.fromEntries(Object.entries(s.settle).map(([k, v]) => [k, (v ?? 0) * f])) } : s)),
   };
 }
 
@@ -480,6 +495,9 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
     if (ld.type === 'distributed') {
       if (!(inRange(ld.x1) && inRange(ld.x2) && ld.x2 > ld.x1 + tol))
         errors.push(`Tải phân bố ${ld.name}: cần 0 ≤ x1 < x2 ≤ L`);
+    } else if (ld.type === 'temp') {
+      if (!(inRange(ld.x1) && inRange(ld.x2) && ld.x2 > ld.x1 + tol)) errors.push(`Nhiệt độ ${ld.name}: cần 0 ≤ x1 < x2 ≤ L`);
+      if (!(Number.isFinite(ld.Ttop) && Number.isFinite(ld.Tbot))) errors.push(`Nhiệt độ ${ld.name}: giá trị không hợp lệ`);
     } else if (!inRange(ld.x)) errors.push(`Tải ${ld.name}: vị trí nằm ngoài thanh`);
   }
   if (errors.length) return emptyResult(model, errors, sec);
@@ -505,7 +523,7 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
       0, L,
       ...model.supports.map((s) => Math.min(Math.max(s.x, 0), L)),
       ...hingeXs,
-      ...model.loads.flatMap((l) => (l.type === 'distributed' ? [l.x1, l.x2] : [l.x])),
+      ...model.loads.flatMap((l) => (l.type === 'distributed' || l.type === 'temp' ? [l.x1, l.x2] : [l.x])),
     ].map((x) => Math.min(Math.max(x, 0), L)),
     tol,
   );
@@ -547,6 +565,8 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
     subLoads[k].nodeC[node] += v * KN; loaded[k] = true; scaleLoad[k] += Math.abs(v);
   };
   const distributed: DistributedLoad[] = [];
+  const at = alphaTOf(model.material);
+  let thermalScale = 0;
   for (const ld of model.loads) {
     if (ld.type === 'force') {
       const n = nodeAt(ld.x);
@@ -554,6 +574,18 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
     } else if (ld.type === 'moment') {
       const n = nodeAt(ld.x);
       addF('torsion', n, ld.Mx); addC('bendY', n, ld.Mz); addC('bendZ', n, -ld.My);
+    } else if (ld.type === 'temp') {
+      // ε₀ = α_t·T(trọng tâm), κ₀ = α_t(T_dưới − T_trên)/h (uốn trong mặt phẳng đứng)
+      const h = (sec.yMax - sec.yMin) / 1e3;
+      const Tc = ld.Tbot + ((ld.Ttop - ld.Tbot) * (-sec.yMin / 1e3)) / h;
+      const eps0 = at * Tc, kap0 = (at * (ld.Tbot - ld.Ttop)) / h;
+      for (let e = 0; e + 1 < xs.length; e++) {
+        if (xs[e] >= ld.x1 - tol && xs[e + 1] <= ld.x2 + tol) {
+          if (eps0) { (subLoads.axial.elemInit ??= new Array(xs.length - 1).fill(0))[e] += eps0; loaded.axial = true; }
+          if (kap0) { (subLoads.bendY.elemInit ??= new Array(xs.length - 1).fill(0))[e] += kap0; loaded.bendY = true; }
+        }
+      }
+      thermalScale = Math.max(thermalScale, (Math.abs(eps0) * rigidity.EA) / KN, (Math.abs(kap0) * rigidity.EIz) / KN);
     } else {
       if (ld.q1 === 0 && ld.q2 === 0) continue;
       distributed.push(ld);
@@ -568,6 +600,30 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
         }
       }
     }
+  }
+
+  // Lún gối: chuyển vị cưỡng bức theo các phương gối chặn
+  let settleScale = 0;
+  for (const s of model.supports) {
+    const st = s.settle;
+    if (!st) continue;
+    settleScale = Math.max(settleScale,
+      (rigidity.EA * Math.abs(st.dx ?? 0)) / 1e3 / L / KN,
+      (12 * Math.max(rigidity.EIz, rigidity.EIy) * Math.max(Math.abs(st.dy ?? 0), Math.abs(st.dz ?? 0))) / 1e3 / L ** 3 / KN,
+      (4 * Math.max(rigidity.EIz, rigidity.EIy) * Math.max(Math.abs(st.rz ?? 0), Math.abs(st.ry ?? 0))) / 1e3 / L / KN);
+    const r = effectiveRestraints(s);
+    const n = nodeAt(s.x);
+    const put = (k: SubKey, which: 'prescT' | 'prescR', on: boolean, v: number | undefined) => {
+      if (!on || !v) return;
+      (subLoads[k][which] ??= new Map()).set(n, v);
+      loaded[k] = true;
+    };
+    put('axial', 'prescT', r.ux, st.dx !== undefined ? st.dx / 1e3 : undefined);
+    put('bendY', 'prescT', r.uy, st.dy !== undefined ? st.dy / 1e3 : undefined);
+    put('bendZ', 'prescT', r.uz, st.dz !== undefined ? st.dz / 1e3 : undefined);
+    put('bendY', 'prescR', r.rz, st.rz !== undefined ? st.rz / 1e3 : undefined);
+    // hệ con uốn z dùng góc θ = −r_y (mô men M_y được đưa vào với dấu trừ)
+    put('bendZ', 'prescR', r.ry, st.ry !== undefined ? -st.ry / 1e3 : undefined);
   }
 
   // Phân tích cấu tạo hình học
@@ -644,7 +700,7 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
       if (!sol) errors.push(`${info.label}: ma trận độ cứng suy biến — hệ biến hình.`);
       else {
         solutions[sub.key] = sol;
-        if (sub.key === 'axial') Ne = Ne.map((_, e) => (rig.axial * (sol.d[e + 1] - sol.d[e])) / (xs[e + 1] - xs[e]));
+        if (sub.key === 'axial') Ne = Ne.map((_, e) => rig.axial * ((sol.d[e + 1] - sol.d[e]) / (xs[e + 1] - xs[e]) - (subLoads.axial.elemInit?.[e] ?? 0)));
       }
     }
   }
@@ -670,7 +726,7 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
       r.Mz = get('bendY')[1] / KN;
       r.Fz = get('bendZ')[0] / KN;
       r.My = -get('bendZ')[1] / KN;
-      const clean = (v: number) => (Math.abs(v) < 1e-9 ? 0 : v);
+      const clean = (v: number) => (Math.abs(v) < Math.max(1e-9, 1e-8 * Math.max(thermalScale, settleScale)) ? 0 : v);
       r.Fx = clean(r.Fx); r.Fy = clean(r.Fy); r.Fz = clean(r.Fz); r.Mx = clean(r.Mx); r.My = clean(r.My); r.Mz = clean(r.Mz);
     }
     reactions.push(r);
@@ -721,7 +777,7 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
   }
 
   // Thang đo để làm sạch số rất nhỏ
-  let fScale = 1e-12;
+  let fScale = Math.max(1e-12, thermalScale, settleScale);
   for (const a of actions) fScale = Math.max(fScale, Math.abs(a.Fx), Math.abs(a.Fy), Math.abs(a.Fz), Math.abs(a.Mx), Math.abs(a.My), Math.abs(a.Mz));
   for (const d of distributed) fScale = Math.max(fScale, Math.abs(d.q1) * L, Math.abs(d.q2) * L);
   const mScale = fScale * Math.max(1, L);

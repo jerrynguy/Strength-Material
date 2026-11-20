@@ -117,6 +117,14 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
 - Hệ số tải (phân tích bậc hai, kiểm tra nén – uốn với n·tải) nhân cả nhiệt độ và lún gối.
 - **Kiểm chứng:** ngàm – ngàm tăng nhiệt đều N = −EAα_tΔT; chênh nhiệt M = −EIα_tΔT/h; dầm đơn giản giãn α_tΔTL, võng κ₀L²/8 không có nội lực; lún gối ngàm – ngàm R = 12EIΔ/L³, M = 6EIΔ/L²; ngàm – di động R = 3EIΔ/L³; xoay cưỡng bức M = 4EIθ/L; công-xôn tựa lò xo R = P·k/(k + 3EI/L³); lò xo xoay chân cột φ = H·h/k_φ.
 
+## Chế độ thanh thẳng: nhiệt độ, lún gối
+
+- **Nhiệt độ** (tải “+ Nhiệt độ”): đoạn [x₁, x₂], độ tăng nhiệt thớ trên (+y) và thớ dưới. ε₀ = α_t·ΔT tại trọng tâm vào hệ con kéo/nén (lực nút EA·ε₀); κ₀ = α_t(T_dưới − T_trên)/h vào hệ con uốn đứng (mô men nút EI·κ₀). α_t nhập ở phần vật liệu.
+- **Lún gối:** mỗi gối nhập Δx, Δy, Δz (mm) và góc xoay φ_z, φ_y (‰ rad) theo các phương gối chặn (ô chỉ hiện với phương bị chặn). Bậc tự do bị chặn nhận giá trị cưỡng bức, giải K_ff·u_f = F_f − K_fp·u_p, phản lực R = K·u − F.
+- Lực dọc dùng cho phân tích bậc hai lấy EA(ε − ε₀); thanh ngàm hai đầu bị nung nóng chịu nén và tự kể hiệu ứng P-Δ, ổn định.
+- Có trong hình vẽ, báo cáo PDF (bảng liên kết có cột lún gối, bảng tải có dòng nhiệt độ), bài mẫu “Dầm liên tục: lún gối và nhiệt độ”.
+- **Kiểm chứng:** ngàm – ngàm N = −EAα_tΔT (cả khi nung nửa thanh: −EAα_tΔT/2), M = −EIα_tΔT/h; dầm đơn giản giãn α_tΔTL, võng κ₀L²/8 không nội lực; lún gối ngàm – ngàm R = 12EIΔ/L³, M = 6EIΔ/L²; dầm liên tục hai nhịp gối giữa lún R = 6EIΔ/L³; xoay cưỡng bức M = 4EIθ/L; lún theo phương tự do không có tác dụng.
+
 ## Bền dẻo: W_pl cho tiết diện loại 1, 2
 
 - **W_pl và trục trung hoà dẻo** tính số trên đa giác thật của mặt cắt (cả lượn, lỗ, sườn): tìm trục chia đôi diện tích bằng chia đôi khoảng, rồi W_pl = S_trên + S_dưới. Hiện ở bảng đặc trưng mặt cắt và báo cáo (W_pl,z, W_pl,y, hệ số hình dạng W_pl/W_el).

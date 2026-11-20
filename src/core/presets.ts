@@ -131,6 +131,19 @@ export const PRESETS: Preset[] = [
     }),
   },
   {
+    key: 'imposed',
+    label: 'Dầm liên tục: lún gối và nhiệt độ (siêu tĩnh)',
+    build: () => ({
+      title: 'Dầm liên tục hai nhịp — gối giữa lún 10 mm, mặt trên nóng hơn 20 °C',
+      length: 12,
+      material: { ...STEEL },
+      section: { kind: 'I', bt: 200, tt: 12, hw: 400, tw: 8, bb: 200, tb: 12 },
+      supports: [support('A', 0, 'pin'), { ...support('B', 6, 'roller'), settle: { dy: -10 } }, support('C', 12, 'roller')],
+      hinges: [],
+      loads: [dist('q', 0, 12, -10), { id: uid('t'), type: 'temp', name: 't', x1: 0, x2: 12, Ttop: 30, Tbot: 10 }],
+    }),
+  },
+  {
     key: 'gerber',
     label: 'Dầm ghép có khớp nối (tĩnh định)',
     build: () => ({
