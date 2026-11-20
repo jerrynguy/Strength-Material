@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { analyze, withSelfWeight } from '../../core/analysis';
 import { checkBeamColumn } from '../../core/beamColumn';
+import { forceMethod, planarDegree, reactionEquations, unitLoadDisplacement } from '../../core/classical';
 import { classify } from '../../core/classify';
 import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { checkLTB, type LtbOptions } from '../../core/ltb';
@@ -146,6 +147,44 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt, stab = DEFAULT_B
           rows={res.reactions.map((r) => [r.name, fmt(r.x, 3), fmt(r.Fx, 3), fmt(r.Fy, 3), fmt(r.Mz, 3), fmt(r.Fz, 3), fmt(r.My, 3), fmt(r.Mx, 3)])} />
         {parts.steps && <RSteps lines={equilibriumSteps(res)} />}
       </RSection>
+
+      {parts.steps && (() => {
+        const deg = planarDegree(res);
+        const reac = deg === 0 ? reactionEquations(model, res) : null;
+        const fm = deg > 0 ? forceMethod(model, res) : null;
+        // chuyển vị tại điểm có độ võng lớn nhất
+        let xv = model.length / 2, vmax = 0;
+        for (const d of res.dispSamples) if (Math.abs(d.v) > vmax) { vmax = Math.abs(d.v); xv = d.x; }
+        const disp = unitLoadDisplacement(model, res, xv, 'v');
+        return (
+          <RSection n={N()} title="Lời giải theo phương pháp giáo trình">
+            {reac?.ok && (
+              <RSub title="Phản lực bằng phương trình cân bằng">
+                <RSteps lines={reac.steps} />
+              </RSub>
+            )}
+            {fm?.ok && (
+              <RSub title={`Phương pháp lực — hệ siêu tĩnh bậc ${deg}`}>
+                <RSteps lines={fm.steps.map((l) => l.trim())} />
+                <RTable head={['Phản lực', 'Phương pháp lực', 'Lời giải số']} rows={fm.reactions.map(({ u, value, fem }) => [u.name, `${fmt(value, 4)} ${u.comp === 'rz' ? 'kN·m' : 'kN'}`, fmt(fem, 4)])} />
+                {parts.diagrams && (
+                  <div className="r-row">
+                    <RFig caption="M_P — hệ cơ bản chịu tải"><Diagram title="M_P" unit="kN·m" tone="d" digits={2} invert data={fm.diagrams.MP} L={model.length} keyPoints={fm.diagrams.keyPoints} /></RFig>
+                    {fm.diagrams.m.map((d, i) => (
+                      <RFig key={i} caption={`m${i + 1} — X${i + 1} = 1 (${fm.redundants[i].name})`}><Diagram title={`m${i + 1}`} unit="m" tone="a" digits={3} invert data={d} L={model.length} keyPoints={fm.diagrams.keyPoints} /></RFig>
+                    ))}
+                  </div>
+                )}
+              </RSub>
+            )}
+            {disp.ok && vmax > 0 && (
+              <RSub title={`Độ võng lớn nhất bằng lực đơn vị (Mohr – Maxwell, Vereshchagin) tại x = ${fmt(xv, 3)} m`}>
+                <RSteps lines={disp.steps} />
+              </RSub>
+            )}
+          </RSection>
+        );
+      })()}
 
       <RSection n={N()} title="Nội lực và dạng chịu lực">
         <RTable head={['Đoạn (m)', 'Dạng chịu lực', 'Nội lực khác 0']}

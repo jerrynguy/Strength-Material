@@ -145,6 +145,15 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
 - **Uốn – xoắn của thép U uốn quanh trục mạnh:** U đối xứng qua trục mạnh nên β_y = 0, M_cr không đổi; tải đặt qua bụng (không qua tâm cắt) gây xoắn — là vấn đề bền, không phải ổn định.
 - **Kiểm chứng:** thép góc đều cạnh và thép U khớp công thức cổ điển N_TF = [(N + N_T) − √((N + N_T)² − 4βN·N_T)]/(2β), β = 1 − (c/i₀)²; mặt cắt đối xứng hai trục cho min(N₁, N₂, N_T); thép góc ngắn do uốn – xoắn quyết định, thép góc dài do uốn quanh trục yếu.
 
+## Lời giải theo phương pháp giáo trình (chế độ thanh thẳng, mặt phẳng xy)
+
+Thẻ “Lời giải theo phương pháp giáo trình” (và mục tương ứng trong báo cáo PDF) trình bày cách giải bằng tay; mọi kết quả được đối chiếu với lời giải số.
+
+- **Phản lực bằng phương trình cân bằng (hệ tĩnh định):** lập ΣM quanh từng gối, điều kiện M = 0 của từng phần quanh khớp nối, ΣY, ΣX; mỗi bước chọn phương trình chỉ còn một ẩn để giải (như khi làm tay), phần còn lại giải đồng thời; cuối cùng kiểm tra bằng một phương trình chưa dùng.
+- **Chuyển vị bằng lực đơn vị (Mohr – Maxwell, nhân biểu đồ Vereshchagin):** chọn điểm x và đại lượng (độ võng v, góc xoay θ, chuyển vị dọc u); vẽ biểu đồ m̄ của trạng thái đơn vị; trên mỗi đoạn mà m̄ là đường thẳng tính Ω·ȳ (biểu đồ đổi dấu thì tách thành các phần cùng dấu); kể cả số hạng nhiệt độ ∫(m̄κ₀ + n̄ε₀), lò xo Σr̄R/k và lún gối −Σr̄c. Hệ siêu tĩnh dùng định lý rút gọn (đặt lực đơn vị trên hệ cơ bản).
+- **Phương pháp lực (hệ siêu tĩnh):** tự chọn ẩn thừa (bạn đánh dấu để đổi), hệ cơ bản, biểu đồ M_P và mᵢ; δᵢⱼ, Δᵢₚ bằng nhân biểu đồ (có lò xo, nhiệt độ, lún gối); hệ phương trình chính tắc Σδᵢⱼ·Xⱼ + Δᵢₚ = cᵢ; nghiệm Xᵢ, phản lực cuối và sai khác mô men so với lời giải số.
+- **Kiểm chứng:** dầm đơn giản V_B = Pa/L; dầm ghép dùng điều kiện khớp; v = PL³/48EI, 5qL⁴/384EI, PL³/3EI, θ = PL²/2EI; ngàm – di động X₁ = 3qL/8, δ₁₁ = L³/3EI, v(L/2) = qL⁴/192EI theo định lý rút gọn; dầm liên tục V_giữa = 1.25qL (chọn V_C làm ẩn thừa cho cùng kết quả); ngàm hai đầu M = qL²/12; lún gối, nhiệt độ, lò xo khớp lời giải số.
+
 ## Bền dẻo: W_pl cho tiết diện loại 1, 2
 
 - **W_pl và trục trung hoà dẻo** tính số trên đa giác thật của mặt cắt (cả lượn, lỗ, sườn): tìm trục chia đôi diện tích bằng chia đôi khoảng, rồi W_pl = S_trên + S_dưới. Hiện ở bảng đặc trưng mặt cắt và báo cáo (W_pl,z, W_pl,y, hệ số hình dạng W_pl/W_el).

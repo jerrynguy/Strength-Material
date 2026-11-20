@@ -13,6 +13,7 @@ import { BeamBeamColumnCard } from './ui/stability/BeamColumnCards';
 import { LtbCard, defaultFrameLtbOptions, defaultLtbOptions } from './ui/stability/LtbCard';
 import { LocalCard } from './ui/stability/LocalCard';
 import { ReportShell } from './ui/report/ReportShell';
+import { ClassicalCard } from './ui/ClassicalCard';
 import { DEFAULT_BEAM_STAB, type BeamStabParams } from './core/beamAxial';
 import type { FrameLtbOptions, LtbOptions } from './core/ltb';
 import { DEFAULT_LOCAL, type LocalOptions } from './core/localBuckling';
@@ -248,6 +249,7 @@ export default function App() {
                 {anyD('phi') && <Diagram title="Góc xoắn φ" unit="rad" tone="d" digits={6} data={ds.map((s) => ({ x: s.x, y: s.phi }))} {...dprops} />}
                 {!['v', 'w', 'u', 'phi'].some((k) => anyD(k as 'v')) && <p className="muted">Không có chuyển vị.</p>}
               </Card>
+              <ClassicalCard key={'cl' + version} model={model} res={res1} x0Default={pickX} />
               <SummaryCard res={res} model={model} />
               <BeamStabilityCard res={res1} model={model} onOpen={openStab} local={localOpts.beam} params={beamStab} setParams={setBeamStab} />
               <BeamBeamColumnCard model={model} local={localOpts.beam} params={beamStab} setParams={setBeamStab} />
