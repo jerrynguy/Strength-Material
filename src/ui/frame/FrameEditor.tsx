@@ -126,6 +126,13 @@ export function FrameGeometry({ model, set }: { model: FrameModel; set: Setter }
                 {b.stiffenerSpacing !== undefined && (
                   <NumField value={b.stiffenerSpacing} unit="mm" width={110} onChange={(v) => upd({ stiffenerSpacing: v })} title="0 = không có sườn ngang" />
                 )}
+                <label className="check" title="Giới hạn chảy riêng của thanh — dùng cho ổn định cục bộ, tiết diện hữu hiệu và σ_ch khi kiểm tra nén – uốn">
+                  <input type="checkbox" checked={b.fy !== undefined}
+                    onChange={(e) => upd({ fy: e.target.checked ? 345 : undefined })} />f_y riêng
+                </label>
+                {b.fy !== undefined && (
+                  <NumField value={b.fy} unit="MPa" width={100} onChange={(v) => upd({ fy: v })} />
+                )}
               </div>
             </div>
           );

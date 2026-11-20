@@ -51,11 +51,22 @@ export interface FMember {
   releaseJ: boolean;
   /** Khoảng cách sườn ngang riêng của thanh (mm); bỏ trống = dùng giá trị chung của khung; 0 = không có sườn ngang */
   stiffenerSpacing?: number;
+  /** Giới hạn chảy riêng của thanh (MPa); bỏ trống = dùng f_y chung của khung */
+  fy?: number;
 }
 
 /** Thông số ổn định cục bộ áp cho một thanh: f_y chung, khoảng cách sườn ngang riêng (nếu có). */
-export function memberLocal(local: { fy: number; stiffenerSpacing: number }, m?: { stiffenerSpacing?: number } | null): { fy: number; stiffenerSpacing: number } {
-  return { fy: local.fy, stiffenerSpacing: m && m.stiffenerSpacing !== undefined && m.stiffenerSpacing !== null ? m.stiffenerSpacing : local.stiffenerSpacing };
+export function memberLocal(local: { fy: number; stiffenerSpacing: number }, m?: { stiffenerSpacing?: number; fy?: number } | null): { fy: number; stiffenerSpacing: number } {
+  const has = (v: number | undefined | null) => v !== undefined && v !== null && Number.isFinite(v);
+  return {
+    fy: m && has(m.fy) && (m.fy as number) > 0 ? (m.fy as number) : local.fy,
+    stiffenerSpacing: m && has(m.stiffenerSpacing) ? (m.stiffenerSpacing as number) : local.stiffenerSpacing,
+  };
+}
+
+/** Tham số ổn định của vật liệu với giới hạn chảy σ_ch thay bằng f_y của thanh (nếu bảng có σ_ch). */
+export function withYield<T extends { sigmaY: number }>(params: T, fy: number): T {
+  return params.sigmaY > 0 ? { ...params, sigmaY: fy } : params;
 }
 
 export interface FSection {

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { checkFrameMember, frameAnalyses } from '../../core/beamColumn';
-import { analyzeFrame, DIST_DIR_LABELS, memberLocal, type FrameModel } from '../../core/frame';
+import { analyzeFrame, DIST_DIR_LABELS, memberLocal, withYield, type FrameModel } from '../../core/frame';
 import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
@@ -41,9 +41,9 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
     const mloc = memberLocal(lopt, model.members.find((x) => x.id === mr.id));
     const muIn = res.buckling && Nc > 0 ? (Math.PI / mr.L) * Math.sqrt((model.material.E * 1e9 * mr.section.Iz * 1e-12) / (res.buckling.alpha * Nc * 1e3)) : 1;
     const axial = Nc > 0 ? checkStability(mr.section, {
-      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, mloc.fy, mloc.stiffenerSpacing),
+      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: model.material.E, allowable: allow, params: withYield(BUCKLING_MATERIALS.CT3, mloc.fy), nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, mloc.fy, mloc.stiffenerSpacing),
     }) : null;
-    const bc = a && Nc > 0 ? checkFrameMember(a, mr.id, 1, model, BUCKLING_MATERIALS.CT3, mloc) : null;
+    const bc = a && Nc > 0 ? checkFrameMember(a, mr.id, 1, model, withYield(BUCKLING_MATERIALS.CT3, mloc.fy), mloc) : null;
     const local = parts.stability ? checkLocal(mr.sectionSpec, model.material, mr.samples.map(toIF), mloc) : null;
     return { mr, sig, x, Nc, muIn, axial, bc, local, mloc };
   });
@@ -54,7 +54,7 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
   const comp = rows.filter((r) => r.axial);
   if (comp.length) concl.push({ label: 'Ổn định các thanh chịu nén (φ)', ok: comp.every((r) => r.axial!.okPhi), detail: comp.map((r) => `${r.mr.name}: ${fmt((r.axial!.sigma / (r.axial!.allowPhi || 1)) * 100, 0)}%`).join('; ') });
   const bcs = rows.filter((r) => r.bc && r.bc.planes.some((p) => p.M1));
-  if (bcs.length) concl.push({ label: 'Nén – uốn (bậc hai, tải × 1.5 ≤ σ_ch)', ok: bcs.every((r) => r.bc!.ok2 && r.bc!.okN), detail: bcs.map((r) => `${r.mr.name}: ${r.bc!.sigmaN === null ? 'mất ổn định' : fmt(r.bc!.sigmaN, 0) + ' MPa'}`).join('; ') });
+  if (bcs.length) concl.push({ label: 'Nén – uốn (bậc hai, tải × 1.5 ≤ σ_ch = f_y thanh)', ok: bcs.every((r) => r.bc!.ok2 && r.bc!.okN), detail: bcs.map((r) => `${r.mr.name}: ${r.bc!.sigmaN === null ? 'mất ổn định' : fmt(r.bc!.sigmaN, 0) + ' MPa'}`).join('; ') });
   const locs = rows.filter((r) => r.local?.applicable);
   if (locs.length) concl.push({ label: 'Ổn định cục bộ', ok: locs.every((r) => r.local!.ok), detail: locs.map((r) => `${r.mr.name}: loại ${r.local!.sectionClass || '—'}`).join('; ') });
 
@@ -157,17 +157,17 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
                 <Verdict ok={r.bc!.ok2}>{r.bc!.sigma2 === null ? '—' : fmt(r.bc!.sigma2, 1)}</Verdict>,
                 <Verdict ok={r.bc!.okN}>{r.bc!.sigmaN === null ? 'mất ổn định' : fmt(r.bc!.sigmaN, 1)}</Verdict>,
                 <Verdict ok={r.bc!.okInter}>{r.bc!.sigmaInter === null ? 'không áp dụng' : fmt(r.bc!.sigmaInter, 1)}</Verdict>])}
-              note={`Nén – uốn: (1) σ_II ≤ [σ] = ${allow}; (2) σ(1.5·tải) ≤ σ_ch = 240; (3) N/(φA) + M/(W(1 − N/N_th)) ≤ [σ].`} />
+              note={`Nén – uốn: (1) σ_II ≤ [σ] = ${allow}; (2) σ(1.5·tải) ≤ σ_ch = f_y của thanh; (3) N/(φA) + M/(W(1 − N/N_th)) ≤ [σ].`} />
           )}
           {locs.length > 0 && (
-            <RTable head={['Thanh', 'Sườn ngang a (mm)', 'Loại tiết diện', 'Tấm bất lợi', 'Tiết diện hữu hiệu', 'Bụng chịu cắt']}
+            <RTable head={['Thanh', 'f_y (MPa)', 'Sườn ngang a (mm)', 'Loại tiết diện', 'Tấm bất lợi', 'Tiết diện hữu hiệu', 'Bụng chịu cắt']}
               rows={locs.map((r) => {
                 const worst = r.local!.plates.filter((p) => p.cls).sort((x, y) => y.cls - x.cls || y.ct - x.ct)[0];
-                return [r.mr.name, r.mloc.stiffenerSpacing > 0 ? fmt(r.mloc.stiffenerSpacing, 0) + (model.members.find((x) => x.id === r.mr.id)?.stiffenerSpacing !== undefined ? ' (riêng)' : '') : '∞', r.local!.sectionClass || 'không nén',
+                return [r.mr.name, fmt(r.mloc.fy, 0) + (model.members.find((x) => x.id === r.mr.id)?.fy !== undefined ? ' (riêng)' : ''), r.mloc.stiffenerSpacing > 0 ? fmt(r.mloc.stiffenerSpacing, 0) + (model.members.find((x) => x.id === r.mr.id)?.stiffenerSpacing !== undefined ? ' (riêng)' : '') : '∞', r.local!.sectionClass || 'không nén',
                   worst ? `${worst.name}: c/t = ${fmt(worst.ct, 1)} (loại ${worst.cls})` : '—',
                   r.local!.effCheck ? <Verdict ok={r.local!.effCheck.ok}>σ = {fmt(r.local!.effCheck.sigma, 1)} MPa</Verdict> : '—',
                   r.local!.shear ? <Verdict ok={r.local!.shear.ok}>{fmt(r.local!.shear.util * 100, 0)}%</Verdict> : '—'];
-              })} note={`Ổn định cục bộ theo EN 1993-1-1 bảng 5.2, f_y = ${lopt.fy} MPa. Khoảng cách sườn ngang chung của khung: ${lopt.stiffenerSpacing > 0 ? `${lopt.stiffenerSpacing} mm` : '∞ (không có sườn ngang)'}; “(riêng)”: thanh có giá trị riêng.`} />
+              })} note={`Ổn định cục bộ theo EN 1993-1-1 bảng 5.2. f_y chung của khung = ${lopt.fy} MPa (f_y riêng cũng dùng làm σ_ch khi kiểm tra nén – uốn). Khoảng cách sườn ngang chung của khung: ${lopt.stiffenerSpacing > 0 ? `${lopt.stiffenerSpacing} mm` : '∞ (không có sườn ngang)'}; “(riêng)”: thanh có giá trị riêng.`} />
           )}
           {locs.filter((r) => r.mr.sectionSpec.kind === 'I' && r.mr.sectionSpec.stiffeners?.length).map((r) => (
             <StiffenerChecks key={r.mr.id} local={r.local} steps={parts.steps} title={`Thanh ${r.mr.name} — bụng có sườn dọc (EN 1993-1-5 A.2, A.3)`} />

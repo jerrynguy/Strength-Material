@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { AnalysisResult } from '../../core/analysis';
-import { memberLocal, type FrameModel, type FrameResult } from '../../core/frame';
+import { memberLocal, withYield, type FrameModel, type FrameResult } from '../../core/frame';
 import { aeffIfClass4 } from '../../core/effective';
 import { DEFAULT_LOCAL, type LocalOptions } from '../../core/localBuckling';
 import { BUCKLING_MATERIALS, checkStability, type BucklingMaterial } from '../../core/stability';
@@ -118,7 +118,7 @@ export function FrameStabilityCard({ res, model, mu, setMu, local = DEFAULT_LOCA
               const m = mu[mr.id] ?? 1;
               const r = checkStability(mr.section, {
                 N: Nc, Lz: mr.L, Ly: mr.L, muZ: m, muY: m, E: model.material.E, allowable: model.material.allowable,
-                params: BUCKLING_MATERIALS[mat], nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, local.fy, memberLocal(local, model.members.find((x) => x.id === mr.id)).stiffenerSpacing),
+                params: withYield(BUCKLING_MATERIALS[mat], memberLocal(local, model.members.find((x) => x.id === mr.id)).fy), nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, memberLocal(local, model.members.find((x) => x.id === mr.id)).fy, memberLocal(local, model.members.find((x) => x.id === mr.id)).stiffenerSpacing),
               });
               return (
                 <tr key={mr.id}>

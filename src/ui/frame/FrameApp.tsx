@@ -103,21 +103,31 @@ export function FrameApp({ model, setModel, replace, local, setLocal }: {
                   key={`local-${lm.id}`}
                   title={`Ổn định cục bộ bản cánh, bản bụng — thanh ${lm.name}`}
                   aLabel={`a sườn ngang của ${lm.name}${model.members.find((x) => x.id === lm.id)?.stiffenerSpacing !== undefined ? ' (riêng)' : ' (= chung)'}`}
+                  fyLabel={`f_y của ${lm.name}${model.members.find((x) => x.id === lm.id)?.fy !== undefined ? ' (riêng)' : ' (= chung)'}`}
                   spec={lm.sectionSpec}
                   material={model.material}
                   opt={memberLocal(local, model.members.find((x) => x.id === lm.id))}
                   setOpt={(o) => {
-                    if (o.fy !== local.fy) setLocal({ ...local, fy: o.fy });
-                    const cur = memberLocal(local, model.members.find((x) => x.id === lm.id)).stiffenerSpacing;
-                    if (o.stiffenerSpacing !== cur) set((m) => ({ ...m, members: m.members.map((x) => (x.id === lm.id ? { ...x, stiffenerSpacing: o.stiffenerSpacing } : x)) }));
+                    const cur = memberLocal(local, model.members.find((x) => x.id === lm.id));
+                    const patch: { fy?: number; stiffenerSpacing?: number } = {};
+                    if (o.fy !== cur.fy) patch.fy = o.fy;
+                    if (o.stiffenerSpacing !== cur.stiffenerSpacing) patch.stiffenerSpacing = o.stiffenerSpacing;
+                    if (Object.keys(patch).length) set((m) => ({ ...m, members: m.members.map((x) => (x.id === lm.id ? { ...x, ...patch } : x)) }));
                   }}
                   forces={lm.samples.map((sm) => ({ x: sm.s, N: sm.N, Qy: sm.Q, Qz: 0, T: 0, Mz: sm.M, My: 0 }))}
                   controls={
                     <>
                       <Select label="Thanh" value={lm.id} onChange={setLocalMem}
                         options={res1.members.map((m) => ({ value: m.id, label: m.name }))} />
+                      <NumField label="f_y chung của khung" unit="MPa" value={local.fy} width={120}
+                        onChange={(v) => setLocal({ ...local, fy: v })} title="Dùng cho các thanh không đặt f_y riêng" />
                       <NumField label="a chung của khung" unit="mm" value={local.stiffenerSpacing} width={120}
                         onChange={(v) => setLocal({ ...local, stiffenerSpacing: v })} title="Dùng cho các thanh không đặt giá trị riêng" />
+                      {model.members.find((x) => x.id === lm.id)?.fy !== undefined && (
+                        <button onClick={() => set((m) => ({ ...m, members: m.members.map((x) => (x.id === lm.id ? { ...x, fy: undefined } : x)) }))}>
+                          Bỏ f_y riêng của {lm.name}
+                        </button>
+                      )}
                       {model.members.find((x) => x.id === lm.id)?.stiffenerSpacing !== undefined && (
                         <button onClick={() => set((m) => ({ ...m, members: m.members.map((x) => (x.id === lm.id ? { ...x, stiffenerSpacing: undefined } : x)) }))}>
                           Bỏ a riêng của {lm.name}

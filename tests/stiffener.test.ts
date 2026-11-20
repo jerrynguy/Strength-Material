@@ -127,3 +127,49 @@ describe('Khoảng cách sườn ngang riêng từng thanh khung', () => {
     expect(designFrame(m1, 'd', opt).length).toBe(designFrame(m0, 'd', opt).length);
   });
 });
+
+import { withYield } from '../src/core/frame';
+
+describe('f_y riêng từng thanh khung', () => {
+  const frame = (aAC?: number): FrameModel => {
+    const A = fnode('A', 0, 0), C = fnode('C', 0, 6), D = fnode('D', 10, 6), B = fnode('B', 10, 0);
+    const col = { id: 'c', name: 'Cột', spec: { kind: 'I', bt: 300, tt: 16, hw: 1000, tw: 6, bb: 300, tb: 16, stiffeners: [{ pos: 500, b: 80, t: 8, sides: 2 }] } as SectionSpec };
+    const beam = { id: 'd', name: 'Dầm', spec: { kind: 'catalog', family: 'H_JIS', name: 'H500×200×10×16', rotate: false } as SectionSpec };
+    const ac = { ...fmember('AC', A, C, 'c'), stiffenerSpacing: aAC };
+    const cd = fmember('CD', C, D, 'd');
+    return {
+      title: '', material: { ...STEEL }, sections: [col, beam], nodes: [A, C, D, B],
+      members: [ac, cd, fmember('BD', B, D, 'c')],
+      supports: [fsupport(A, 'fixed'), fsupport(B, 'fixed')],
+      loads: [fdist('q', cd, 0, 10, -80), fnodeLoad('W', C, 20, 0)],
+    };
+  };
+
+  it('memberLocal: f_y riêng ghi đè f_y chung, bỏ trống thì dùng chung', () => {
+    const g = { fy: 235, stiffenerSpacing: 0 };
+    expect(memberLocal(g, { fy: 355 }).fy).toBe(355);
+    expect(memberLocal(g, {}).fy).toBe(235);
+    expect(memberLocal(g, { fy: 355, stiffenerSpacing: 800 })).toEqual({ fy: 355, stiffenerSpacing: 800 });
+  });
+  it('withYield thay σ_ch (chỉ khi bảng có σ_ch)', () => {
+    expect(withYield(BUCKLING_MATERIALS.CT3, 355).sigmaY).toBe(355);
+    expect(withYield(BUCKLING_MATERIALS.wood, 355).sigmaY).toBe(0);
+  });
+  it('f_y lớn hơn → ε nhỏ hơn → giới hạn c/t chặt hơn', () => {
+    const r235 = checkLocal(girder(false), STEEL, [F({ N: -100 })], { fy: 235, stiffenerSpacing: 0 });
+    const r355 = checkLocal(girder(false), STEEL, [F({ N: -100 })], { fy: 355, stiffenerSpacing: 0 });
+    const fl = (r: typeof r235) => r.plates.find((p) => p.name === 'Cánh trên – phải')!.limits[2];
+    expect(fl(r355)).toBeLessThan(fl(r235));
+  });
+  it('kiểm tra nén – uốn của thanh dùng f_y riêng làm σ_ch', () => {
+    const m = frame(undefined);
+    m.members[0].fy = 355;
+    const a = frameAnalyses(m, 1.5);
+    const g = { fy: 235, stiffenerSpacing: 0 };
+    const ml = memberLocal(g, m.members[0]);
+    const r = checkFrameMember(a, m.members[0].id, 1, m, withYield(BUCKLING_MATERIALS.CT3, ml.fy), ml)!;
+    expect(r.sigmaY).toBe(355);
+    const rb = checkFrameMember(a, m.members[2].id, 1, m, withYield(BUCKLING_MATERIALS.CT3, memberLocal(g, m.members[2]).fy), memberLocal(g, m.members[2]))!;
+    expect(rb.sigmaY).toBe(235);
+  });
+});

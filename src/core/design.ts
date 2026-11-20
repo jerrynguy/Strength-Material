@@ -8,7 +8,7 @@
  * Chưa xét ổn định cục bộ bản cánh/bụng và mất ổn định uốn–xoắn của dầm.
  */
 import { analyze } from './analysis';
-import { analyzeFrame, memberLocal, type FrameModel } from './frame';
+import { analyzeFrame, memberLocal, withYield, type FrameModel } from './frame';
 import { computeSection, type SectionProps } from './section';
 import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
 import { aeffIfClass4, checkEffective, effectiveSection } from './effective';
@@ -71,9 +71,9 @@ function tauMax(sec: SectionProps, F: InternalForces, mat: Model['material']): n
 }
 
 /** Hệ số sử dụng theo ổn định cho lực nén Nc (kN, dương) */
-function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number, E: number, allowable: number, Aeff?: number): { util: number; lambda: number } {
+function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number, E: number, allowable: number, Aeff?: number, fy?: number): { util: number; lambda: number } {
   if (!(Nc > 0)) return { util: 0, lambda: 0 };
-  const r = checkStability(sec, { N: Nc, Lz: L, Ly: L, muZ: mu, muY: mu, E, allowable, params: BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff });
+  const r = checkStability(sec, { N: Nc, Lz: L, Ly: L, muZ: mu, muY: mu, E, allowable, params: fy ? withYield(BUCKLING_MATERIALS.CT3, fy) : BUCKLING_MATERIALS.CT3, nRequired: 1, Aeff });
   return { util: r.phi === null ? Infinity : r.sigma / r.allowPhi, lambda: r.lambdaMax };
 }
 
@@ -177,7 +177,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
       if (opt.stability) {
         let Nc = 0;
         for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
-        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, mloc?.fy ?? 240, mloc?.stiffenerSpacing ?? 0) : undefined);
+        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, mloc?.fy ?? 240, mloc?.stiffenerSpacing ?? 0) : undefined, mloc?.fy);
         if (st.util > stabUtil) { stabUtil = st.util; lambda = st.lambda; }
       }
       for (const s of mr.samples) {
