@@ -102,7 +102,7 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt, stab = DEFAULT_B
   const loadRow = (l: Model['loads'][number]) =>
     l.type === 'force' ? [l.name, 'Lực tập trung', `x = ${fmt(l.x, 3)} m`, `Fx = ${fmt(l.Fx, 3)}, Fy = ${fmt(l.Fy, 3)}${l.Fz ? `, Fz = ${fmt(l.Fz, 3)}` : ''} kN`]
       : l.type === 'moment' ? [l.name, 'Mô men', `x = ${fmt(l.x, 3)} m`, `Mz = ${fmt(l.Mz, 3)}${l.Mx ? `, Mx = ${fmt(l.Mx, 3)}` : ''}${l.My ? `, My = ${fmt(l.My, 3)}` : ''} kN·m`]
-        : l.type === 'temp' ? [l.name, 'Nhiệt độ', `${fmt(l.x1, 3)} → ${fmt(l.x2, 3)} m`, `ΔT thớ trên = ${fmt(l.Ttop, 2)} °C, thớ dưới = ${fmt(l.Tbot, 2)} °C (α_t = ${alphaTOf(model.material).toExponential(2)} 1/°C)`]
+        : l.type === 'temp' ? [l.name, 'Nhiệt độ', `${fmt(l.x1, 3)} → ${fmt(l.x2, 3)} m`, `ΔT thớ trên = ${fmt(l.Ttop, 2)} °C, thớ dưới = ${fmt(l.Tbot, 2)} °C${l.dTz ? `, chênh hai bên T(+z) − T(−z) = ${fmt(l.dTz, 2)} °C` : ''} (α_t = ${alphaTOf(model.material).toExponential(2)} 1/°C)`]
           : [l.name, `Phân bố (${l.dir})`, `${fmt(l.x1, 3)} → ${fmt(l.x2, 3)} m`, `q = ${fmt(l.q1, 3)} → ${fmt(l.q2, 3)} kN/m`];
 
   return (

@@ -56,7 +56,7 @@ export function BeamView({ model, cursorX }: { model: Model; cursorX?: number | 
     els.push(<line key={ld.id} x1={x1} y1={yy} x2={x2} y2={yy} className="load dashed" />);
     els.push(
       <text key={ld.id + 't'} x={(x1 + x2) / 2} y={yy - 4} className="lbl load-lbl" textAnchor="middle">
-        {ld.Ttop === ld.Tbot ? `${ld.name}: ΔT = ${fmt(ld.Ttop, 1)} °C` : `${ld.name}: ΔT trên ${fmt(ld.Ttop, 1)} / dưới ${fmt(ld.Tbot, 1)} °C`}
+        {ld.Ttop === ld.Tbot ? `${ld.name}: ΔT = ${fmt(ld.Ttop, 1)} °C` : `${ld.name}: ΔT trên ${fmt(ld.Ttop, 1)} / dưới ${fmt(ld.Tbot, 1)} °C`}{ld.dTz ? `; hai bên +z − (−z) = ${fmt(ld.dTz, 1)} °C` : ''}
       </text>,
     );
   });

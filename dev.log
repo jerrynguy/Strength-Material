@@ -25,3 +25,8 @@
 12:06:26 PM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/frame/FrameView.tsx
 12:06:49 PM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/editors.tsx, /src/ui/stability/LtbCard.tsx
 12:08:29 PM [vite] (client) hmr update /src/ui/report/BeamReport.tsx
+12:09:37 PM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/editors.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/frame/FrameView.tsx, /src/ui/BeamView.tsx
+12:09:37 PM [vite] (client) hmr update /src/App.tsx, /src/ui/frame/FrameApp.tsx, /src/ui/stability/StabilityChecks.tsx, /src/ui/report/BeamReport.tsx, /src/ui/stability/BeamColumnCards.tsx, /src/ui/stability/StabilityApp.tsx, /src/ui/report/FrameReport.tsx, /src/ui/report/StabReport.tsx, /src/ui/stability/LtbCard.tsx, /src/ui/frame/FrameEditor.tsx, /src/ui/frame/FrameView.tsx
+12:10:08 PM [vite] (client) hmr update /src/ui/editors.tsx
+12:10:08 PM [vite] (client) hmr update /src/ui/BeamView.tsx
+12:10:08 PM [vite] (client) hmr update /src/ui/report/BeamReport.tsx

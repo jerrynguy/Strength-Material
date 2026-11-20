@@ -322,10 +322,12 @@ export function LoadsEditor({ model, set }: { model: Model; set: Setter }) {
                 <div className="row">
                   <NumField label="ΔT thớ trên (+y)" unit="°C" value={ld.Ttop} onChange={(v) => upd(ld.id, { Ttop: v })} />
                   <NumField label="ΔT thớ dưới" unit="°C" value={ld.Tbot} onChange={(v) => upd(ld.id, { Tbot: v })} />
+                  <NumField label="Chênh hai bên T(+z) − T(−z)" unit="°C" value={ld.dTz ?? 0} width={150} onChange={(v) => upd(ld.id, { dTz: v || undefined })} title="Gây uốn ngang trong mặt phẳng xz; thanh cong vồng về phía nóng hơn" />
                 </div>
                 <p className="hint">
                   α_t = {at.toExponential(2)} 1/°C; h = {fmt(hh * 1e3, 1)} mm. Tại trọng tâm ΔT = {fmt(Tc, 2)} °C → ε₀ = {(at * Tc).toExponential(3)};
-                  κ₀ = α_t(T_dưới − T_trên)/h = {hh ? ((at * (ld.Tbot - ld.Ttop)) / hh).toExponential(3) : '—'} 1/m. Thanh tĩnh định giãn/cong tự do; siêu tĩnh phát sinh nội lực.
+                  κ₀ = α_t(T_dưới − T_trên)/h = {hh ? ((at * (ld.Tbot - ld.Ttop)) / hh).toExponential(3) : '—'} 1/m
+                  {ld.dTz && sec ? `; uốn ngang: b = ${fmt(sec.zMax - sec.zMin, 1)} mm, κ₀,w = −α_t·ΔT_z/b = ${((-at * ld.dTz) / ((sec.zMax - sec.zMin) / 1e3)).toExponential(3)} 1/m` : ''}. Thanh tĩnh định giãn/cong tự do; siêu tĩnh phát sinh nội lực.
                 </p>
               </>
             );

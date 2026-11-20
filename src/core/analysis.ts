@@ -466,7 +466,7 @@ function scaleLoads(m: Model, f: number): Model {
     loads: m.loads.map((l) =>
       l.type === 'force' ? { ...l, Fx: l.Fx * f, Fy: l.Fy * f, Fz: l.Fz * f }
         : l.type === 'moment' ? { ...l, Mx: l.Mx * f, My: l.My * f, Mz: l.Mz * f }
-          : l.type === 'temp' ? { ...l, Ttop: l.Ttop * f, Tbot: l.Tbot * f }
+          : l.type === 'temp' ? { ...l, Ttop: l.Ttop * f, Tbot: l.Tbot * f, ...(l.dTz ? { dTz: l.dTz * f } : {}) }
             : { ...l, q1: l.q1 * f, q2: l.q2 * f }),
     supports: m.supports.map((s) => (s.settle ? { ...s, settle: Object.fromEntries(Object.entries(s.settle).map(([k, v]) => [k, (v ?? 0) * f])) } : s)),
   };
@@ -590,13 +590,17 @@ export function analyze(modelIn: Model, opts: AnalyzeOptions = {}): AnalysisResu
       const h = (sec.yMax - sec.yMin) / 1e3;
       const Tc = ld.Tbot + ((ld.Ttop - ld.Tbot) * (-sec.yMin / 1e3)) / h;
       const eps0 = at * Tc, kap0 = (at * (ld.Tbot - ld.Ttop)) / h;
+      // chênh nhiệt hai bên: ε₀(z) tăng theo z → độ cong trong mặt phẳng xz w″ = −α_t·ΔT_z/b
+      const b = (sec.zMax - sec.zMin) / 1e3;
+      const kapW = ld.dTz && b > 0 ? (-at * ld.dTz) / b : 0;
       for (let e = 0; e + 1 < xs.length; e++) {
         if (xs[e] >= ld.x1 - tol && xs[e + 1] <= ld.x2 + tol) {
           if (eps0) { (subLoads.axial.elemInit ??= new Array(xs.length - 1).fill(0))[e] += eps0; loaded.axial = true; }
           if (kap0) { (subLoads.bendY.elemInit ??= new Array(xs.length - 1).fill(0))[e] += kap0; loaded.bendY = true; }
+          if (kapW) { (subLoads.bendZ.elemInit ??= new Array(xs.length - 1).fill(0))[e] += kapW; loaded.bendZ = true; }
         }
       }
-      thermalScale = Math.max(thermalScale, (Math.abs(eps0) * rigidity.EA) / KN, (Math.abs(kap0) * rigidity.EIz) / KN);
+      thermalScale = Math.max(thermalScale, (Math.abs(eps0) * rigidity.EA) / KN, (Math.abs(kap0) * rigidity.EIz) / KN, (Math.abs(kapW) * rigidity.EIy) / KN);
     } else {
       if (ld.q1 === 0 && ld.q2 === 0) continue;
       distributed.push(ld);

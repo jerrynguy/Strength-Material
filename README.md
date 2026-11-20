@@ -121,6 +121,7 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
 
 - **Nhiệt độ** (tải “+ Nhiệt độ”): đoạn [x₁, x₂], độ tăng nhiệt thớ trên (+y) và thớ dưới. ε₀ = α_t·ΔT tại trọng tâm vào hệ con kéo/nén (lực nút EA·ε₀); κ₀ = α_t(T_dưới − T_trên)/h vào hệ con uốn đứng (mô men nút EI·κ₀). α_t nhập ở phần vật liệu.
 - **Lún gối:** mỗi gối nhập Δx, Δy, Δz (mm) và góc xoay φ_z, φ_y (‰ rad) theo các phương gối chặn (ô chỉ hiện với phương bị chặn). Bậc tự do bị chặn nhận giá trị cưỡng bức, giải K_ff·u_f = F_f − K_fp·u_p, phản lực R = K·u − F.
+- **Chênh nhiệt hai bên** ΔT_z = T(+z) − T(−z): độ cong ngang κ₀,w = −α_t·ΔT_z/b (b — bề rộng theo z) vào hệ con uốn ngang; thanh cong vồng về phía nóng hơn. Kiểm chứng: ngàm – ngàm |M_y| = EI_y·α_t·ΔT_z/b, thớ phía nóng bị nén; dầm đơn giản võng ngang α_t·ΔT_z·L²/(8b) không nội lực. (Chế độ khung là hệ phẳng nên không có uốn ngang.)
 - Lực dọc dùng cho phân tích bậc hai lấy EA(ε − ε₀); thanh ngàm hai đầu bị nung nóng chịu nén và tự kể hiệu ứng P-Δ, ổn định.
 - Có trong hình vẽ, báo cáo PDF (bảng liên kết có cột lún gối, bảng tải có dòng nhiệt độ), bài mẫu “Dầm liên tục: lún gối và nhiệt độ”.
 - **Kiểm chứng:** ngàm – ngàm N = −EAα_tΔT (cả khi nung nửa thanh: −EAα_tΔT/2), M = −EIα_tΔT/h; dầm đơn giản giãn α_tΔTL, võng κ₀L²/8 không nội lực; lún gối ngàm – ngàm R = 12EIΔ/L³, M = 6EIΔ/L²; dầm liên tục hai nhịp gối giữa lún R = 6EIΔ/L³; xoay cưỡng bức M = 4EIθ/L; lún theo phương tự do không có tác dụng.

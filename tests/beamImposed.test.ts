@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyze } from '../src/core/analysis';
 import { STEEL, force, support } from '../src/core/presets';
 import { computeSection } from '../src/core/section';
+import { stressAt } from '../src/core/stress';
 import type { Load, Model, SectionSpec, Support } from '../src/core/types';
 
 const spec: SectionSpec = { kind: 'I', bt: 200, tt: 12, hw: 400, tw: 8, bb: 200, tb: 12 };
@@ -80,5 +81,36 @@ describe('Chế độ thanh thẳng — lún gối', () => {
     const r = analyze(model([support('A', 0, 'pin'), { ...support('B', L, 'roller'), settle: { dx: 5 } }]));
     expect(r.ok).toBe(true);
     expect(Math.abs(r.dispSamples[r.dispSamples.length - 1].u)).toBeLessThan(1e-9);
+  });
+});
+
+describe('Chế độ thanh thẳng — chênh nhiệt hai bên (uốn ngang)', () => {
+  const EIy = (E * sec.Iy * 1e-12) / 1e3;
+  const b = (sec.zMax - sec.zMin) / 1e3;
+  const tz = (dTz: number): Load => ({ id: 't', type: 'temp', name: 't', x1: 0, x2: L, Ttop: 0, Tbot: 0, dTz });
+  it('ngàm – ngàm: |M_y| = EI_y·α·ΔT_z/b không đổi, không có N, M_z', () => {
+    const r = analyze(model([support('A', 0, 'fixed'), support('B', L, 'fixed')], [tz(20)]));
+    expect(r.ok).toBe(true);
+    const f = r.internalAt(L / 2, 'left'), f2 = r.internalAt(0.4, 'right');
+    expect(rel(Math.abs(f.My), (EIy * aT * 20) / b)).toBeLessThan(1e-6);
+    expect(rel(f2.My, f.My)).toBeLessThan(1e-6);
+    expect(Math.abs(f.N) + Math.abs(f.Mz)).toBeLessThan(1e-9);
+  });
+  it('dầm đơn giản: không nội lực; võng ngang w = α·ΔT_z·L²/(8b) về phía nóng hơn (+z)', () => {
+    const r = analyze(model([support('A', 0, 'pin'), support('B', L, 'roller')], [tz(20)]));
+    expect(Math.abs(r.internalAt(L / 2, 'left').My)).toBeLessThan(1e-9);
+    const mid = r.dispSamples.find((d) => Math.abs(d.x - L / 2) < 1e-9)!;
+    expect(rel(mid.w, ((aT * 20 * L * L) / (8 * b)) * 1e3)).toBeLessThan(1e-6);
+    expect(mid.w).toBeGreaterThan(0);
+  });
+  it('ứng suất: thớ phía nóng (+z) bị nén, phía lạnh bị kéo khi hai đầu ngàm', () => {
+    const r = analyze(model([support('A', 0, 'fixed'), support('B', L, 'fixed')], [tz(20)]));
+    const F = r.internalAt(L / 2, 'left');
+    const hot = stressAt(sec, F, STEEL, 0, sec.zMax).sigma;
+    const cold = stressAt(sec, F, STEEL, 0, sec.zMin).sigma;
+    expect(hot).toBeLessThan(0);
+    expect(cold).toBeGreaterThan(0);
+    // độ lớn: E·α·ΔT_z/b·z
+    expect(rel(-hot, 200e3 * aT * 20 * (sec.zMax / (b * 1e3)))).toBeLessThan(1e-6);
   });
 });

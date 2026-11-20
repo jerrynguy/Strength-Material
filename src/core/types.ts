@@ -108,6 +108,8 @@ export interface TemperatureLoad {
   x2: number;
   Ttop: number;
   Tbot: number;
+  /** chênh nhiệt hai bên T(+z) − T(−z) (°C), tuyến tính theo bề rộng — gây uốn ngang trong mặt phẳng xz */
+  dTz?: number;
 }
 
 export type Load = PointForce | PointMoment | DistributedLoad | TemperatureLoad;
