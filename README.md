@@ -97,7 +97,13 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - Hai đầu thanh là gối chạc; đầu tự do của công-xôn không có liên kết và đầu còn lại kiềm chế vênh.
   - Nhập số giằng chia đều nhịp cho từng thanh; f_y và a sườn ngang theo từng thanh.
   - Có trong báo cáo PDF và chọn số hiệu thép cho khung. Kiểm chứng: dầm đơn giản và công-xôn mô hình bằng khung cho cùng M_cr như chế độ dầm.
-- **Giới hạn:** ảnh hưởng của lực dọc lên M_cr của thanh khung xét riêng ở thẻ nén – uốn (không gộp thành α_cr,op).
+- **Phương pháp tổng quát cho thanh khung (EN 1993-1-1 §6.3.4):** cùng thẻ uốn – xoắn khung, có thêm bảng riêng.
+  - α_ult,k = 1/max[|N|/(A·f_y) + |M|/(W·f_y)] dọc thanh, nội lực trong mặt phẳng lấy từ phân tích bậc hai P-Δ; tiết diện loại 4 dùng A_eff, W_eff.
+  - α_cr,op: bài toán trị riêng ngoài mặt phẳng khi tăng đồng thời N(x) và M(x) thực của thanh. K_G gồm ∫M·u″φ, ½∫N[u′² − 2y₀u′φ′ + r₀²φ′²], Wagner và tải lệch tâm cắt. Bao gồm uốn ngang quanh trục yếu, xoắn và uốn – xoắn.
+  - λ̄_op = √(α_ult,k/α_cr,op); χ_op = min(χ_z, χ_LT) (6.3.4(4)a; χ_z theo bảng 6.2 trục z–z); điều kiện χ_op·α_ult,k ≥ f_y/[σ].
+  - Có trong báo cáo PDF và chọn số hiệu thép cho khung (lấy hệ số sử dụng lớn hơn của §6.3.2 và §6.3.4).
+  - Kiểm chứng: nén thuần α_cr,op·P = min(N_cr,z, N_cr,T); uốn thuần trùng M_cr của thẻ uốn – xoắn; nén + mô men đều khớp nghiệm (P_y − αP)(P_T − αP) = α²M²/r₀².
+  - Giới hạn: thép chữ U, góc bỏ qua độ lệch tâm cắt theo phương z; mặt cắt dùng công thức đàn hồi (không dùng W_pl cho loại 1, 2).
 
 ## Ổn định cục bộ bản cánh, bản bụng
 

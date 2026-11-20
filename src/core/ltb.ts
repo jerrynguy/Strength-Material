@@ -21,7 +21,7 @@
  * hai đầu thanh coi là gối chạc (chặn chuyển vị ngang và xoắn, vênh tự do) trừ đầu công-xôn tự do; có thể thêm giằng trong nhịp.
  */
 import type { AnalysisResult } from './analysis';
-import { weffZ } from './effective';
+import { aeffIfClass4, weffZ } from './effective';
 import { luFactor, luSolve, zeros } from './linalg';
 
 /** Số pivot âm khi khử Gauss không hoán vị (= số trị riêng âm của ma trận đối xứng) */
@@ -185,6 +185,8 @@ export interface LtbProblem {
   restraints: LtbRestraint[];
   /** có giằng trong nhịp (để ghi chú C1) */
   braced: boolean;
+  /** lực dọc tại x (kN, kéo +) — chỉ dùng cho α_cr,op (phương pháp tổng quát) */
+  N?: (x: number) => number;
   opt: LtbOptions;
 }
 
@@ -214,6 +216,19 @@ export interface FrameLtbOptions {
   braces: Record<string, number>;
 }
 
+/** Liên kết ngoài mặt phẳng của một thanh khung: gối chạc ở hai đầu (trừ đầu tự do của công-xôn) và giằng chia đều */
+function memberRestraints(model: FrameModel, fm: FrameModel['members'][number], L: number, opt: FrameLtbOptions): LtbRestraint[] {
+  const free = (nodeId: string) => !model.supports.some((s) => s.nodeId === nodeId) && model.members.filter((m) => m.i === nodeId || m.j === nodeId).length <= 1;
+  const restraints: LtbRestraint[] = [];
+  if (!free(fm.i)) restraints.push({ x: 0, lateral: true, twist: true });
+  if (!free(fm.j)) restraints.push({ x: L, lateral: true, twist: true });
+  const nb = Math.max(0, Math.round(opt.braces[fm.id] ?? 0));
+  for (let k = 1; k <= nb; k++) restraints.push({ x: (L * k) / (nb + 1), lateral: true, twist: true });
+  // đầu tự do của công-xôn: đầu còn lại cần ngàm cả vênh để thanh ổn định
+  if (restraints.length === 1) restraints[0].warp = true;
+  return restraints;
+}
+
 /**
  * Ổn định uốn – xoắn của một thanh khung (EN 1993-1-1 §6.3.2.2 như chế độ dầm).
  * Trục địa phương y của thanh vuông góc thanh (trái chiều i→j); "cánh trên" là phía +y.
@@ -226,14 +241,8 @@ export function checkFrameMemberLTB(model: FrameModel, res: FrameResult, memberI
   if (!mr || !fm) return NA('Không tìm thấy thanh.');
   let Mmax = 0, xMax = 0;
   for (const s of mr.samples) if (Math.abs(s.M) > Math.abs(Mmax)) { Mmax = s.M; xMax = s.s; }
-  const free = (nodeId: string) => !model.supports.some((s) => s.nodeId === nodeId) && model.members.filter((m) => m.i === nodeId || m.j === nodeId).length <= 1;
-  const restraints: LtbRestraint[] = [];
-  if (!free(fm.i)) restraints.push({ x: 0, lateral: true, twist: true });
-  if (!free(fm.j)) restraints.push({ x: mr.L, lateral: true, twist: true });
+  const restraints = memberRestraints(model, fm, mr.L, opt);
   const nb = Math.max(0, Math.round(opt.braces[memberId] ?? 0));
-  for (let k = 1; k <= nb; k++) restraints.push({ x: (mr.L * k) / (nb + 1), lateral: true, twist: true });
-  // đầu tự do của công-xôn: đầu còn lại cần ngàm cả vênh để thanh ổn định
-  if (restraints.length === 1) restraints[0].warp = true;
   if (!restraints.length) return NA('Thanh không có liên kết chống xoắn.');
   return solveLTB({
     L: mr.L, spec: mr.sectionSpec, sec: mr.section, material: mr.material, M: (x) => mr.internalAt(x, 'right').M,
@@ -243,30 +252,26 @@ export function checkFrameMemberLTB(model: FrameModel, res: FrameResult, memberI
   });
 }
 
-/** Lời giải chung: trị riêng M_cr bằng phần tử hữu hạn (u, φ) và kiểm tra χ_LT */
-export function solveLTB(pb: LtbProblem): LtbResult {
-  const { sec, opt, L, Mmax, xMax } = pb;
-  const lp = sec.ltb;
-  if (!lp) return NA('Chưa hỗ trợ mặt cắt này (đa giác tự do hoặc thép hình xoay 90°).');
-  if (Math.abs(Mmax) < 1e-9) return NA('Thanh không chịu uốn trong mặt phẳng.');
-  if (sec.Iz < sec.Iy * 1.0001) {
-    return NA('Thanh uốn quanh trục yếu (I_z ≤ I_y): không xảy ra mất ổn định uốn – xoắn.');
-  }
-  const Wel = sec.Iz / Math.max(sec.yMax, -sec.yMin);
-  const Weff = weffZ(pb.spec, pb.material, opt.fy, Math.sign(Mmax) || 1, opt.stiffenerSpacing ?? 0);
-  const W = Weff && Weff < Wel ? Weff : Wel;
+/**
+ * Bài toán trị riêng ngoài mặt phẳng (u, φ) bằng phần tử hữu hạn Hermite: K_E + α·K_G = 0.
+ * K_G gồm mô men (∫M·u″φ, Wagner ½∫−Mβ_yφ′²), tải ngang lệch tâm cắt và — nếu có — lực dọc ½∫N[u′² − 2y₀u′φ′ + r₀²φ′²].
+ * alpha0: ước lượng để chọn dịch chuyển; checkLowest: kiểm tra quán tính Sylvester để chắc là trị riêng dương nhỏ nhất.
+ */
+/** khoảng cách điểm đặt tải ngang so với tâm cắt (m, dương: phía +y) */
+const loadEccentricity = (sec: SectionProps, lp: LtbProps, h: LoadHeight) =>
+  ((h === 'top' ? sec.yMax : h === 'bottom' ? sec.yMin : lp.ySc) - lp.ySc) / 1e3;
+
+function outOfPlaneEigen(pb: LtbProblem, alpha0: number, checkLowest: boolean): { alpha: number; mode: { x: number; u: number; phi: number }[] } | null {
+  const { sec, opt, L } = pb;
+  const lp = sec.ltb!;
   const E = pb.material.E * 1e9;
   const G = E / (2 * (1 + pb.material.nu));
   const EIy = E * sec.Iy * 1e-12;
   const GIt = G * sec.torsion.J * 1e-12;
   const EIw = E * lp.Iw * 1e-18;
-  const warnings: string[] = [];
-  const steps: string[] = [];
-  if (lp.closed) warnings.push('Mặt cắt kín (hộp/ống) có độ cứng xoắn rất lớn — hầu như không mất ổn định uốn – xoắn.');
-  if (!(GIt > 0)) return NA('Không xác định được độ cứng xoắn của mặt cắt.');
-  const betaY = lp.monosym ? wagnerBeta(sec, lp) : 0; // mm
-  const beta = betaY / 1e3; // m
-
+  const beta = lp.monosym ? wagnerBeta(sec, lp) / 1e3 : 0; // m
+  const y0 = lp.ySc / 1e3; // m
+  const r02 = ((sec.Iy + sec.Iz) / sec.A + lp.ySc ** 2) * 1e-6; // m²
   // Lưới
   const tol = 1e-9 * Math.max(1, L);
   const keys = new Set<number>([0, L, ...pb.keyPoints]);
@@ -281,8 +286,7 @@ export function solveLTB(pb: LtbProblem): LtbResult {
   const nd = 4 * nn; // u, u′, φ, φ′
   const KE = zeros(nd, nd);
   const KG = zeros(nd, nd);
-  const yLoad = opt.loadHeight === 'top' ? sec.yMax : opt.loadHeight === 'bottom' ? sec.yMin : lp.ySc;
-  const e = (yLoad - lp.ySc) / 1e3; // m, dương: phía trên tâm cắt
+  const e = loadEccentricity(sec, lp, opt.loadHeight); // m, dương: phía trên tâm cắt
   for (let k = 0; k + 1 < nn; k++) {
     const l = xs[k + 1] - xs[k];
     const iu = [4 * k, 4 * k + 1, 4 * k + 4, 4 * k + 5];
@@ -295,6 +299,7 @@ export function solveLTB(pb: LtbProblem): LtbResult {
     for (const [t, w] of GAUSS) {
       const x = xs[k] + t * l;
       const M = pb.M(x) * 1e3; // N·m
+      const Nx = pb.N ? pb.N(x) * 1e3 : 0; // N
       const n0 = N(t, l), n1 = N1(t, l), n2 = N2(t, l);
       for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) {
         const v = w * l * M * n2[a] * n0[b];
@@ -302,6 +307,14 @@ export function solveLTB(pb: LtbProblem): LtbResult {
         KG[ip[b]][iu[a]] += v;
         // hiệu ứng Wagner: ½∫(−M·β_y)φ′²
         if (beta) KG[ip[a]][ip[b]] += w * l * -M * beta * n1[a] * n1[b];
+        // lực dọc (kéo +): ½∫N[u′² − 2y₀u′φ′ + r₀²φ′²]
+        if (Nx) {
+          const c = w * l * Nx * n1[a] * n1[b];
+          KG[iu[a]][iu[b]] += c;
+          KG[ip[a]][ip[b]] += c * r02;
+          KG[iu[a]][ip[b]] -= c * y0;
+          KG[ip[b]][iu[a]] -= c * y0;
+        }
       }
       // tải phân bố đặt lệch tâm cắt
       let q = 0;
@@ -328,9 +341,6 @@ export function solveLTB(pb: LtbProblem): LtbResult {
     if (r.warp) { fixed.add(4 * k + 1); fixed.add(4 * k + 3); }
   }
   const free = [...Array(nd).keys()].filter((d) => !fixed.has(d));
-  // Ước lượng ban đầu (C1 = 1, chiều dài L) để chọn dịch chuyển
-  const Mcr0 = ((Math.PI ** 2 * EIy) / (L * L)) * Math.sqrt(EIw / EIy + (L * L * GIt) / (Math.PI ** 2 * EIy));
-  const Mabs = Math.abs(Mmax) * 1e3;
   const Gm = free.map((r) => free.map((c) => -KG[r][c]));
   const guess = () => free.map((d) => {
     const node = Math.floor(d / 4);
@@ -363,14 +373,14 @@ export function solveLTB(pb: LtbProblem): LtbResult {
   let alpha = NaN;
   let vec: number[] = [];
   for (const shiftFrac of [0.25, 0.05, 0.6]) {
-    const r = inverseIter((shiftFrac * Mcr0) / Mabs);
+    const r = inverseIter(shiftFrac * alpha0);
     if (r && r.a > 0) { alpha = r.a; vec = r.x; break; }
   }
   // Mặt cắt đối xứng một trục (Wagner): phổ không đối xứng ± — kiểm tra đây đúng là trị riêng dương nhỏ nhất
-  if (lp.monosym || !Number.isFinite(alpha)) {
+  if (checkLowest || !Number.isFinite(alpha)) {
     const ok = Number.isFinite(alpha) && countBelow(alpha * (1 - 1e-6)) === 0;
     if (!ok) {
-      let hi = Number.isFinite(alpha) ? alpha : (2 * Mcr0) / Mabs;
+      let hi = Number.isFinite(alpha) ? alpha : 2 * alpha0;
       for (let g = 0; g < 40 && countBelow(hi) === 0; g++) hi *= 2;
       if (countBelow(hi) > 0) {
         let lo = hi / 2;
@@ -384,14 +394,46 @@ export function solveLTB(pb: LtbProblem): LtbResult {
       }
     }
   }
-  if (!Number.isFinite(alpha)) return NA('Không tìm được mô men tới hạn (dầm không có liên kết chống xoắn?).');
-  const Mcr = (alpha * Mabs) / 1e3;
+  if (!Number.isFinite(alpha)) return null;
   const full = new Array<number>(nd).fill(0);
   free.forEach((d, i) => (full[d] = vec[i]));
   let mu = 0, mp = 0;
   for (let k = 0; k < nn; k++) { mu = Math.max(mu, Math.abs(full[4 * k])); mp = Math.max(mp, Math.abs(full[4 * k + 2])); }
   const mode = xs.map((x, k) => ({ x, u: full[4 * k] / (mu || 1), phi: full[4 * k + 2] / (mp || 1) }));
+  return { alpha, mode };
+}
 
+/** Lời giải chung: trị riêng M_cr bằng phần tử hữu hạn (u, φ) và kiểm tra χ_LT */
+export function solveLTB(pb: LtbProblem): LtbResult {
+  const { sec, opt, L, Mmax, xMax } = pb;
+  const lp = sec.ltb;
+  if (!lp) return NA('Chưa hỗ trợ mặt cắt này (đa giác tự do hoặc thép hình xoay 90°).');
+  if (Math.abs(Mmax) < 1e-9) return NA('Thanh không chịu uốn trong mặt phẳng.');
+  if (sec.Iz < sec.Iy * 1.0001) {
+    return NA('Thanh uốn quanh trục yếu (I_z ≤ I_y): không xảy ra mất ổn định uốn – xoắn.');
+  }
+  const Wel = sec.Iz / Math.max(sec.yMax, -sec.yMin);
+  const Weff = weffZ(pb.spec, pb.material, opt.fy, Math.sign(Mmax) || 1, opt.stiffenerSpacing ?? 0);
+  const W = Weff && Weff < Wel ? Weff : Wel;
+  const E = pb.material.E * 1e9;
+  const G = E / (2 * (1 + pb.material.nu));
+  const EIy = E * sec.Iy * 1e-12;
+  const GIt = G * sec.torsion.J * 1e-12;
+  const EIw = E * lp.Iw * 1e-18;
+  const warnings: string[] = [];
+  const steps: string[] = [];
+  if (lp.closed) warnings.push('Mặt cắt kín (hộp/ống) có độ cứng xoắn rất lớn — hầu như không mất ổn định uốn – xoắn.');
+  if (!(GIt > 0)) return NA('Không xác định được độ cứng xoắn của mặt cắt.');
+  const betaY = lp.monosym ? wagnerBeta(sec, lp) : 0; // mm
+  const e = loadEccentricity(sec, lp, opt.loadHeight); // m
+
+  // Ước lượng ban đầu (C1 = 1, chiều dài L) để chọn dịch chuyển
+  const Mcr0 = ((Math.PI ** 2 * EIy) / (L * L)) * Math.sqrt(EIw / EIy + (L * L * GIt) / (Math.PI ** 2 * EIy));
+  const Mabs = Math.abs(Mmax) * 1e3;
+  const eg = outOfPlaneEigen({ ...pb, N: undefined }, Mcr0 / Mabs, lp.monosym);
+  if (!eg) return NA('Không tìm được mô men tới hạn (dầm không có liên kết chống xoắn?).');
+  const { alpha, mode } = eg;
+  const Mcr = (alpha * Mabs) / 1e3;
   const curve: LtbCurve = opt.curve !== 'auto' ? opt.curve
     : lp.rolled ? (lp.hOverB <= 2 ? 'a' : 'b') : (lp.hOverB <= 2 ? 'c' : 'd');
   const aLT = LTB_CURVES[curve];
@@ -416,5 +458,125 @@ export function solveLTB(pb: LtbProblem): LtbResult {
   return {
     applicable: true, Mmax, xMax, Mcr, alpha, Iw: lp.Iw, It: sec.torsion.J, Iweak: sec.Iy, W, lambdaLT: lam, curve, chi, Mrd, Mel,
     util, ok: util <= 1, mode, betaY, steps, warnings,
+  };
+}
+
+// ───────── Phương pháp tổng quát EN 1993-1-1 §6.3.4 ─────────
+
+/** Đường cong uốn dọc quanh trục yếu z–z (EN 1993-1-1 bảng 6.2) */
+const FLEX_CURVES: Record<LtbCurve, number> = { a: 0.21, b: 0.34, c: 0.49, d: 0.76 };
+const chiOf = (alpha: number, lam: number) => {
+  const Phi = 0.5 * (1 + alpha * (lam - 0.2) + lam * lam);
+  return Math.min(1, 1 / (Phi + Math.sqrt(Math.max(Phi * Phi - lam * lam, 0))));
+};
+
+export interface OpResult {
+  applicable: boolean;
+  reason?: string;
+  /** hệ số tải đến bền mặt cắt (trong mặt phẳng) và vị trí, nội lực tại đó */
+  alphaUlt: number;
+  xUlt: number;
+  NUlt: number;
+  MUlt: number;
+  A: number;
+  W: number;
+  /** hệ số tới hạn ngoài mặt phẳng (uốn ngang + uốn – xoắn, có cả N và M) */
+  alphaCrOp: number;
+  lambdaOp: number;
+  curveZ: LtbCurve;
+  chiZ: number;
+  curveLT: LtbCurve;
+  chiLT: number;
+  chiOp: number;
+  util: number;
+  ok: boolean;
+  mode: { x: number; u: number; phi: number }[];
+  steps: string[];
+  warnings: string[];
+}
+
+const NAop = (reason: string): OpResult => ({
+  applicable: false, reason, alphaUlt: 0, xUlt: 0, NUlt: 0, MUlt: 0, A: 0, W: 0, alphaCrOp: 0, lambdaOp: 0, curveZ: 'c', chiZ: 1, curveLT: 'd', chiLT: 1,
+  chiOp: 1, util: 0, ok: true, mode: [], steps: [], warnings: [],
+});
+
+/**
+ * Phương pháp tổng quát cho thanh khung (EN 1993-1-1 §6.3.4):
+ *   α_ult,k = 1 / max[N/(A·f_y) + |M|/(W·f_y)] từ nội lực trong mặt phẳng (nên dùng phân tích bậc hai P-Δ);
+ *   α_cr,op — trị riêng ngoài mặt phẳng với cả N(x) và M(x) của thanh (uốn ngang quanh trục yếu và uốn – xoắn);
+ *   λ̄_op = √(α_ult,k/α_cr,op); χ_op = min(χ_z(λ̄_op), χ_LT(λ̄_op)) (6.3.4(4)a);
+ *   điều kiện χ_op·α_ult,k ≥ f_y/[σ] (dùng [σ] thay cho f_y/γ_M1) → hệ số sử dụng f_y/([σ]·χ_op·α_ult,k).
+ * Tiết diện loại 4 dùng A_eff, W_eff.
+ */
+export function checkFrameMemberOp(model: FrameModel, res: FrameResult, memberId: string, opt: FrameLtbOptions, fy: number, stiffenerSpacing = 0): OpResult {
+  if (!res.ok) return NAop('Chưa có kết quả tính khung.');
+  const mr = res.members.find((m) => m.id === memberId);
+  const fm = model.members.find((m) => m.id === memberId);
+  if (!mr || !fm) return NAop('Không tìm thấy thanh.');
+  const sec = mr.section;
+  const lp = sec.ltb;
+  if (!lp) return NAop('Chưa hỗ trợ mặt cắt này (đa giác tự do hoặc thép hình xoay 90°).');
+  const mat = mr.material;
+  const E = mat.E * 1e9, G = E / (2 * (1 + mat.nu));
+  const EIy = E * sec.Iy * 1e-12, GIt = G * sec.torsion.J * 1e-12, EIw = E * lp.Iw * 1e-18;
+  if (!(GIt > 0)) return NAop('Không xác định được độ cứng xoắn của mặt cắt.');
+  let Pmax = 0, Mabs = 0, Mmax = 0, xMax = 0;
+  for (const q of mr.samples) {
+    Pmax = Math.max(Pmax, -q.N);
+    if (Math.abs(q.M) > Mabs) { Mabs = Math.abs(q.M); Mmax = q.M; xMax = q.s; }
+  }
+  if (!(Pmax > 1e-9) && !(Mabs > 1e-9)) return NAop('Thanh không chịu nén hoặc uốn.');
+  const restraints = memberRestraints(model, fm, mr.L, opt);
+  if (!restraints.length) return NAop('Thanh không có liên kết chống xoắn.');
+  const warnings: string[] = [];
+  // α_ult,k (bền mặt cắt, đàn hồi; loại 4 dùng A_eff, W_eff)
+  const Wel = sec.Iz / Math.max(sec.yMax, -sec.yMin);
+  const Aeff = aeffIfClass4(mr.sectionSpec, mat, fy, stiffenerSpacing);
+  const WeffP = weffZ(mr.sectionSpec, mat, fy, 1, stiffenerSpacing), WeffN = weffZ(mr.sectionSpec, mat, fy, -1, stiffenerSpacing);
+  let uMax = 0, xUlt = 0, NUlt = 0, MUlt = 0, AUse = sec.A, WUse = Wel;
+  for (const q of mr.samples) {
+    const A = q.N < 0 && Aeff ? Aeff : sec.A;
+    const W = q.M > 0 ? Math.min(Wel, WeffP ?? Wel) : q.M < 0 ? Math.min(Wel, WeffN ?? Wel) : Wel;
+    const u = (Math.abs(q.N) * 1e3) / (A * fy) + (Math.abs(q.M) * 1e6) / (W * fy);
+    if (u > uMax) { uMax = u; xUlt = q.s; NUlt = q.N; MUlt = q.M; AUse = A; WUse = W; }
+  }
+  if (!(uMax > 0)) return NAop('Thanh không có nội lực.');
+  const alphaUlt = 1 / uMax;
+  // α_cr,op
+  const L = mr.L;
+  const Ncrz = (Math.PI ** 2 * EIy) / (L * L);
+  const Mcr0 = Ncrz * Math.sqrt(EIw / EIy + (L * L * GIt) / (Math.PI ** 2 * EIy));
+  const alpha0 = Math.min(Mabs > 1e-9 ? Mcr0 / (Mabs * 1e3) : Infinity, Pmax > 1e-9 ? Ncrz / (Pmax * 1e3) : Infinity);
+  const pb: LtbProblem = {
+    L, spec: mr.sectionSpec, sec, material: mat, M: (x) => mr.internalAt(x, 'right').M, N: (x) => mr.internalAt(x, 'right').N,
+    keyPoints: [...mr.keyS, ...restraints.map((r) => r.x)], Mmax, xMax,
+    dists: mr.dists, points: mr.actions.filter((a) => a.source === 'load' && a.Fy).map((a) => ({ x: a.x, Fy: a.Fy })),
+    restraints, braced: (opt.braces[memberId] ?? 0) > 0, opt: { loadHeight: opt.loadHeight, curve: opt.curve, braces: [], fy, stiffenerSpacing },
+  };
+  const eg = outOfPlaneEigen(pb, alpha0, true);
+  if (!eg) return NAop('Không tìm được hệ số tới hạn ngoài mặt phẳng (thanh không có liên kết chống xoắn hoặc chịu kéo thuần).');
+  const alphaCrOp = eg.alpha;
+  const lambdaOp = Math.sqrt(alphaUlt / alphaCrOp);
+  const curveZ: LtbCurve = lp.closed ? 'c' : lp.rolled && lp.hOverB > 1.2 ? 'b' : 'c';
+  const curveLT: LtbCurve = opt.curve !== 'auto' ? opt.curve : lp.rolled ? (lp.hOverB <= 2 ? 'a' : 'b') : (lp.hOverB <= 2 ? 'c' : 'd');
+  const chiZ = chiOf(FLEX_CURVES[curveZ], lambdaOp);
+  const chiLT = Mabs > 1e-9 && sec.Iz > sec.Iy * 1.0001 ? chiOf(LTB_CURVES[curveLT], lambdaOp) : 1;
+  const chiOp = Math.min(chiZ, chiLT);
+  const allow = mat.allowable;
+  const util = fy / (allow * chiOp * alphaUlt);
+  if (lp.closed) warnings.push('Mặt cắt kín: mất ổn định ngoài mặt phẳng chủ yếu là uốn dọc quanh trục yếu.');
+  const f = fmt;
+  const steps = [
+    `Nội lực trong mặt phẳng: mặt cắt bất lợi x = ${f(xUlt, 3)} m, N = ${f(NUlt, 2)} kN, M = ${f(MUlt, 2)} kN·m; A = ${f(AUse, 0)} mm², W = ${f(WUse, 0)} mm³${AUse < sec.A || WUse < Wel ? ' (tiết diện hữu hiệu)' : ''}`,
+    `α_ult,k = 1/[|N|/(A·f_y) + |M|/(W·f_y)] = 1/(${f((Math.abs(NUlt) * 1e3) / (AUse * fy), 4)} + ${f((Math.abs(MUlt) * 1e6) / (WUse * fy), 4)}) = ${f(alphaUlt, 4)} (f_y = ${fy} MPa)`,
+    `α_cr,op: bài toán trị riêng ngoài mặt phẳng với N(x) và M(x) thực của thanh — K_G gồm ∫M·u″φ, ½∫N[u′² − 2y₀u′φ′ + r₀²φ′²]${lp.monosym ? ', Wagner ½∫−Mβ_yφ′²' : ''}${opt.loadHeight !== 'sc' ? ', tải ngang lệch tâm cắt' : ''} → α_cr,op = ${f(alphaCrOp, 4)}`,
+    `Tham khảo: N_cr,z = π²EI_y/L² = ${f(Ncrz / 1e3, 1)} kN${Pmax > 0 ? ` (α = ${f(Ncrz / (Pmax * 1e3), 3)} nếu chỉ nén)` : ''}${Mabs > 0 ? `; M_cr,0 = ${f(Mcr0 / 1e3, 1)} kN·m` : ''}`,
+    `λ̄_op = √(α_ult,k/α_cr,op) = √(${f(alphaUlt, 4)}/${f(alphaCrOp, 4)}) = ${f(lambdaOp, 4)}`,
+    `χ_z (đường cong ${curveZ}, α = ${FLEX_CURVES[curveZ]}) = ${f(chiZ, 4)}; χ_LT (đường cong ${curveLT}, α_LT = ${LTB_CURVES[curveLT]}) = ${chiLT === 1 && !(Mabs > 1e-9) ? '1 (không uốn)' : f(chiLT, 4)} → χ_op = min = ${f(chiOp, 4)}`,
+    `Điều kiện χ_op·α_ult,k ≥ f_y/[σ]: ${f(chiOp * alphaUlt, 4)} ${util <= 1 ? '≥' : '<'} ${f(fy / allow, 4)} → hệ số sử dụng ${f(util * 100, 1)}%`,
+  ];
+  return {
+    applicable: true, alphaUlt, xUlt, NUlt, MUlt, A: AUse, W: WUse, alphaCrOp, lambdaOp, curveZ, chiZ, curveLT, chiLT, chiOp,
+    util, ok: util <= 1, mode: eg.mode, steps, warnings,
   };
 }

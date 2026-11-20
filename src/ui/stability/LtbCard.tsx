@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { AnalysisResult } from '../../core/analysis';
-import { checkFrameMemberLTB, checkLTB, LTB_CURVES, type FrameLtbOptions, type LoadHeight, type LtbCurve, type LtbOptions, type LtbResult } from '../../core/ltb';
-import { memberLocal, type FrameModel, type FrameResult } from '../../core/frame';
+import { checkFrameMemberLTB, checkFrameMemberOp, checkLTB, LTB_CURVES, type FrameLtbOptions, type LoadHeight, type LtbCurve, type LtbOptions, type LtbResult } from '../../core/ltb';
+import { analyzeFrame, memberLocal, type FrameModel, type FrameResult } from '../../core/frame';
 import type { LocalOptions } from '../../core/localBuckling';
 import { uid } from '../../core/presets';
 import { fmt } from '../../core/stress';
@@ -96,6 +96,21 @@ export function frameLtbRows(model: FrameModel, res: FrameResult, opt: FrameLtbO
     });
 }
 
+/** Phương pháp tổng quát (EN 6.3.4) cho mọi thanh chịu nén hoặc uốn: nội lực trong mặt phẳng từ phân tích bậc hai P-Δ */
+export function frameOpRows(model: FrameModel, opt: FrameLtbOptions, local: LocalOptions) {
+  let res = analyzeFrame(model, { secondOrder: true });
+  let secondOrder = true;
+  if (!res.ok) { res = analyzeFrame(model); secondOrder = false; }
+  if (!res.ok) return { secondOrder, rows: [] };
+  const rows = res.members
+    .filter((mr) => mr.samples.some((x) => x.N < -1e-9 || Math.abs(x.M) > 1e-9))
+    .map((mr) => {
+      const ml = memberLocal(local, model.members.find((x) => x.id === mr.id), mr.material);
+      return { mr, ml, r: checkFrameMemberOp(model, res, mr.id, opt, ml.fy, ml.stiffenerSpacing) };
+    });
+  return { secondOrder, rows };
+}
+
 export function FrameLtbCard({ model, res, opt, setOpt, local }: {
   model: FrameModel;
   res: FrameResult;
@@ -104,12 +119,16 @@ export function FrameLtbCard({ model, res, opt, setOpt, local }: {
   local: LocalOptions;
 }) {
   const rows = useMemo(() => frameLtbRows(model, res, opt, local), [model, res, opt, local]);
+  const op = useMemo(() => frameOpRows(model, opt, local), [model, opt, local]);
   const [sel, setSel] = useState('');
-  if (!rows.length) return null;
+  const [opSel, setOpSel] = useState('');
+  if (!rows.length && !op.rows.length) return null;
   const cur = rows.find((x) => x.mr.id === sel) ?? rows.find((x) => x.r.applicable) ?? rows[0];
-  const r: LtbResult = cur.r;
-  const braces = opt.braces[cur.mr.id] ?? 0;
-  const kp = [0, cur.mr.L, ...Array.from({ length: braces }, (_, k) => (cur.mr.L * (k + 1)) / (braces + 1))];
+  const r: LtbResult | null = cur ? cur.r : null;
+  const kpOf = (id: string, L: number) => { const nb = opt.braces[id] ?? 0; return [0, L, ...Array.from({ length: nb }, (_, k) => (L * (k + 1)) / (nb + 1))]; };
+  const kp = cur ? kpOf(cur.mr.id, cur.mr.L) : [];
+  const oc = op.rows.find((x) => x.mr.id === opSel) ?? op.rows.find((x) => x.r.applicable);
+  const bracesInput = (id: string) => <NumField value={opt.braces[id] ?? 0} width={60} onChange={(v) => setOpt({ ...opt, braces: { ...opt.braces, [id]: Math.max(0, Math.round(v)) } })} title="Số giằng (chặn ngang + xoắn) chia đều nhịp thanh" />;
   return (
     <Card title="Ổn định uốn – xoắn các thanh khung">
       <div className="row">
@@ -118,6 +137,7 @@ export function FrameLtbCard({ model, res, opt, setOpt, local }: {
         <Select label="Đường cong ổn định" value={opt.curve} onChange={(v: 'auto' | LtbCurve) => setOpt({ ...opt, curve: v })}
           options={[{ value: 'auto', label: 'Tự động' }, ...(Object.keys(LTB_CURVES) as LtbCurve[]).map((k) => ({ value: k, label: `${k} (α_LT = ${LTB_CURVES[k]})` }))]} />
       </div>
+      {rows.length > 0 && (
       <div className="table-scroll">
         <table className="grid">
           <thead><tr><th>Thanh</th><th>L (m)</th><th>Giằng trong nhịp</th><th>|M|max (kN·m)</th><th>M_cr (kN·m)</th><th>λ̄_LT</th><th>χ_LT</th><th>χ·W·[σ] (kN·m)</th><th>Kết luận</th><th></th></tr></thead>
@@ -126,7 +146,7 @@ export function FrameLtbCard({ model, res, opt, setOpt, local }: {
               <tr key={mr.id} className={mr.id === cur.mr.id ? 'sel-row' : undefined}>
                 <td><b>{mr.name}</b></td>
                 <td>{fmt(mr.L, 3)}</td>
-                <td><NumField value={opt.braces[mr.id] ?? 0} width={60} onChange={(v) => setOpt({ ...opt, braces: { ...opt.braces, [mr.id]: Math.max(0, Math.round(v)) } })} title="Số giằng (chặn ngang + xoắn) chia đều nhịp thanh" /></td>
+                <td>{bracesInput(mr.id)}</td>
                 {q.applicable ? (
                   <>
                     <td>{fmt(Math.abs(q.Mmax), 2)}</td><td>{fmt(q.Mcr, 1)}</td><td>{fmt(q.lambdaLT, 3)}</td><td>{fmt(q.chi, 3)}</td><td>{fmt(q.Mrd, 2)}</td>
@@ -141,7 +161,8 @@ export function FrameLtbCard({ model, res, opt, setOpt, local }: {
           </tbody>
         </table>
       </div>
-      {r.applicable && (
+      )}
+      {cur && r && r.applicable && (
         <>
           <h3 className="sub-title">Thanh {cur.mr.name}: f_y = {cur.ml.fy} MPa; M_cr = {fmt(r.Mcr, 2)} kN·m; I_y · I_t · I_w = {fmt(r.Iweak, 0)} mm⁴ · {fmt(r.It, 0)} mm⁴ · {fmt(r.Iw, 0)} mm⁶{r.betaY ? `; β_y = ${fmt(r.betaY, 1)} mm (Wagner)` : ''}</h3>
           {r.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
@@ -158,8 +179,54 @@ export function FrameLtbCard({ model, res, opt, setOpt, local }: {
       <p className="hint">
         Mỗi thanh giải riêng bài toán trị riêng với biểu đồ mô men, tải ngang và lực tập trung thực của thanh (hệ địa phương, x từ đầu i).
         Hai đầu thanh coi là gối chạc (chặn chuyển vị ngoài mặt phẳng và xoắn, vênh tự do); đầu tự do của công-xôn không có liên kết, đầu còn lại
-        kiềm chế vênh. Có thể thêm giằng chia đều nhịp. f_y và a sườn ngang lấy theo từng thanh. Ảnh hưởng của lực dọc xét ở thẻ nén – uốn.
+        kiềm chế vênh. Có thể thêm giằng chia đều nhịp. f_y và a sườn ngang lấy theo từng thanh. Bảng trên chỉ xét mô men (§6.3.2);
+        lực dọc được gộp vào ở phương pháp tổng quát bên dưới.
       </p>
+      {op.rows.length > 0 && (
+        <>
+          <h3 className="sub-title">Phương pháp tổng quát — nén, uốn và uốn – xoắn ngoài mặt phẳng (EN 1993-1-1 §6.3.4)</h3>
+          <div className="table-scroll">
+            <table className="grid">
+              <thead><tr><th>Thanh</th><th>Giằng</th><th>α_ult,k</th><th>α_cr,op</th><th>λ̄_op</th><th>χ_z</th><th>χ_LT</th><th>χ_op</th><th>χ_op·α_ult,k</th><th>Kết luận</th><th></th></tr></thead>
+              <tbody>
+                {op.rows.map(({ mr, r: q }) => (
+                  <tr key={mr.id} className={oc && mr.id === oc.mr.id ? 'sel-row' : undefined}>
+                    <td><b>{mr.name}</b></td>
+                    <td>{bracesInput(mr.id)}</td>
+                    {q.applicable ? (
+                      <>
+                        <td>{fmt(q.alphaUlt, 3)}</td><td>{fmt(q.alphaCrOp, 3)}</td><td>{fmt(q.lambdaOp, 3)}</td><td>{fmt(q.chiZ, 3)}</td><td>{fmt(q.chiLT, 3)}</td>
+                        <td>{fmt(q.chiOp, 3)}</td><td>{fmt(q.chiOp * q.alphaUlt, 3)}</td>
+                        <td className={q.ok ? 'good' : 'bad'}>{q.ok ? 'đạt ✓' : 'không đạt ✗'} ({fmt(q.util * 100, 0)}%)</td>
+                      </>
+                    ) : (
+                      <td colSpan={8} className="muted">{q.reason}</td>
+                    )}
+                    <td><button onClick={() => setOpSel(mr.id)}>Chi tiết</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {oc && oc.r.applicable && (
+            <>
+              <Diagram title={`Dạng mất ổn định ngoài mặt phẳng — thanh ${oc.mr.name}, chuyển vị ngang u`} unit="—" tone="a" digits={2}
+                data={oc.r.mode.map((m) => ({ x: m.x, y: m.u }))} L={oc.mr.L} keyPoints={kpOf(oc.mr.id, oc.mr.L)} />
+              <Diagram title={`Thanh ${oc.mr.name}, góc xoắn φ`} unit="—" tone="d" digits={2}
+                data={oc.r.mode.map((m) => ({ x: m.x, y: m.phi }))} L={oc.mr.L} keyPoints={kpOf(oc.mr.id, oc.mr.L)} />
+              <details>
+                <summary>Lời giải phương pháp tổng quát — thanh {oc.mr.name}</summary>
+                <ul className="steps">{oc.r.steps.map((s, i) => <li key={i}>{s}</li>)}</ul>
+              </details>
+            </>
+          )}
+          <p className="hint">
+            α_ult,k: hệ số tải để mặt cắt bất lợi nhất đạt f_y, với nội lực trong mặt phẳng {op.secondOrder ? 'từ phân tích bậc hai P-Δ' : '(bậc nhất — phân tích bậc hai không hội tụ)'}.
+            α_cr,op: hệ số tới hạn ngoài mặt phẳng khi tăng đồng thời N và M của thanh (uốn ngang quanh trục yếu, xoắn, uốn – xoắn; có Wagner và tải lệch tâm cắt).
+            λ̄_op = √(α_ult,k/α_cr,op), χ_op = min(χ_z, χ_LT); điều kiện χ_op·α_ult,k ≥ f_y/[σ]. Thép chữ U, góc: bỏ qua độ lệch tâm cắt theo phương z.
+          </p>
+        </>
+      )}
     </Card>
   );
 }

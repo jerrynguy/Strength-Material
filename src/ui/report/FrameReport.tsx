@@ -1,4 +1,4 @@
-import { defaultFrameLtbOptions, frameLtbRows } from '../stability/LtbCard';
+import { defaultFrameLtbOptions, frameLtbRows, frameOpRows } from '../stability/LtbCard';
 import type { FrameLtbOptions } from '../../core/ltb';
 import type { FrameMu } from '../frame/FrameApp';
 import type { ReactNode } from 'react';
@@ -62,6 +62,9 @@ export function FrameReport({ model, parts, local: lopt, mu, ltb: ltbOpt = defau
   if (bcs.length) concl.push({ label: 'Nén – uốn (bậc hai, tải × 1.5 ≤ σ_ch = f_y thanh)', ok: bcs.every((r) => r.bc!.ok2 && r.bc!.okN), detail: bcs.map((r) => `${r.mr.name}: ${r.bc!.sigmaN === null ? 'mất ổn định' : fmt(r.bc!.sigmaN, 0) + ' MPa'}`).join('; ') });
   const locs = rows.filter((r) => r.local?.applicable);
   const ltbs = parts.stability ? frameLtbRows(model, res, ltbOpt, lopt).filter((x) => x.r.applicable) : [];
+  const ops = parts.stability ? frameOpRows(model, ltbOpt, lopt) : { secondOrder: true, rows: [] };
+  const opApp = ops.rows.filter((x) => x.r.applicable);
+  if (opApp.length) concl.push({ label: 'Phương pháp tổng quát EN 6.3.4 (nén + uốn – xoắn ngoài mặt phẳng)', ok: opApp.every((x) => x.r.ok), detail: opApp.map((x) => `${x.mr.name}: ${fmt(x.r.util * 100, 0)}%`).join('; ') });
   if (ltbs.length) concl.push({ label: 'Ổn định uốn – xoắn các thanh', ok: ltbs.every((x) => x.r.ok), detail: ltbs.map((x) => `${x.mr.name}: ${fmt(x.r.util * 100, 0)}%`).join('; ') });
   if (locs.length) concl.push({ label: 'Ổn định cục bộ', ok: locs.every((r) => r.local!.ok), detail: locs.map((r) => `${r.mr.name}: loại ${r.local!.sectionClass || '—'}`).join('; ') });
 
@@ -190,6 +193,15 @@ export function FrameReport({ model, parts, local: lopt, mu, ltb: ltbOpt = defau
                   `${fmt(r.lambdaLT, 3)} · ${fmt(r.chi, 3)}`, fmt(r.Mrd, 2), <Verdict ok={r.ok}>{fmt(r.util * 100, 0)}%</Verdict>])}
                 note="Hai đầu thanh là gối chạc (chặn ngoài mặt phẳng và xoắn, vênh tự do), đầu tự do của công-xôn không có liên kết; giằng chia đều nhịp. M_cr tính bằng bài toán trị riêng với biểu đồ mô men thực của thanh; mặt cắt đối xứng một trục có kể hiệu ứng Wagner." />
               {parts.steps && ltbs.map(({ mr, r }) => <RSteps key={mr.id} lines={r.steps.map((l) => `${mr.name}: ${l}`)} />)}
+            </RSub>
+          )}
+          {opApp.length > 0 && (
+            <RSub title="Phương pháp tổng quát — nén, uốn và uốn – xoắn ngoài mặt phẳng (EN 1993-1-1 §6.3.4)">
+              <RTable head={['Thanh', 'Giằng', 'α_ult,k', 'α_cr,op', 'λ̄_op', 'χ_z · χ_LT', 'χ_op', 'χ_op·α_ult,k', 'Kết luận']}
+                rows={opApp.map(({ mr, r }) => [mr.name, ltbOpt.braces[mr.id] ?? 0, fmt(r.alphaUlt, 3), fmt(r.alphaCrOp, 3), fmt(r.lambdaOp, 3),
+                  `${fmt(r.chiZ, 3)} · ${fmt(r.chiLT, 3)}`, fmt(r.chiOp, 3), fmt(r.chiOp * r.alphaUlt, 3), <Verdict ok={r.ok}>{fmt(r.util * 100, 0)}%</Verdict>])}
+                note={`α_ult,k = 1/max[|N|/(A·f_y) + |M|/(W·f_y)] với nội lực ${ops.secondOrder ? 'bậc hai P-Δ' : 'bậc nhất'}; α_cr,op từ bài toán trị riêng ngoài mặt phẳng khi tăng đồng thời N và M của thanh; λ̄_op = √(α_ult,k/α_cr,op); χ_op = min(χ_z, χ_LT) (6.3.4(4)a); điều kiện χ_op·α_ult,k ≥ f_y/[σ].`} />
+              {parts.steps && opApp.map(({ mr, r }) => <RSteps key={mr.id} lines={r.steps.map((l) => `${mr.name}: ${l}`)} />)}
             </RSub>
           )}
         </RSection>

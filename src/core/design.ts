@@ -13,7 +13,7 @@ import { computeSection, type SectionProps } from './section';
 import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
 import { aeffIfClass4, checkEffective, effectiveSection } from './effective';
 import { checkLocal, type LocalOptions } from './localBuckling';
-import { checkFrameMemberLTB, checkLTB, type FrameLtbOptions, type LtbOptions } from './ltb';
+import { checkFrameMemberLTB, checkFrameMemberOp, checkLTB, type FrameLtbOptions, type LtbOptions } from './ltb';
 import { BUCKLING_MATERIALS, beamEquivalentAxial, checkStability } from './stability';
 import { maxNormalOnSection, stressAt } from './stress';
 import { densityOf, selfWeightPerM, type InternalForces, type Material, type Model, type SectionSpec } from './types';
@@ -171,6 +171,8 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
     }
     let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0, stabUtil = 0, lambda = 0, localUtil = 0, sectionClass = 0, sigU = 0, tauU = 0, ltbUtil = 0;
     const mSec = { ...model, sections, loads };
+    // phương pháp tổng quát EN 6.3.4: nội lực trong mặt phẳng bậc hai
+    const res2 = opt.frameLtb ? analyzeFrame(mSec, { secondOrder: true }) : null;
     for (const mr of res.members) {
       if (!memberIds.has(mr.id)) continue;
       const mat = mr.material ?? model.material;
@@ -190,6 +192,8 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
         const ml = memberLocal(opt.local ?? { fy: 240, stiffenerSpacing: 0 }, model.members.find((x) => x.id === mr.id), mat);
         const l = checkFrameMemberLTB(mSec, res, mr.id, opt.frameLtb, ml.fy, ml.stiffenerSpacing);
         if (l.applicable) ltbUtil = Math.max(ltbUtil, l.util);
+        const o = checkFrameMemberOp(mSec, res2 && res2.ok ? res2 : res, mr.id, opt.frameLtb, ml.fy, ml.stiffenerSpacing);
+        if (o.applicable) ltbUtil = Math.max(ltbUtil, o.util);
       }
       if (opt.stability) {
         let Nc = 0;
