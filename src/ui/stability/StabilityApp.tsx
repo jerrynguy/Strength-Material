@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { computeSection, validateSection } from '../../core/section';
+import { computeSection, validateSection, type SectionProps } from '../../core/section';
 import {
-  BUCKLING_MATERIALS, END_CONDITIONS, checkStability, criticalStress, lambda1, trialDesign,
-  type BucklingMaterial, type BucklingParams, type StabilityResult,
+  BUCKLING_MATERIALS, END_CONDITIONS, checkStability, criticalStress, lambda1, selfWeightColumn, trialDesign,
+  type BucklingMaterial, type BucklingParams, type SelfWeightResult, type StabilityResult,
 } from '../../core/stability';
 import { STEEL_FAMILIES } from '../../core/steelTables';
 import { fmt } from '../../core/stress';
@@ -27,6 +27,8 @@ export interface StabModel {
   params: BucklingParams;
   nReq: number;
   section: SectionSpec;
+  /** Kể trọng lượng bản thân cột (chân cột ở dưới) */
+  selfWeight?: boolean;
 }
 
 export const defaultStabModel = (): StabModel => ({
@@ -82,8 +84,9 @@ export function StabilityApp({ model, setModel, local, setLocal }: { model: Stab
   const set = (p: Partial<StabModel>) => setModel((m) => ({ ...m, ...p }));
   const err = validateSection(model.section);
   const sec = useMemo(() => (err ? null : computeSection(model.section)), [model.section, err]);
+  const sw = sec && model.selfWeight ? selfWeightColumn(model.section, sec, model.material, { N: model.N, L: model.L, Ly: model.Ly, sameL: model.sameL, muZ: model.muZ, muY: model.muY }) : null;
   const inp = {
-    N: model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
+    N: sw ? sw.Ntd : model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
     E: model.material.E, allowable: model.material.allowable, params: model.params, nRequired: model.nReq,
     Aeff: sec ? aeffIfClass4(model.section, model.material, local.fy, local.stiffenerSpacing) : undefined,
   };
@@ -99,6 +102,11 @@ export function StabilityApp({ model, setModel, local, setLocal }: { model: Stab
             <NumField label="Lực nén N" unit="kN" value={model.N} onChange={(v) => set({ N: v })} />
             <NumField label="Chiều dài L" unit="m" value={model.L} onChange={(v) => set({ L: v })} />
             <label className="check"><input type="checkbox" checked={!model.sameL} onChange={(e) => set({ sameL: !e.target.checked, Ly: model.L })} />chiều dài khác nhau theo hai phương (có giằng)</label>
+          </div>
+          <div className="row checks">
+            <label className="check"><input type="checkbox" checked={!!model.selfWeight} onChange={(e) => set({ selfWeight: e.target.checked || undefined })} />
+              Kể trọng lượng bản thân cột (G = ρ·g·A·L, chân cột ở dưới)</label>
+            {sw && <span className="muted small">q = {fmt(sw.q, 4)} kN/m; G = <b>{fmt(sw.G, 3)} kN</b>; N + G = {fmt(sw.Nbase, 2)} kN; N_tđ = <b>{fmt(sw.Ntd, 2)} kN</b></span>}
           </div>
           <div className="row">
             <MuSelect label="Liên kết – uốn quanh trục z" mu={model.muZ} onChange={(v) => set({ muZ: v })} />
@@ -136,14 +144,15 @@ export function StabilityApp({ model, setModel, local, setLocal }: { model: Stab
       <div className="col-res">
         {r && sec ? (
           <>
-            <ResultCard r={r} model={model} />
-            <LocalCard spec={model.section} material={model.material} forces={[{ N: -model.N, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }]} title="Ổn định cục bộ bản cánh, bản bụng (nén đúng tâm)" opt={local} setOpt={setLocal} />
+            <ResultCard r={r} model={model} sw={sw} sec={sec} />
+            <LocalCard spec={model.section} material={model.material} forces={[{ N: -(sw ? sw.Nbase : model.N), Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }]} title="Ổn định cục bộ bản cánh, bản bụng (nén đúng tâm)" opt={local} setOpt={setLocal} />
             <Card title="Đồ thị φ(λ) và σ_th(λ)">
               <Charts r={r} model={model} />
             </Card>
             <Card title="Lời giải từng bước">
               <ul className="steps">
                 <li>A = {fmt(sec.A, 2)} mm²; I<sub>z</sub> = {fmt(sec.Iz, 0)} mm⁴; I<sub>y</sub> = {fmt(sec.Iy, 0)} mm⁴</li>
+                {sw?.steps.map((s, i) => <li key={'sw' + i}>{s}</li>)}
                 {r.steps.map((s, i) => <li key={i}>{s}</li>)}
               </ul>
             </Card>
@@ -157,7 +166,7 @@ export function StabilityApp({ model, setModel, local, setLocal }: { model: Stab
   );
 }
 
-function ResultCard({ r, model }: { r: StabilityResult; model: StabModel }) {
+function ResultCard({ r, model, sw, sec }: { r: StabilityResult; model: StabModel; sw: SelfWeightResult | null; sec: SectionProps }) {
   return (
     <Card title="Kết quả kiểm tra ổn định">
       <div className={`status ${r.okPhi && r.okN ? 'status-tinh-dinh' : 'status-bien-hinh'}`}>
@@ -181,6 +190,12 @@ function ResultCard({ r, model }: { r: StabilityResult; model: StabModel }) {
           <tr><th>Hệ số an toàn ổn định n_ôđ = P_th/N</th><td className={r.okN ? 'good' : 'bad'}>{fmt(r.nActual, 3)} {r.okN ? '≥' : '<'} [n_ôđ] = {model.nReq}</td></tr>
           <tr><th>Hệ số giảm ứng suất φ</th><td>{r.phi === null ? '— (ngoài bảng)' : fmt(r.phi, 4)}</td></tr>
           <tr><th>σ = N/A so với φ[σ]</th><td className={r.okPhi ? 'good' : 'bad'}>{fmt(r.sigma, 2)} {r.okPhi ? '≤' : '>'} {fmt(r.allowPhi, 2)} MPa ({fmt((r.sigma / (r.allowPhi || 1)) * 100, 1)}%)</td></tr>
+          {sw && (
+            <>
+              <tr><th>Trọng lượng bản thân G · lực nén tương đương N_tđ</th><td>{fmt(sw.G, 3)} kN · {fmt(sw.Ntd, 3)} kN (dùng thay N khi kiểm tra ổn định)</td></tr>
+              <tr><th>Bền tại chân cột (N + G)/A ≤ [σ]</th><td className={(sw.Nbase * 1e3) / sec.A <= model.material.allowable ? 'good' : 'bad'}>{fmt((sw.Nbase * 1e3) / sec.A, 2)} {(sw.Nbase * 1e3) / sec.A <= model.material.allowable ? '≤' : '>'} {model.material.allowable} MPa</td></tr>
+            </>
+          )}
           <tr><th>Tải trọng cho phép [N] = φ[σ]A</th><td>{fmt(r.Nallow, 2)} kN</td></tr>
         </tbody>
       </table>
@@ -217,7 +232,10 @@ function TrialCard({ model, apply }: { model: StabModel; apply: (s: SectionSpec)
     setOut(trialDesign(cands, {
       N: model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
       E: model.material.E, allowable: model.material.allowable, params: model.params, nRequired: model.nReq,
-    }));
+    }, model.selfWeight
+      ? (c) => selfWeightColumn({ kind: 'catalog', family, name: c.name, rotate: false }, c.sec, model.material,
+        { N: model.N, L: model.L, Ly: model.Ly, sameL: model.sameL, muZ: model.muZ, muY: model.muY }).Ntd
+      : undefined));
   };
   return (
     <Card title="Chọn tiết diện theo điều kiện ổn định (phương pháp thử dần)">

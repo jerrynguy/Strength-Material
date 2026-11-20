@@ -86,7 +86,7 @@ export default function App() {
     setVersion((v) => v + 1);
   };
   const openStab = (r: StabOpenRequest) => {
-    replaceStab({ ...defaultStabModel(), title: `Ổn định: ${r.title}`, N: Math.round(r.N * 1000) / 1000, L: r.L, Ly: r.L, muZ: r.mu, muY: r.mu, section: r.section, material: { ...r.material } });
+    replaceStab({ ...defaultStabModel(), title: `Ổn định: ${r.title}`, N: Math.round(r.N * 1000) / 1000, L: r.L, Ly: r.L, muZ: r.mu, muY: r.mu, section: r.section, material: { ...r.material }, selfWeight: r.selfWeight || undefined });
     setMode('stab');
     window.scrollTo(0, 0);
   };

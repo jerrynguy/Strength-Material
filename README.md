@@ -163,6 +163,12 @@ Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, r�
   - Tải này được cộng vào mọi phép tính, kể cả khi nhân tải × n.
   - Khối lượng kg/m của mặt cắt và của các số hiệu khi chọn thép tính theo ρ. Chọn số hiệu không cộng trọng lượng bản thân hai lần khi mô hình đã bật ô này.
   - Báo cáo có ρ và dòng tải “g (bản thân)”.
+- **Trọng lượng bản thân trong chế độ ổn định:**
+  - Ô “Kể trọng lượng bản thân cột”: G = ρ·g·A·L, lực dọc tăng dần về chân cột.
+  - Kiểm tra ổn định dùng lực tương đương ở đỉnh N_tđ = N_th,đỉnh/α_th, với α_th từ bài toán trị riêng có cả N và G, cho các liên kết chuẩn μ = 1; 0,7; 0,5; 2. Với μ khác hoặc cột có giằng, lấy N_tđ = N + G (an toàn).
+  - Kiểm tra thêm bền tại chân cột (N + G)/A ≤ [σ]; ổn định cục bộ dùng N + G.
+  - Chọn tiết diện thử dần tính G theo từng số hiệu.
+  - Kiểm chứng Greenhill: công-xôn (qL)_th = 7,837EI/L²; hai đầu khớp 18,6EI/L².
 - **Khung: mỗi thanh một vật liệu riêng.**
   - Thẻ “Thư viện vật liệu” có các mẫu (thép CT3, S355/Q345, bê tông B20, gỗ — giá trị [σ] chỉ để tham khảo); mỗi thanh chọn vật liệu ở mục “Thanh”, bỏ trống thì dùng vật liệu chung.
   - E của từng thanh được dùng khi giải khung (độ cứng, P-Δ, bài toán ổn định); [σ], ν, f_y của vật liệu thanh được dùng cho kiểm tra bền, ổn định, nén – uốn, cục bộ và chọn số hiệu thép (hệ số sử dụng theo [σ] từng thanh).

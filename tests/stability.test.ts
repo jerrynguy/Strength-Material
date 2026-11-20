@@ -58,3 +58,29 @@ it('thử dần: thanh quá mảnh với mọi số hiệu → báo không có, 
   const ok = trialDesign(cands.map((c) => c), { ...base, N: 200, Lz: 2, Ly: 2, muZ: 2, muY: 2 });
   expect(ok.chosen).not.toBeNull();
 });
+
+import { selfWeightColumn } from '../src/core/stability';
+import { STEEL } from '../src/core/presets';
+
+describe('Trọng lượng bản thân trong ổn định cột', () => {
+  const spec = { kind: 'catalog', family: 'CHS', name: 'Ø168.3×6.3', rotate: false } as const;
+  const sec = computeSection(spec);
+  const L = 8;
+  it('công-xôn chỉ chịu trọng lượng bản thân: (qL)_th = 7.837·EI/L² (Greenhill) → N_tđ ≈ 0.315·G', () => {
+    const r = selfWeightColumn(spec, sec, STEEL, { N: 0, L, Ly: L, sameL: true, muZ: 2, muY: 2 });
+    expect(r.planes[0].exact).toBe(true);
+    expect(Math.abs(r.Ntd / r.G - Math.PI ** 2 / 4 / 7.837)).toBeLessThan(0.005);
+  });
+  it('hai đầu khớp: (qL)_th = 18.6·EI/L² → N_tđ ≈ 0.53·G', () => {
+    const r = selfWeightColumn(spec, sec, STEEL, { N: 0, L, Ly: L, sameL: true, muZ: 1, muY: 1 });
+    expect(Math.abs(r.Ntd / r.G - Math.PI ** 2 / 18.6)).toBeLessThan(0.01);
+  });
+  it('có lực đỉnh: N < N_tđ < N + G; μ không chuẩn → N + G', () => {
+    const r = selfWeightColumn(spec, sec, STEEL, { N: 100, L, Ly: L, sameL: true, muZ: 0.7, muY: 0.7 });
+    expect(r.Ntd).toBeGreaterThan(100);
+    expect(r.Ntd).toBeLessThan(100 + r.G);
+    const c = selfWeightColumn(spec, sec, STEEL, { N: 100, L, Ly: L, sameL: true, muZ: 0.8, muY: 0.8 });
+    expect(c.Ntd).toBeCloseTo(100 + c.G, 9);
+    expect(c.Nbase).toBeCloseTo(100 + c.G, 9);
+  });
+});

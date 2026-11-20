@@ -1,7 +1,8 @@
 import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { computeSection, validateSection } from '../../core/section';
-import { checkStability, criticalStress, lambda1 } from '../../core/stability';
+import { checkStability, criticalStress, lambda1, selfWeightColumn } from '../../core/stability';
+import { densityOf } from '../../core/types';
 import { fmt } from '../../core/stress';
 import { SectionView } from '../SectionView';
 import { BucklingChart } from '../stability/BucklingChart';
@@ -14,12 +15,13 @@ export function StabReport({ model, parts, local: lopt }: { model: StabModel; pa
   const err = validateSection(model.section);
   if (err) return <RSection n="1" title="Kết quả"><p className="r-bad">Tiết diện chưa hợp lệ: {err}</p></RSection>;
   const sec = computeSection(model.section);
+  const sw = model.selfWeight ? selfWeightColumn(model.section, sec, model.material, { N: model.N, L: model.L, Ly: model.Ly, sameL: model.sameL, muZ: model.muZ, muY: model.muY }) : null;
   const r = checkStability(sec, {
-    N: model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
+    N: sw ? sw.Ntd : model.N, Lz: model.L, Ly: model.sameL ? model.L : model.Ly, muZ: model.muZ, muY: model.muY,
     E: model.material.E, allowable: model.material.allowable, params: model.params, nRequired: model.nReq,
     Aeff: aeffIfClass4(model.section, model.material, lopt.fy, lopt.stiffenerSpacing),
   });
-  const local = checkLocal(model.section, model.material, [{ N: -model.N, Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }], lopt);
+  const local = checkLocal(model.section, model.material, [{ N: -(sw ? sw.Nbase : model.N), Qy: 0, Qz: 0, T: 0, Mz: 0, My: 0 }], lopt);
   const E = model.material.E * 1e3;
   const xMax = Math.max(200, Math.ceil(r.lambdaMax / 50) * 50);
   const sig: [number, number][] = [];
@@ -32,6 +34,7 @@ export function StabReport({ model, parts, local: lopt }: { model: StabModel; pa
     <>
       <RSection n={N()} title="Kết luận chung">
         <RConclusion items={[
+          ...(sw ? [{ label: 'Bền tại chân cột (N + G)/A', ok: (sw.Nbase * 1e3) / sec.A <= model.material.allowable, detail: `σ = ${fmt((sw.Nbase * 1e3) / sec.A, 2)} MPa so với [σ] = ${model.material.allowable} MPa` }] : []),
           { label: 'Ổn định theo hệ số φ', ok: r.okPhi, detail: `σ = ${fmt(r.sigma, 2)} MPa so với φ[σ] = ${fmt(r.allowPhi, 2)} MPa` },
           { label: 'Ổn định theo hệ số an toàn', ok: r.okN, detail: `n_ôđ = ${fmt(r.nActual, 3)} so với [n_ôđ] = ${model.nReq}` },
           ...(local.applicable ? [{ label: 'Ổn định cục bộ', ok: local.ok, detail: `tiết diện loại ${local.sectionClass || '—'}` }] : []),
@@ -40,7 +43,8 @@ export function StabReport({ model, parts, local: lopt }: { model: StabModel; pa
       {parts.inputs && (
         <RSection n={N()} title="Dữ liệu đầu vào">
           <RKV rows={[
-            ['Lực nén N', `${fmt(model.N, 3)} kN`],
+            ['Lực nén N (đỉnh cột)', `${fmt(model.N, 3)} kN`],
+            ...(sw ? [['Trọng lượng bản thân', `q = ${fmt(sw.q, 4)} kN/m; G = ${fmt(sw.G, 3)} kN (ρ = ${fmt(densityOf(model.material), 0)} kg/m³); lực tương đương N_tđ = ${fmt(sw.Ntd, 3)} kN`] as [string, string]] : []),
             ['Chiều dài', model.sameL ? `L = ${fmt(model.L, 3)} m` : `L_z = ${fmt(model.L, 3)} m; L_y = ${fmt(model.Ly, 3)} m`],
             ['Hệ số chiều dài μ', `μ_z = ${model.muZ}; μ_y = ${model.muY}`],
             ['Vật liệu', `${model.material.name}: E = ${model.material.E} GPa, [σ] = ${model.material.allowable} MPa; ${model.params.label}`],
@@ -71,7 +75,7 @@ export function StabReport({ model, parts, local: lopt }: { model: StabModel; pa
             </RFig>
           </div>
         )}
-        {parts.steps && <RSteps lines={r.steps} />}
+        {parts.steps && <RSteps lines={[...(sw?.steps ?? []), ...r.steps]} />}
         {local.applicable && local.plates.length > 0 && (
           <RTable head={['Tấm', 'c/t', 'Giới hạn 1/2/3', 'σ_cr (MPa)', 'Loại']}
             rows={local.plates.filter((p, i, a) => a.findIndex((q) => q.name.replace(/ – (trái|phải)$/, '') === p.name.replace(/ – (trái|phải)$/, '')) === i)

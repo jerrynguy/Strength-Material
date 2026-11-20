@@ -5,7 +5,7 @@ import { aeffIfClass4 } from '../../core/effective';
 import { DEFAULT_LOCAL, type LocalOptions } from '../../core/localBuckling';
 import { BUCKLING_MATERIALS, checkStability, type BucklingMaterial } from '../../core/stability';
 import { fmt } from '../../core/stress';
-import { effectiveRestraints, type Model, type SectionSpec } from '../../core/types';
+import { effectiveRestraints, type Model, type SectionSpec, selfWeightPerM } from '../../core/types';
 import { Card, NumField, Select } from '../fields';
 
 const REG = { euler: 'Euler', empirical: 'Iasinski', short: 'ngắn' };
@@ -34,6 +34,8 @@ export interface StabOpenRequest {
   section: SectionSpec;
   material: Model['material'];
   title: string;
+  /** cột có kể trọng lượng bản thân dọc trục: N là lực ở đỉnh (đã trừ G) */
+  selfWeight?: boolean;
 }
 
 export function BeamStabilityCard({ res, model, onOpen, local = DEFAULT_LOCAL }: { res: AnalysisResult; model: Model; onOpen: (r: StabOpenRequest) => void; local?: LocalOptions }) {
@@ -71,7 +73,7 @@ export function BeamStabilityCard({ res, model, onOpen, local = DEFAULT_LOCAL }:
       {res.forceSamples.some((s) => s.Mz !== 0 || s.My !== 0) && (
         <p className="hint">Thanh chịu nén kèm uốn: kiểm tra trên chỉ xét nén đúng tâm; cần kiểm tra thêm nén – uốn đồng thời.</p>
       )}
-      <button onClick={() => onOpen({ N: Nc, L: model.length, mu, section: model.section, material: model.material, title: model.title })}>
+      <button onClick={() => onOpen({ N: model.selfWeight === 'x' && res.section ? Math.max(0, Nc - selfWeightPerM(model.material, res.section.A) * model.length) : Nc, L: model.length, mu, section: model.section, material: model.material, title: model.title, selfWeight: model.selfWeight === 'x' })}>
         Mở chi tiết trong mục Ổn định →
       </button>
     </Card>

@@ -11,7 +11,9 @@
  * Bảng φ(λ) và các hệ số a, b lấy theo bảng tra thường dùng trong giáo trình SBVL ở Việt Nam
  * (giá trị tham khảo — có thể sửa trực tiếp trên giao diện).
  */
+import { analyze } from './analysis';
 import type { SectionProps } from './section';
+import { densityOf, selfWeightPerM, type Material, type Model, type SectionSpec, type Support } from './types';
 
 export type BucklingMaterial = 'CT3' | 'castIron' | 'wood';
 
@@ -198,8 +200,12 @@ export function checkStability(sec: SectionProps, inp: StabilityInput): Stabilit
 /** Thử dần chọn tiết diện theo φ (cách làm trong giáo trình): φ₀ = 0.5 → A_yc → chọn → φ′ → φ₁ = (φ₀ + φ′)/2 ... */
 export function trialDesign(
   candidates: { name: string; sec: SectionProps }[],
-  inp: StabilityInput,
+  inpBase: StabilityInput,
+  /** lực nén tương đương theo từng tiết diện (vd. có kể trọng lượng bản thân) */
+  nFor?: (c: { name: string; sec: SectionProps }) => number,
 ): { steps: string[]; chosen: string | null } {
+  const inpOf = (c: { name: string; sec: SectionProps }) => (nFor ? { ...inpBase, N: nFor(c) } : inpBase);
+  let inp = inpBase;
   const steps: string[] = [];
   const sorted = [...candidates].sort((a, b) => a.sec.A - b.sec.A);
   let phi0 = 0.5;
@@ -209,18 +215,20 @@ export function trialDesign(
     let idx = sorted.findIndex((c) => c.sec.A >= Areq);
     if (idx < 0) idx = sorted.length - 1;
     pick = sorted[idx];
+    inp = inpOf(pick);
     let r = checkStability(pick.sec, inp);
     const head = `Lần ${it}: φ = ${f(phi0, 3)} → A_yc = N/(φ[σ]) = ${f(Areq, 1)} mm² → chọn ${pick.name} (A = ${f(pick.sec.A, 1)} mm²) → λ = ${f(r.lambdaMax, 1)}`;
     if (r.phi === null) {
       // quá mảnh: tăng dần đến khi λ nằm trong bảng φ
       let j = idx + 1;
-      while (j < sorted.length && checkStability(sorted[j].sec, inp).phi === null) j++;
+      while (j < sorted.length && checkStability(sorted[j].sec, inpOf(sorted[j])).phi === null) j++;
       if (j >= sorted.length) {
         steps.push(`${head} vượt bảng φ (thanh quá mảnh); mọi số hiệu lớn hơn cũng vượt bảng.`);
         steps.push('Không có tiết diện nào trong họ thoả điều kiện ổn định — hãy giảm chiều dài tính toán (thêm giằng) hoặc chọn họ có bán kính quán tính lớn hơn (ống, hộp, H rộng bản).');
         return { steps, chosen: null };
       }
       pick = sorted[j];
+      inp = inpOf(pick);
       r = checkStability(pick.sec, inp);
       steps.push(`${head} vượt bảng φ → tăng lên ${pick.name} (λ = ${f(r.lambdaMax, 1)}, φ′ = ${f(r.phi ?? 0, 3)})`);
     } else {
@@ -233,13 +241,103 @@ export function trialDesign(
   if (!pick) return { steps, chosen: null };
   // Kiểm tra lại và tăng dần nếu chưa đạt
   let idx = sorted.indexOf(pick);
-  while (idx < sorted.length && !checkStability(sorted[idx].sec, inp).okPhi) idx++;
+  while (idx < sorted.length && !checkStability(sorted[idx].sec, inpOf(sorted[idx])).okPhi) idx++;
   if (idx >= sorted.length) {
     steps.push('Không có tiết diện nào trong họ thoả điều kiện ổn định.');
     return { steps, chosen: null };
   }
   if (sorted[idx] !== pick) steps.push(`${pick.name} chưa đạt → tăng lên ${sorted[idx].name}.`);
-  const r = checkStability(sorted[idx].sec, inp);
+  const r = checkStability(sorted[idx].sec, inpOf(sorted[idx]));
   steps.push(`Kết luận: chọn ${sorted[idx].name}: σ = ${f(r.sigma, 2)} MPa ≤ φ[σ] = ${f(r.allowPhi, 2)} MPa (sử dụng ${f((r.sigma / r.allowPhi) * 100, 1)}%).`);
   return { steps, chosen: sorted[idx].name };
+}
+
+// ───────── Trọng lượng bản thân của cột ─────────
+
+/** Liên kết hai đầu (chân tại x = 0, đỉnh tại x = L) ứng với các giá trị μ chuẩn */
+type EndKind = { base: 'pin' | 'fixed'; top: 'free' | 'pin' | 'slide' | 'sway' };
+function endsFromMu(mu: number): EndKind | null {
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+  if (near(mu, 1)) return { base: 'pin', top: 'pin' };
+  if (near(mu, 0.7)) return { base: 'fixed', top: 'pin' };
+  if (near(mu, 0.5)) return { base: 'fixed', top: 'slide' };
+  if (near(mu, 2)) return { base: 'fixed', top: 'free' };
+  return null;
+}
+
+export interface SelfWeightPlane {
+  plane: 'z' | 'y';
+  mu: number;
+  exact: boolean;
+  /** hệ số tới hạn của tổ hợp (N đỉnh + G) */
+  alpha: number | null;
+  /** lực tới hạn Euler khi chỉ có lực ở đỉnh (kN) */
+  NcrTop: number;
+  /** lực nén tương đương đặt ở đỉnh (kN) */
+  Ntd: number;
+}
+
+export interface SelfWeightResult {
+  /** trọng lượng cột (kN) */
+  G: number;
+  q: number; // kN/m
+  /** lực nén tại chân = N + G */
+  Nbase: number;
+  /** lực nén tương đương dùng cho kiểm tra ổn định (kN) */
+  Ntd: number;
+  planes: SelfWeightPlane[];
+  steps: string[];
+}
+
+/**
+ * Cột chịu lực N ở đỉnh và trọng lượng bản thân phân bố đều (lực dọc tăng dần về chân).
+ * Hệ số tới hạn α tính bằng bài toán trị riêng (phần tử hữu hạn) với liên kết ứng với μ chuẩn;
+ * quy về lực tương đương ở đỉnh: N_tđ = N_th,đỉnh / α (cùng hệ số an toàn với tổ hợp thực).
+ * μ không chuẩn hoặc chiều dài tính toán khác nhau giữa hai phương: N_tđ = N + G (thiên về an toàn).
+ */
+export function selfWeightColumn(
+  spec: SectionSpec, sec: SectionProps, mat: Material,
+  o: { N: number; L: number; Ly: number; sameL: boolean; muZ: number; muY: number },
+): SelfWeightResult {
+  const q = selfWeightPerM(mat, sec.A);
+  const G = q * o.L;
+  const steps: string[] = [`Trọng lượng bản thân: q = ρ·g·A = ${f(densityOf(mat), 0)}·9.81·${f(sec.A, 1)}·10⁻⁶ = ${f(q, 4)} kN/m; G = q·L = ${f(G, 3)} kN`];
+  steps.push(`Lực nén tại chân cột N + G = ${f(o.N + G, 3)} kN (dùng kiểm tra bền và ổn định cục bộ)`);
+  const E = mat.E * 1e9;
+  const planes: SelfWeightPlane[] = [];
+  const ez = endsFromMu(o.muZ), ey = endsFromMu(o.muY);
+  const canExact = !!(ez && ey) && o.sameL;
+  let alphas: { z: number | null; y: number | null } = { z: null, y: null };
+  if (canExact && G > 0) {
+    const rBase = (k: EndKind) => ({ trans: true, rot: k.base === 'fixed' });
+    const rTop = (k: EndKind) => ({ trans: k.top === 'pin' || k.top === 'slide', rot: k.top === 'slide' || k.top === 'sway' });
+    const bz = rBase(ez!), by = rBase(ey!), tz = rTop(ez!), ty = rTop(ey!);
+    const base: Support = { id: 'b', name: 'Chân', x: 0, kind: 'custom', restraints: { ux: true, uy: bz.trans, uz: by.trans, rx: true, ry: by.rot, rz: bz.rot } };
+    const top: Support = { id: 't', name: 'Đỉnh', x: o.L, kind: 'custom', restraints: { ux: false, uy: tz.trans, uz: ty.trans, rx: false, ry: ty.rot, rz: tz.rot } };
+    const model: Model = {
+      title: '', length: o.L, material: mat, section: spec, hinges: [],
+      supports: [base, top].filter((s) => Object.values(s.restraints).some(Boolean)),
+      loads: [
+        ...(o.N > 0 ? [{ id: 'N', type: 'force' as const, name: 'N', x: o.L, Fx: -o.N, Fy: 0, Fz: 0 }] : []),
+        { id: 'g', type: 'distributed' as const, name: 'g', x1: 0, x2: o.L, dir: 'x' as const, q1: -q, q2: -q },
+      ],
+    };
+    const r = analyze(model, { buckling: true });
+    alphas = { z: r.buckling.bendY?.alpha ?? null, y: r.buckling.bendZ?.alpha ?? null };
+  }
+  for (const [plane, mu, I, Lp] of [['z', o.muZ, sec.Iz, o.L], ['y', o.muY, sec.Iy, o.sameL ? o.L : o.Ly]] as const) {
+    const NcrTop = (Math.PI ** 2 * E * I * 1e-12) / (mu * Lp) ** 2 / 1e3;
+    const alpha = plane === 'z' ? alphas.z : alphas.y;
+    const exact = canExact && alpha !== null && G > 0;
+    const Ntd = G <= 0 ? o.N : exact ? NcrTop / alpha! : o.N + G;
+    planes.push({ plane, mu, exact, alpha: exact ? alpha : null, NcrTop, Ntd });
+    if (G > 0) {
+      steps.push(exact
+        ? `Phương ${plane === 'z' ? 'uốn quanh z' : 'uốn quanh y'} (μ = ${mu}): bài toán trị riêng với N ở đỉnh + G phân bố → α_th = ${f(alpha!, 4)}; N_th,đỉnh = π²EI/(μL)² = ${f(NcrTop, 2)} kN → N_tđ = N_th,đỉnh/α_th = ${f(Ntd, 3)} kN (tương đương N + ${f((Ntd - o.N) / G, 3)}·G)`
+        : `Phương ${plane === 'z' ? 'uốn quanh z' : 'uốn quanh y'} (μ = ${mu}): liên kết không thuộc dạng chuẩn hoặc có giằng → lấy N_tđ = N + G = ${f(Ntd, 3)} kN (thiên về an toàn)`);
+    }
+  }
+  const Ntd = Math.max(...planes.map((p) => p.Ntd));
+  if (G > 0) steps.push(`Lực nén tương đương dùng kiểm tra ổn định: N_tđ = ${f(Ntd, 3)} kN`);
+  return { G, q, Nbase: o.N + G, Ntd, planes, steps };
 }
