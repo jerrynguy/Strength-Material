@@ -13,7 +13,7 @@ import { computeSection, type SectionProps } from './section';
 import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
 import { aeffIfClass4, checkEffective, effectiveSection } from './effective';
 import { checkLocal, type LocalOptions } from './localBuckling';
-import { checkLTB, type LtbOptions } from './ltb';
+import { checkFrameMemberLTB, checkLTB, type FrameLtbOptions, type LtbOptions } from './ltb';
 import { BUCKLING_MATERIALS, beamEquivalentAxial, checkStability } from './stability';
 import { maxNormalOnSection, stressAt } from './stress';
 import { densityOf, selfWeightPerM, type InternalForces, type Material, type Model, type SectionSpec } from './types';
@@ -37,6 +37,8 @@ export interface DesignOptions {
   ltb?: LtbOptions | null;
   /** Kiểm tra ổn định cục bộ bản cánh/bụng */
   local?: LocalOptions | null;
+  /** Khung: kiểm tra ổn định uốn – xoắn từng thanh */
+  frameLtb?: FrameLtbOptions | null;
 }
 
 export interface Candidate {
@@ -167,7 +169,8 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
       out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, ltbUtil: 0, localUtil: 0, sectionClass: 0, error: res.errors[0] }, model.material.allowable));
       continue;
     }
-    let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0, stabUtil = 0, lambda = 0, localUtil = 0, sectionClass = 0, sigU = 0, tauU = 0;
+    let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0, stabUtil = 0, lambda = 0, localUtil = 0, sectionClass = 0, sigU = 0, tauU = 0, ltbUtil = 0;
+    const mSec = { ...model, sections, loads };
     for (const mr of res.members) {
       if (!memberIds.has(mr.id)) continue;
       const mat = mr.material ?? model.material;
@@ -182,6 +185,11 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
             if (ec) localUtil = Math.max(localUtil, ec.util);
           }
         }
+      }
+      if (opt.frameLtb) {
+        const ml = memberLocal(opt.local ?? { fy: 240, stiffenerSpacing: 0 }, model.members.find((x) => x.id === mr.id), mat);
+        const l = checkFrameMemberLTB(mSec, res, mr.id, opt.frameLtb, ml.fy, ml.stiffenerSpacing);
+        if (l.applicable) ltbUtil = Math.max(ltbUtil, l.util);
       }
       if (opt.stability) {
         let Nc = 0;
@@ -212,7 +220,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
         }
       }
     }
-    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil, lambda, ltbUtil: 0, localUtil, sectionClass }, model.material.allowable, { sig: sigU, tau: tauU }));
+    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil, lambda, ltbUtil, localUtil, sectionClass }, model.material.allowable, { sig: sigU, tau: tauU }));
   }
   return out.sort((a, b) => a.mass - b.mass);
 }

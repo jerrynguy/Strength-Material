@@ -1,3 +1,5 @@
+import { defaultFrameLtbOptions, frameLtbRows } from '../stability/LtbCard';
+import type { FrameLtbOptions } from '../../core/ltb';
 import type { FrameMu } from '../frame/FrameApp';
 import type { ReactNode } from 'react';
 import { checkFrameMember, frameAnalyses } from '../../core/beamColumn';
@@ -18,7 +20,7 @@ const STATUS = { 'tinh-dinh': 'tĩnh định', 'sieu-tinh': 'siêu tĩnh', 'bien
 const SUP = { fixed: 'Ngàm', pin: 'Gối cố định', roller: 'Gối di động', custom: 'Tuỳ chỉnh' };
 const toIF = (s: { N: number; Q: number; M: number }): InternalForces => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 });
 
-export function FrameReport({ model, parts, local: lopt, mu }: { model: FrameModel; parts: ReportParts; local: LocalOptions; mu?: FrameMu }) {
+export function FrameReport({ model, parts, local: lopt, mu, ltb: ltbOpt = defaultFrameLtbOptions() }: { model: FrameModel; parts: ReportParts; local: LocalOptions; mu?: FrameMu; ltb?: FrameLtbOptions }) {
   const res = analyzeFrame(model, { buckling: true });
   let n = 0;
   const N = () => String(++n);
@@ -59,6 +61,8 @@ export function FrameReport({ model, parts, local: lopt, mu }: { model: FrameMod
   const bcs = rows.filter((r) => r.bc && r.bc.planes.some((p) => p.M1));
   if (bcs.length) concl.push({ label: 'Nén – uốn (bậc hai, tải × 1.5 ≤ σ_ch = f_y thanh)', ok: bcs.every((r) => r.bc!.ok2 && r.bc!.okN), detail: bcs.map((r) => `${r.mr.name}: ${r.bc!.sigmaN === null ? 'mất ổn định' : fmt(r.bc!.sigmaN, 0) + ' MPa'}`).join('; ') });
   const locs = rows.filter((r) => r.local?.applicable);
+  const ltbs = parts.stability ? frameLtbRows(model, res, ltbOpt, lopt).filter((x) => x.r.applicable) : [];
+  if (ltbs.length) concl.push({ label: 'Ổn định uốn – xoắn các thanh', ok: ltbs.every((x) => x.r.ok), detail: ltbs.map((x) => `${x.mr.name}: ${fmt(x.r.util * 100, 0)}%`).join('; ') });
   if (locs.length) concl.push({ label: 'Ổn định cục bộ', ok: locs.every((r) => r.local!.ok), detail: locs.map((r) => `${r.mr.name}: loại ${r.local!.sectionClass || '—'}`).join('; ') });
 
   return (
@@ -177,8 +181,17 @@ export function FrameReport({ model, parts, local: lopt, mu }: { model: FrameMod
               })} note={`Ổn định cục bộ theo EN 1993-1-1 bảng 5.2. f_y chung của khung = ${lopt.fy} MPa (f_y riêng cũng dùng làm σ_ch khi kiểm tra nén – uốn). Khoảng cách sườn ngang chung của khung: ${lopt.stiffenerSpacing > 0 ? `${lopt.stiffenerSpacing} mm` : '∞ (không có sườn ngang)'}; “(riêng)”: thanh có giá trị riêng.`} />
           )}
           {locs.filter((r) => r.mr.sectionSpec.kind === 'I' && r.mr.sectionSpec.stiffeners?.length).map((r) => (
-            <StiffenerChecks key={r.mr.id} local={r.local} steps={parts.steps} title={`Thanh ${r.mr.name} — bụng có sườn dọc (EN 1993-1-5 A.2, A.3)`} />
+            <StiffenerChecks key={r.mr.id} local={r.local} steps={parts.steps} title={`Thanh ${r.mr.name} — bụng có sườn dọc (EN 1993-1-5 §4.5, A.1–A.3)`} />
           ))}
+          {ltbs.length > 0 && (
+            <RSub title={`Ổn định uốn – xoắn các thanh (EN 1993-1-1 §6.3.2.2; tải ngang đặt ${ltbOpt.loadHeight === 'top' ? 'phía +y (cánh trên)' : ltbOpt.loadHeight === 'bottom' ? 'phía −y (cánh dưới)' : 'tại tâm cắt'})`}>
+              <RTable head={['Thanh', 'L (m)', 'Giằng', 'f_y', '|M|max (kN·m)', 'M_cr (kN·m)', 'λ̄_LT · χ_LT', 'χ·W·[σ] (kN·m)', 'Kết luận']}
+                rows={ltbs.map(({ mr, ml, r }) => [mr.name, fmt(mr.L, 3), ltbOpt.braces[mr.id] ?? 0, fmt(ml.fy, 0), fmt(Math.abs(r.Mmax), 2), fmt(r.Mcr, 1),
+                  `${fmt(r.lambdaLT, 3)} · ${fmt(r.chi, 3)}`, fmt(r.Mrd, 2), <Verdict ok={r.ok}>{fmt(r.util * 100, 0)}%</Verdict>])}
+                note="Hai đầu thanh là gối chạc (chặn ngoài mặt phẳng và xoắn, vênh tự do), đầu tự do của công-xôn không có liên kết; giằng chia đều nhịp. M_cr tính bằng bài toán trị riêng với biểu đồ mô men thực của thanh; mặt cắt đối xứng một trục có kể hiệu ứng Wagner." />
+              {parts.steps && ltbs.map(({ mr, r }) => <RSteps key={mr.id} lines={r.steps.map((l) => `${mr.name}: ${l}`)} />)}
+            </RSub>
+          )}
         </RSection>
       )}
     </>

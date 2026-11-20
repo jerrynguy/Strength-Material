@@ -44,7 +44,7 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
 - **Kiểm chứng:** A và Iₓ tính được sai lệch < 1% so với bảng tra cho toàn bộ hơn 120 số hiệu có số liệu đối chiếu (`tests/steel.test.ts`).
 - **Xoay 90°:** cho trường hợp uốn quanh trục yếu.
 - **Chọn số hiệu thép:** duyệt cả họ thép, tính lại kết cấu với từng tiết diện (đúng cả cho hệ siêu tĩnh) rồi chọn tiết diện nhẹ nhất thoả cả ba điều kiện |σ| ≤ [σ], τ ≤ [σ]/√3, f ≤ L/n. Có tuỳ chọn kể trọng lượng bản thân. Dùng được cho dầm và cho từng nhóm tiết diện trong khung.
-- **Chọn số hiệu có kể ổn định:** khi chọn số hiệu thép có thể bật kiểm tra ổn định thanh nén (φ, μL). Chưa xét ổn định cục bộ và mất ổn định uốn–xoắn. Kích thước lấy theo tiêu chuẩn, nên cần đối chiếu catalogue của nhà sản xuất khi lập hồ sơ thiết kế.
+- **Chọn số hiệu có kể ổn định:** khi chọn số hiệu thép có thể bật kiểm tra ổn định thanh nén (φ, μL). Có thể bật thêm ổn định cục bộ và uốn – xoắn (dầm và thanh khung). Kích thước lấy theo tiêu chuẩn, nên cần đối chiếu catalogue của nhà sản xuất khi lập hồ sơ thiết kế.
 
 ## Ổn định thanh chịu nén
 
@@ -59,7 +59,7 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - Chế độ dầm/cột tự kiểm tra khi có lực nén, μ đoán từ liên kết hai đầu.
   - Chế độ khung kiểm tra từng thanh chịu nén, μ nhập riêng cho từng thanh.
   - Chọn số hiệu thép có thể kể thêm điều kiện ổn định.
-- **Giới hạn:** ổn định cục bộ và ổn định uốn – xoắn của dầm chưa được kiểm tra.
+- **Giới hạn:** ổn định cục bộ và uốn – xoắn có ở các mục riêng bên dưới.
 
 ## Nén – uốn đồng thời, phân tích bậc hai
 
@@ -92,7 +92,12 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
   - Hệ số C1: tải phân bố đều 1,131; lực tập trung giữa nhịp 1,36.
   - Giằng giữa nhịp: bằng dầm nhịp L/2.
   - I_w của IPE 300 khớp bảng EN.
-- **Giới hạn:** bỏ qua hiệu ứng Wagner với mặt cắt chỉ đối xứng một trục; chưa xét uốn – xoắn của thanh trong khung.
+- **Hiệu ứng Wagner** (mặt cắt đối xứng một trục: chữ I khác cánh, chữ T, thép góc): thêm số hạng ½∫(GI_t − M·β_y)φ′²dx với β_y = (1/I_z)∫y(y² + z²)dA − 2y_0, tích phân chính xác trên đa giác mặt cắt. Cánh lớn chịu nén làm tăng M_cr, cánh nhỏ chịu nén làm giảm. Vì phổ trị riêng không còn đối xứng ±, app kiểm tra bằng quán tính Sylvester để chắc chắn lấy trị riêng dương nhỏ nhất. Kiểm chứng: mô men đều, gối chạc M_cr = P_y[∓β/2 + √(β²/4 + I_w/I_y + GI_tL²/(π²EI_y))].
+- **Thanh khung:** thẻ “Ổn định uốn – xoắn các thanh khung” giải cho từng thanh với biểu đồ mô men, tải ngang và lực tập trung thực của thanh (hệ địa phương).
+  - Hai đầu thanh là gối chạc; đầu tự do của công-xôn không có liên kết và đầu còn lại kiềm chế vênh.
+  - Nhập số giằng chia đều nhịp cho từng thanh; f_y và a sườn ngang theo từng thanh.
+  - Có trong báo cáo PDF và chọn số hiệu thép cho khung. Kiểm chứng: dầm đơn giản và công-xôn mô hình bằng khung cho cùng M_cr như chế độ dầm.
+- **Giới hạn:** ảnh hưởng của lực dọc lên M_cr của thanh khung xét riêng ở thẻ nén – uốn (không gộp thành α_cr,op).
 
 ## Ổn định cục bộ bản cánh, bản bụng
 
@@ -136,13 +141,18 @@ Khung phẳng tính bằng **ma trận cân bằng** (cấu tạo hình học) v
 
 - **Khai báo:** thêm sườn dọc dạng bản phẳng cho tiết diện chữ I tổ hợp hàn (vị trí tính từ mép trên bụng, bề rộng, bề dày, một hoặc hai phía). A, I, W có kể sườn.
 - **Ổn định cục bộ:** bản bụng được chia thành các ô giữa các sườn; mỗi ô và từng sườn (tấm vươn) được phân loại và tính b_eff riêng.
-- **Mất ổn định tổng thể của bụng có sườn** (EN 1993-1-5 A.2.2, mô hình thanh trên nền đàn hồi):
+- **Mất ổn định tổng thể của bụng có sườn** (EN 1993-1-5 §4.5, phụ lục A):
   - Sườn cùng dải bụng góp hai bên (theo phân bố b_eff) tạo thành thanh có A_sl, I_sl.
-  - Tính a_c và σ_cr,sl (hai trường hợp a ≥ a_c và a < a_c), rồi ngoại suy thành σ_cr,c ở mép nén.
-  - Tính λ̄_c, α_e = 0.49 + 0.09/(i/e) và χ_c.
-  - ρ_c = χ_c dùng để giảm bề dày vùng nén của bụng (trừ dải biên sát cánh) và của sườn (EN §4.5.1). Bỏ qua làm việc kiểu tấm nên kết quả thiên về an toàn.
+  - **Làm việc kiểu tấm:**
+    - Một hoặc hai sườn: thanh trên nền đàn hồi A.2.2 (a_c; σ_cr,sl với a ≥ a_c và a < a_c), các sườn khác là gối cứng.
+    - **Hai sườn kề nhau gộp chung** (A.2.1(4)): A = A₁ + A₂, I = I₁ + I₂, đặt tại hợp lực của hai sườn; b1, b2 đo từ đó đến các mép ô.
+    - ≥ 3 sườn trong vùng nén và ψ ≥ 0,5: **tấm trực hướng A.1**. γ = I_sl/I_p, δ = ΣA_sl/A_p, α = a/b. k_σ,p = 2[(1 + α²)² + γ − 1]/[α²(ψ + 1)(1 + δ)] khi α ≤ γ^¼, ngược lại 4(1 + √γ)/[(ψ + 1)(1 + δ)].
+    - σ_cr,p lấy nhỏ nhất, quy về mép nén lớn nhất. λ̄_p = √(f_y/σ_cr,p) → ρ (4.2, ψ của cả bụng; β_A,c = 1).
+  - **Làm việc kiểu thanh** (4.5.3): σ_cr,sl = π²EI_sl/(A_sl·a²) → σ_cr,c ở mép; λ̄_c, α_e = 0.49 + 0.09/(i/e), χ_c.
+  - **Nội suy** (4.5.4): ξ = σ_cr,p/σ_cr,c − 1 ∈ [0, 1]; ρ_c = (ρ − χ_c)·ξ(2 − ξ) + χ_c. Không có sườn ngang (a = ∞): ξ = 1, ρ_c = ρ.
+  - ρ_c giảm bề dày vùng nén của bụng (trừ dải biên sát cánh) và của sườn (EN §4.5.1).
 - **Ổn định cắt** (EN 1993-1-5 A.3): k_τ có thêm k_τsl từ I_sl, đồng thời kiểm tra ô bụng lớn nhất.
-- **Kiểm chứng:** A_sl, σ_cr,sl khớp công thức; sườn khoẻ cho χ_c lớn hơn sườn yếu; sườn làm tăng W_eff và τ_cr. Ví dụ bụng 1400×8 thêm sườn 120×12 tại 0,2h_w: σ khi uốn giảm từ 154,7 xuống 141,1 MPa; τ_cr tăng từ 31,5 lên 49,2 MPa.
+- **Kiểm chứng:** A_sl, σ_cr,sl, k_σ,p (A.1), trường hợp gộp và công thức nội suy khớp công thức; sườn khoẻ cho χ_c và ρ_c lớn hơn sườn yếu; sườn làm tăng W_eff và τ_cr. Ví dụ bụng 1400×8 thêm sườn 120×12 tại 0,2h_w: σ khi uốn giảm từ 154,7 xuống 141,1 MPa; τ_cr tăng từ 31,5 lên 49,2 MPa.
 
 ## Xuất báo cáo PDF
 
@@ -161,7 +171,7 @@ Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, r�
 - **Ổn định:** dữ liệu, kết quả, đồ thị φ(λ) và σ_th(λ), lời giải, ổn định cục bộ.
 - **Sườn dọc bản bụng** (cả ba loại báo cáo):
   - Phần đầu vào: bảng sườn (vị trí, b_s × t_s, phía, diện tích) và cách chia ô bụng.
-  - Phần ổn định: bảng thanh sườn (b1/b2, A_sl, I_sl, a_c, σ_cr,sl → σ_cr,c, λ̄_c, α_e, χ_c, ρ_c), ổn định cắt có sườn dọc (k_τ, τ_cr, χ_w), lời giải.
+  - Phần ổn định: bảng thanh sườn (b1/b2, A_sl, I_sl, a_c, kiểu tấm σ_cr,sl → σ_cr,p, kiểu thanh σ_cr,c, χ_c), bảng ứng xử bụng (A.1/A.2, ρ, χ_c, ξ, ρ_c), ổn định cắt có sườn dọc (k_τ, τ_cr, χ_w), lời giải.
   - Báo cáo khung có phần riêng cho từng thanh có sườn.
 - **Thông số ổn định cục bộ trong báo cáo:** f_y và khoảng cách sườn ngang a lấy đúng theo giá trị đang nhập trong thẻ “Ổn định cục bộ” của từng chế độ (lưu trên trình duyệt). Các giá trị này cũng được dùng cho chọn số hiệu thép, tiết diện hữu hiệu trong kiểm tra ổn định nén, nén – uốn và uốn – xoắn.
 - **Khối lượng riêng và trọng lượng bản thân:**
@@ -261,10 +271,10 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [x] Bảng thép hình tiêu chuẩn (GOST, JIS, EN) + chọn số hiệu thép
 - [x] Ổn định thanh chịu nén (Euler, Iasinski, hệ số φ)
 - [x] Nén – uốn đồng thời, phân tích bậc hai P-Δ, hệ số tới hạn khung
-- [x] Ổn định uốn – xoắn của dầm (M_cr bằng phần tử hữu hạn, χ_LT theo EN 1993-1-1)
+- [x] Ổn định uốn – xoắn của dầm và từng thanh khung (M_cr bằng phần tử hữu hạn, có hiệu ứng Wagner, χ_LT theo EN 1993-1-1)
 - [x] Ổn định cục bộ bản cánh / bản bụng, phân loại tiết diện, ổn định bụng chịu cắt
 - [x] Tiết diện hữu hiệu đầy đủ cho loại 4 (A_eff, W_eff, e_N, tính lặp)
 - [x] Sườn dọc bản bụng (EN 1993-1-5 A.2, A.3)
-- [ ] Làm việc kiểu tấm của bản có sườn (A.1), vỏ trụ loại 4
+- [x] Làm việc kiểu tấm / kiểu thanh của bản có sườn (A.1, hai sườn gộp, nội suy ρ_c), vỏ trụ loại 4
 - [ ] Lún gối, gối đàn hồi, nhiệt độ
 - [x] Xuất báo cáo PDF (thanh thẳng, khung, ổn định)

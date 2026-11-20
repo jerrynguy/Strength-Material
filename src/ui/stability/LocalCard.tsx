@@ -210,26 +210,33 @@ export function EffectiveView({ eff, check, allow, xLabel }: { eff: EffectiveRes
         if (!cols.length) return null;
         return (
           <>
-            <h3 className="sub-title">Mất ổn định tổng thể của bụng có sườn dọc (EN 1993-1-5 A.2 — thanh trên nền đàn hồi)</h3>
+            <h3 className="sub-title">Mất ổn định tổng thể của bụng có sườn dọc (EN 1993-1-5 §4.5 — kiểu tấm A.1/A.2, kiểu thanh, nội suy)</h3>
             <div className="table-scroll">
               <table className="grid">
-                <thead><tr><th>Trường hợp</th><th>Sườn</th><th>b1 / b2 (mm)</th><th>A_sl (mm²)</th><th>I_sl (mm⁴)</th><th>a_c (mm)</th><th>σ_cr,sl → σ_cr,c</th><th>λ̄_c · α_e</th><th>χ_c</th></tr></thead>
+                <thead><tr><th>Trường hợp</th><th>Sườn</th><th>b1 / b2 (mm)</th><th>A_sl (mm²)</th><th>I_sl (mm⁴)</th><th>a_c (mm)</th><th>kiểu tấm σ_cr,sl → σ_cr,p</th><th>kiểu thanh σ_cr,c</th><th>χ_c</th></tr></thead>
                 <tbody>
                   {cols.map(({ when, c }, i) => (
                     <tr key={i}>
                       <td>{when}</td><td>{c.name} <span className="muted">@{fmt(c.pos, 0)}</span></td><td>{fmt(c.b1, 0)} / {fmt(c.b2, 0)}</td>
                       <td>{fmt(c.Asl, 0)}</td><td>{fmt(c.Isl, 0)}</td><td>{fmt(c.ac, 0)}{Number.isFinite(c.a) ? ` (a = ${fmt(c.a, 0)})` : ''}</td>
-                      <td>{fmt(c.sigmaCrSl, 1)} → {fmt(c.sigmaCrC, 1)}</td><td>{fmt(c.lambdaC, 3)} · {fmt(c.alphaE, 3)}</td>
-                      <td className={c.chiC < 1 ? 'bad' : 'good'}>{fmt(c.chiC, 4)}</td>
+                      <td>{fmt(c.sigmaCrSl, 1)} → {fmt(c.sigmaCrP, 1)}</td>
+                      <td>{c.kind === 'gộp' ? '—' : Number.isFinite(c.a) ? fmt(c.sigmaCrC, 1) : '0 (a = ∞)'}</td>
+                      <td>{c.kind === 'gộp' ? '—' : fmt(c.chiC, 4)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {[{ when: 'nén đều', p: eff.N?.panel }, { when: 'uốn M_z > 0', p: eff.MzPos?.panel }, { when: 'uốn M_z < 0', p: eff.MzNeg?.panel }].filter((x) => x.p).map(({ when, p }) => (
+              <p key={when} className={p!.rhoC < 1 ? 'warn' : 'hint'}>
+                {when}: σ_cr,p = {fmt(p!.sigmaCrP, 1)} MPa ({p!.method === 'A.1' ? `A.1 tấm trực hướng, k_σ,p = ${fmt(p!.A1!.kSigma, 2)}` : `A.2 — ${p!.governing}`}),
+                λ̄_p = {fmt(p!.lambdaP, 3)} → ρ = {fmt(p!.rho, 4)}; kiểu thanh χ_c = {fmt(p!.chiC, 4)}; ξ = {fmt(p!.xi, 3)} → <b>ρ_c = {fmt(p!.rhoC, 4)}</b>
+              </p>
+            ))}
             <p className="hint">
-              Sườn cùng dải bụng hai bên (bề rộng góp theo phân bố b_eff) làm việc như thanh trên nền đàn hồi; ρ_c = χ_c nhỏ nhất được dùng để
-              giảm bề dày vùng nén của bụng (trừ dải biên sát cánh) và sườn — tô đỏ nhạt trên hình. Bỏ qua làm việc kiểu tấm (thiên về an toàn).
-              Khoảng cách sườn ngang a lấy theo ô “Khoảng cách sườn ngang”; a = 0 coi như không có sườn ngang (a ≥ a_c).
+              Kiểu tấm: sườn cùng dải bụng hai bên làm việc như thanh trên nền đàn hồi (A.2.2), hai sườn kề nhau xét thêm trường hợp gộp; ≥ 3 sườn
+              trong vùng nén và ψ ≥ 0.5 dùng tấm trực hướng (A.1). Kiểu thanh: π²EI_sl/(A_sl·a²). ρ_c = (ρ − χ_c)ξ(2 − ξ) + χ_c giảm bề dày vùng nén
+              của bụng (trừ dải biên sát cánh) và sườn — tô đỏ nhạt trên hình. a = 0 coi như không có sườn ngang (ξ = 1, ρ_c = ρ).
             </p>
           </>
         );

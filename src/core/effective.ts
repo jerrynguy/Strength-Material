@@ -35,10 +35,12 @@ export interface EffPlate {
   removed: [number, number] | null;
 }
 
-/** Sườn dọc làm việc như thanh trên nền đàn hồi (EN 1993-1-5 A.2) */
+/** Một trường hợp sườn dọc (EN 1993-1-5 A.2): sườn riêng lẻ (các sườn khác là gối cứng) hoặc hai sườn kề nhau gộp chung */
 export interface StiffColumn {
   name: string;
-  /** khoảng cách từ mép trên bụng đến sườn (mm) */
+  /** 'riêng' — một sườn; 'gộp' — hai sườn kề nhau gộp (A.2.1(4)) */
+  kind: 'riêng' | 'gộp';
+  /** khoảng cách từ mép trên bụng đến sườn / trọng tâm lực của sườn gộp (mm) */
   pos: number;
   b1: number;
   b2: number;
@@ -46,19 +48,41 @@ export interface StiffColumn {
   Isl: number;
   ac: number;
   a: number;
+  /** σ_cr,sl theo thanh trên nền đàn hồi A.2.2 (tại sườn) và quy về mép nén lớn nhất σ_cr,p (MPa) */
   sigmaCrSl: number;
+  sigmaCrP: number;
+  /** làm việc kiểu thanh (4.5.3): σ_cr,sl = π²EI_sl/(A_sl·a²) tại sườn → σ_cr,c ở mép nén lớn nhất (MPa); 0 khi a = ∞ */
+  sigmaCrCol: number;
   sigmaCrC: number;
   lambdaC: number;
   alphaE: number;
   chiC: number;
 }
 
+/** Ứng xử của cả bụng có sườn: kiểu tấm, kiểu thanh và nội suy (EN 1993-1-5 §4.5) */
+export interface StiffPanel {
+  /** cách tính σ_cr,p: 'A.1' tấm trực hướng (≥ 3 sườn trong vùng nén, ψ ≥ 0.5) hoặc 'A.2' (một / hai sườn) */
+  method: 'A.1' | 'A.2';
+  governing: string;
+  psi: number;
+  sigmaCrP: number;
+  lambdaP: number;
+  rho: number;
+  sigmaCrC: number;
+  chiC: number;
+  xi: number;
+  rhoC: number;
+  /** thông số A.1 */
+  A1?: { b: number; alpha: number; gamma: number; delta: number; kSigma: number; Isl: number; sumAsl: number };
+}
+
 export interface EffState {
   sec: SectionProps;
   plates: EffPlate[];
   iterations: number;
-  /** sườn dọc trong vùng nén và hệ số giảm tổng thể ρ_c (= χ_c nhỏ nhất) */
+  /** sườn dọc trong vùng nén (các trường hợp A.2), ứng xử của cả bụng và hệ số giảm tổng thể ρ_c */
   columns?: StiffColumn[];
+  panel?: StiffPanel;
   rhoC?: number;
 }
 
@@ -164,39 +188,119 @@ function share(bi: number, sStiff: number, sOther: number): number {
 }
 
 /**
- * Mất ổn định tổng thể của bụng có sườn dọc — mô hình thanh trên nền đàn hồi (EN 1993-1-5 A.2.2),
- * coi các sườn khác là gối cứng; ρ_c = χ_c nhỏ nhất (thiên về an toàn: bỏ qua làm việc kiểu tấm).
+ * Mất ổn định tổng thể của bụng có sườn dọc (EN 1993-1-5 §4.5, phụ lục A).
+ *  - Kiểu tấm: σ_cr,p theo A.1 (tấm trực hướng, ≥ 3 sườn trong vùng nén, ψ ≥ 0.5) hoặc A.2 (thanh trên nền đàn hồi:
+ *    từng sườn riêng với các sườn khác là gối cứng, và từng cặp sườn kề nhau gộp chung), lấy nhỏ nhất; quy về mép nén lớn nhất.
+ *    λ̄_p = √(f_y/σ_cr,p) → ρ (4.2, tấm trong với ψ của cả bụng); lấy β_A,c = 1 (thiên về an toàn).
+ *  - Kiểu thanh: σ_cr,sl = π²EI_sl/(A_sl·a²) của sườn → σ_cr,c ở mép, χ_c theo đường cong α_e = 0.49 + 0.09/(i/e).
+ *  - Nội suy: ξ = σ_cr,p/σ_cr,c − 1 ∈ [0, 1]; ρ_c = (ρ − χ_c)·ξ(2 − ξ) + χ_c. Không có sườn ngang (a = ∞) → ξ = 1, ρ_c = ρ.
  */
-function stiffenerColumns(geo: Geometry, sigY: (y: number) => number, E: number, nu: number, fy: number, eps: number, aSpacing: number): StiffColumn[] {
+function stiffenedPanel(geo: Geometry, sigY: (y: number) => number, E: number, nu: number, fy: number, aSpacing: number): { columns: StiffColumn[]; panel?: StiffPanel } {
   const sg = geo.stiffened!;
   const tw = sg.tw;
   const ys = [sg.yTop, ...sg.list.map((k) => k.y), sg.yBot];
   const cAt = (y: number) => -sigY(y); // nén dương
-  const out: StiffColumn[] = [];
-  const edgeMax = Math.max(cAt(sg.yTop), cAt(sg.yBot));
+  const cTop = cAt(sg.yTop), cBot = cAt(sg.yBot);
+  const edgeMax = Math.max(cTop, cBot);
+  const a = aSpacing > 0 ? aSpacing : Infinity;
+  const columns: StiffColumn[] = [];
+  if (!(edgeMax > 0)) return { columns };
+  const colChi = (Isl: number, Asl: number, sS: number, ratio: number) => {
+    const sigmaCrCol = Number.isFinite(a) ? (Math.PI ** 2 * E * Isl) / (Asl * a * a) : 0;
+    const sigmaCrC = sigmaCrCol * (edgeMax / sS);
+    const lambdaC = sigmaCrC > 0 ? Math.sqrt(fy / sigmaCrC) : Infinity;
+    const alphaE = 0.49 + 0.09 * ratio;
+    const Phi = 0.5 * (1 + alphaE * (lambdaC - 0.2) + lambdaC * lambdaC);
+    const chiC = Number.isFinite(lambdaC) ? Math.min(1, 1 / (Phi + Math.sqrt(Math.max(Phi * Phi - lambdaC * lambdaC, 0)))) : 0;
+    return { sigmaCrCol, sigmaCrC, lambdaC, alphaE, chiC };
+  };
+  const plateA22 = (Isl: number, Asl: number, b1: number, b2: number) => {
+    const b = b1 + b2;
+    const ac = 4.33 * Math.pow((Isl * b1 * b1 * b2 * b2) / (tw ** 3 * b), 0.25);
+    const sigmaCrSl = a >= ac
+      ? (1.05 * E * Math.sqrt(Isl * tw ** 3 * b)) / (Asl * b1 * b2)
+      : (Math.PI ** 2 * E * Isl) / (Asl * a * a) + (E * tw ** 3 * b * a * a) / (4 * Math.PI ** 2 * (1 - nu * nu) * Asl * b1 * b1 * b2 * b2);
+    return { ac, sigmaCrSl };
+  };
+  // từng sườn riêng
+  const singles: { i: number; y: number; sS: number; Asl: number; Isl: number; ie: number }[] = [];
   sg.list.forEach((k, i) => {
     const sS = cAt(k.y);
     // sườn nằm trong vùng kéo hoặc sát trục trung hoà (nén < 5% mép nén lớn nhất): không làm việc như thanh chịu nén
     if (sS <= 0.05 * edgeMax) return;
     const yUp = ys[i], yDn = ys[i + 2];
-    const b1 = yUp - k.y, b2 = k.y - yDn, b = b1 + b2;
+    const b1 = yUp - k.y, b2 = k.y - yDn;
     const w = share(b1, sS, cAt(yUp)) + share(b2, sS, cAt(yDn));
     const col = stiffenerColumn(k, tw, w);
-    const Asl = col.A, Isl = col.I;
-    const ac = 4.33 * Math.pow((Isl * b1 * b1 * b2 * b2) / (tw ** 3 * b), 0.25);
-    const a = aSpacing > 0 ? aSpacing : Infinity;
-    const sigmaCrSl = a >= ac
-      ? (1.05 * E * Math.sqrt(Isl * tw ** 3 * b)) / (Asl * b1 * b2)
-      : (Math.PI ** 2 * E * Isl) / (Asl * a * a) + (E * tw ** 3 * b * a * a) / (4 * Math.PI ** 2 * (1 - nu * nu) * Asl * b1 * b1 * b2 * b2);
-    const sigmaCrC = sigmaCrSl * (edgeMax / sS);
-    const lambdaC = Math.sqrt(fy / sigmaCrC);
-    const alphaE = 0.49 + 0.09 / (col.i / Math.max(col.e, 1e-9));
-    const Phi = 0.5 * (1 + alphaE * (lambdaC - 0.2) + lambdaC * lambdaC);
-    const chiC = Math.min(1, 1 / (Phi + Math.sqrt(Math.max(Phi * Phi - lambdaC * lambdaC, 0))));
-    out.push({ name: `Sườn dọc ${i + 1}`, pos: sg.yTop - k.y, b1, b2, Asl, Isl, ac, a, sigmaCrSl, sigmaCrC, lambdaC, alphaE, chiC });
+    const { ac, sigmaCrSl } = plateA22(col.I, col.A, b1, b2);
+    const ratio = 1 / (col.i / Math.max(col.e, 1e-9));
+    singles.push({ i, y: k.y, sS, Asl: col.A, Isl: col.I, ie: ratio });
+    columns.push({
+      name: `Sườn dọc ${i + 1}`, kind: 'riêng', pos: sg.yTop - k.y, b1, b2, Asl: col.A, Isl: col.I, ac, a, sigmaCrSl, sigmaCrP: sigmaCrSl * (edgeMax / sS),
+      ...colChi(col.I, col.A, sS, ratio),
+    });
   });
-  void eps;
-  return out;
+  // hai sườn kề nhau gộp chung (A.2.1(4)): A = A1 + A2, I = I1 + I2, đặt tại hợp lực của hai sườn
+  for (let j = 0; j + 1 < singles.length; j++) {
+    const s1 = singles[j], s2 = singles[j + 1];
+    if (s2.i !== s1.i + 1) continue;
+    const F1 = s1.sS * s1.Asl, F2 = s2.sS * s2.Asl;
+    const yl = (F1 * s1.y + F2 * s2.y) / (F1 + F2);
+    const yUp = ys[s1.i], yDn = ys[s2.i + 2];
+    const b1 = yUp - yl, b2 = yl - yDn;
+    const Asl = s1.Asl + s2.Asl, Isl = s1.Isl + s2.Isl;
+    const sS = cAt(yl);
+    if (!(sS > 0)) continue;
+    const { ac, sigmaCrSl } = plateA22(Isl, Asl, b1, b2);
+    columns.push({
+      name: `Sườn dọc ${s1.i + 1} + ${s2.i + 1} (gộp)`, kind: 'gộp', pos: sg.yTop - yl, b1, b2, Asl, Isl, ac, a, sigmaCrSl, sigmaCrP: sigmaCrSl * (edgeMax / sS),
+      ...colChi(Isl, Asl, sS, Math.max(s1.ie, s2.ie)),
+    });
+  }
+  if (!columns.length) return { columns };
+  const hw = sg.yTop - sg.yBot;
+  const psi = Math.max(-3, Math.min(1, Math.min(cTop, cBot) / edgeMax));
+  let method: StiffPanel['method'] = 'A.2';
+  let sigmaCrP: number, governing: string;
+  let A1: StiffPanel['A1'];
+  if (singles.length >= 3 && psi >= 0.5) {
+    // A.1 tấm trực hướng tương đương (sườn rải đều): γ = I_sl/I_p, δ = ΣA_sl/A_p, α = a/b
+    method = 'A.1';
+    const parts: { A: number; x: number; I: number }[] = [{ A: hw * tw, x: 0, I: (hw * tw ** 3) / 12 }];
+    let sumAsl = 0;
+    for (const k of sg.list) {
+      const xs = tw / 2 + k.b / 2;
+      parts.push({ A: k.b * k.t, x: xs, I: (k.t * k.b ** 3) / 12 });
+      if (k.sides === 2) parts.push({ A: k.b * k.t, x: -xs, I: (k.t * k.b ** 3) / 12 });
+      sumAsl += k.b * k.t * k.sides;
+    }
+    const At = parts.reduce((acc, q) => acc + q.A, 0);
+    const xc = parts.reduce((acc, q) => acc + q.A * q.x, 0) / At;
+    const Isl = parts.reduce((acc, q) => acc + q.I + q.A * (q.x - xc) ** 2, 0);
+    const Ip = (hw * tw ** 3) / (12 * (1 - nu * nu));
+    const gamma = Isl / Ip, delta = sumAsl / (hw * tw);
+    const alpha = Math.max(0.5, a / hw);
+    const kSigma = alpha <= Math.pow(gamma, 0.25)
+      ? (2 * ((1 + alpha * alpha) ** 2 + gamma - 1)) / (alpha * alpha * (psi + 1) * (1 + delta))
+      : (4 * (1 + Math.sqrt(gamma))) / ((psi + 1) * (1 + delta));
+    const sigmaE = (Math.PI ** 2 * E * tw * tw) / (12 * (1 - nu * nu) * hw * hw);
+    sigmaCrP = kSigma * sigmaE;
+    governing = 'tấm trực hướng (A.1)';
+    A1 = { b: hw, alpha: Number.isFinite(alpha) ? alpha : Infinity, gamma, delta, kSigma, Isl, sumAsl };
+  } else {
+    const g = columns.reduce((m, c) => (c.sigmaCrP < m.sigmaCrP ? c : m));
+    sigmaCrP = g.sigmaCrP;
+    governing = g.name;
+  }
+  const lambdaP = Math.sqrt(fy / sigmaCrP);
+  const rho = lambdaP > 0.5 + Math.sqrt(Math.max(0.085 - 0.055 * psi, 0)) ? Math.min(1, (lambdaP - 0.055 * (3 + psi)) / (lambdaP * lambdaP)) : 1;
+  // kiểu thanh: sườn riêng gần mép nén lớn nhất nhất (EN 4.5.3(3)) — lấy χ_c nhỏ nhất của các sườn riêng (thiên về an toàn)
+  const singlesCols = columns.filter((c) => c.kind === 'riêng');
+  const gc = singlesCols.reduce((m, c) => (c.chiC < m.chiC ? c : m));
+  const sigmaCrC = gc.sigmaCrC, chiC = gc.chiC;
+  const xi = sigmaCrC > 0 ? Math.min(1, Math.max(0, sigmaCrP / sigmaCrC - 1)) : 1;
+  const rhoC = Math.min(1, (rho - chiC) * xi * (2 - xi) + chiC);
+  return { columns, panel: { method, governing, psi, sigmaCrP, lambdaP, rho, sigmaCrC, chiC, xi, rhoC, A1 } };
 }
 
 /** Trừ các khoảng đã khoét khỏi [a, b] */
@@ -226,6 +330,7 @@ function iterate(spec: SectionSpec, F: InternalForces, mat: Material, fy: number
   let prev = '';
   let it = 0;
   let columns: StiffColumn[] | undefined;
+  let panel: StiffPanel | undefined;
   let rhoC = 1;
   for (it = 1; it <= 15; it++) {
     const [zc, yc] = sec.centroid;
@@ -238,11 +343,14 @@ function iterate(spec: SectionSpec, F: InternalForces, mat: Material, fy: number
     const holes = geo.plates.flatMap((pl, i) => (plates[i].removed ? [rectRing(pl, plates[i].removed![0], plates[i].removed![1], rotate)] : []));
     // Mất ổn định tổng thể của bụng có sườn dọc → giảm bề dày vùng nén theo ρ_c (EN 4.5.1(7))
     columns = undefined;
+    panel = undefined;
     rhoC = 1;
     if (geo.stiffened && !rotate) {
       const sg = geo.stiffened;
-      columns = stiffenerColumns(geo, (y) => sig([0, y]), E, mat.nu, fy, Math.sqrt(235 / fy), aSpacing);
-      if (columns.length) rhoC = Math.min(...columns.map((c) => c.chiC));
+      const sp = stiffenedPanel(geo, (y) => sig([0, y]), E, mat.nu, fy, aSpacing);
+      columns = sp.columns;
+      panel = sp.panel;
+      if (panel) rhoC = panel.rhoC;
       if (rhoC < 1) {
         const cAt = (y: number) => -sig([0, y]);
         // vùng nén của bụng
@@ -288,7 +396,7 @@ function iterate(spec: SectionSpec, F: InternalForces, mat: Material, fy: number
     if (key === prev) break;
     prev = key;
   }
-  return { sec, plates, iterations: it, columns, rhoC };
+  return { sec, plates, iterations: it, columns, panel, rhoC };
 }
 
 const W = (s: SectionProps, axis: 'z' | 'y') =>
@@ -329,8 +437,18 @@ export function effectiveSection(spec: SectionSpec, mat: Material, fy: number, a
     for (const c of st.columns ?? []) {
       steps.push(
         `${label} — ${c.name} (cách mép trên bụng ${fmt(c.pos, 0)} mm): b1 = ${fmt(c.b1, 0)}, b2 = ${fmt(c.b2, 0)} mm; A_sl = ${fmt(c.Asl, 0)} mm², I_sl = ${fmt(c.Isl, 0)} mm⁴; ` +
-          `a_c = ${fmt(c.ac, 0)} mm (a = ${Number.isFinite(c.a) ? fmt(c.a, 0) : '∞'}); σ_cr,sl = ${fmt(c.sigmaCrSl, 1)} MPa → σ_cr,c = ${fmt(c.sigmaCrC, 1)} MPa; ` +
-          `λ̄_c = ${fmt(c.lambdaC, 3)}, α_e = ${fmt(c.alphaE, 3)}, χ_c = ${fmt(c.chiC, 4)}`,
+          `a_c = ${fmt(c.ac, 0)} mm (a = ${Number.isFinite(c.a) ? fmt(c.a, 0) : '∞'}); kiểu tấm (A.2.2): σ_cr,sl = ${fmt(c.sigmaCrSl, 1)} MPa → σ_cr,p = ${fmt(c.sigmaCrP, 1)} MPa; ` +
+          (c.kind === 'riêng'
+            ? `kiểu thanh: π²EI_sl/(A_sl·a²) = ${fmt(c.sigmaCrCol, 1)} MPa → σ_cr,c = ${fmt(c.sigmaCrC, 1)} MPa, λ̄_c = ${Number.isFinite(c.lambdaC) ? fmt(c.lambdaC, 3) : '∞'}, α_e = ${fmt(c.alphaE, 3)}, χ_c = ${fmt(c.chiC, 4)}`
+            : 'hai sườn kề nhau gộp: A = A₁ + A₂, I = I₁ + I₂, đặt tại hợp lực'),
+      );
+    }
+    const p = st.panel;
+    if (p) {
+      if (p.A1) steps.push(`${label} — tấm trực hướng (A.1): b = ${fmt(p.A1.b, 0)} mm, α = a/b = ${Number.isFinite(p.A1.alpha) ? fmt(p.A1.alpha, 3) : '∞'}, γ = I_sl/I_p = ${fmt(p.A1.gamma, 2)}, δ = ΣA_sl/A_p = ${fmt(p.A1.delta, 4)}, ψ = ${fmt(p.psi, 3)} → k_σ,p = ${fmt(p.A1.kSigma, 3)}`);
+      steps.push(
+        `${label} — ứng xử của bụng: σ_cr,p = ${fmt(p.sigmaCrP, 1)} MPa (${p.governing}), λ̄_p = ${fmt(p.lambdaP, 3)}, ψ = ${fmt(p.psi, 3)} → ρ = ${fmt(p.rho, 4)}; ` +
+          `kiểu thanh σ_cr,c = ${fmt(p.sigmaCrC, 1)} MPa, χ_c = ${fmt(p.chiC, 4)}; ξ = σ_cr,p/σ_cr,c − 1 = ${p.sigmaCrC > 0 ? fmt(p.xi, 3) : '1 (a = ∞)'} → ρ_c = (ρ − χ_c)ξ(2 − ξ) + χ_c = ${fmt(p.rhoC, 4)}`,
       );
     }
     if (st.rhoC !== undefined && st.rhoC < 1) steps.push(`${label}: ρ_c = ${fmt(st.rhoC, 4)} — giảm bề dày vùng nén của bụng (trừ dải biên sát cánh) và sườn dọc.`);

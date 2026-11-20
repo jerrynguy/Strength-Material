@@ -1,3 +1,4 @@
+import type { FrameLtbOptions } from '../../core/ltb';
 import type { FrameMu } from '../frame/FrameApp';
 import type { BeamStabParams } from '../../core/beamAxial';
 import { useEffect, useState } from 'react';
@@ -14,7 +15,7 @@ import { StabReport } from './StabReport';
 
 export type ReportInput =
   | { mode: 'beam'; model: Model; ltb: LtbOptions; local: LocalOptions; stab?: BeamStabParams }
-  | { mode: 'frame'; model: FrameModel; local: LocalOptions; mu?: FrameMu }
+  | { mode: 'frame'; model: FrameModel; local: LocalOptions; mu?: FrameMu; ltb?: FrameLtbOptions }
   | { mode: 'stab'; model: StabModel; local: LocalOptions };
 
 const MODE_LABEL = { beam: 'Thanh thẳng (dầm, trục, cột)', frame: 'Khung phẳng / dầm nghiêng', stab: 'Ổn định thanh chịu nén' };
@@ -87,7 +88,7 @@ export function ReportShell({ input, onClose }: { input: ReportInput; onClose: (
           </table>
         </header>
         {input.mode === 'beam' && <BeamReport model={input.model} parts={parts} ltbOpt={input.ltb} local={input.local} stab={input.stab} />}
-        {input.mode === 'frame' && <FrameReport model={input.model} parts={parts} local={input.local} mu={input.mu} />}
+        {input.mode === 'frame' && <FrameReport model={input.model} parts={parts} local={input.local} mu={input.mu} ltb={input.ltb} />}
         {input.mode === 'stab' && <StabReport model={input.model} parts={parts} local={input.local} />}
         <footer className="r-foot">
           Phương pháp: phân tích cấu tạo hình học bằng hạng ma trận; phương pháp ma trận độ cứng; nội lực bằng phương pháp mặt cắt; ứng suất theo

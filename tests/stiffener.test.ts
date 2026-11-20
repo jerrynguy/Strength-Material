@@ -41,10 +41,13 @@ describe('Sườn dọc bản bụng', () => {
     const r1 = checkEffective(effectiveSection(girder(true, 120, 12), STEEL, 235), forces, 160)!;
     expect(r1.sigma).toBeLessThan(r0.sigma);
   });
-  it('sườn yếu bị giảm nhiều hơn sườn khoẻ (χ_c)', () => {
-    const weak = effectiveSection(girder(true, 40, 6), STEEL, 235).N!.columns![0].chiC;
-    const strong = effectiveSection(girder(true, 160, 16), STEEL, 235).N!.columns![0].chiC;
+  it('sườn yếu bị giảm nhiều hơn sườn khoẻ (χ_c khi có sườn ngang, ρ_c khi không có)', () => {
+    const weak = effectiveSection(girder(true, 40, 6), STEEL, 235, 1500).N!.columns![0].chiC;
+    const strong = effectiveSection(girder(true, 160, 16), STEEL, 235, 1500).N!.columns![0].chiC;
     expect(strong).toBeGreaterThan(weak);
+    const w0 = effectiveSection(girder(true, 40, 6), STEEL, 235).N!.rhoC!;
+    const s0 = effectiveSection(girder(true, 160, 16), STEEL, 235).N!.rhoC!;
+    expect(s0).toBeGreaterThan(w0);
   });
   it('cắt: sườn dọc tăng k_τ; ô bụng lớn nhất cũng được kiểm tra', () => {
     const s0 = checkLocal(girder(false), STEEL, [F({ Qy: 500 })], { fy: 235, stiffenerSpacing: 0 }).shear!;
@@ -171,5 +174,75 @@ describe('f_y riêng từng thanh khung', () => {
     expect(r.sigmaY).toBe(355);
     const rb = checkFrameMember(a, m.members[2].id, 1, m, withYield(BUCKLING_MATERIALS.CT3, memberLocal(g, m.members[2]).fy), memberLocal(g, m.members[2]))!;
     expect(rb.sigmaY).toBe(235);
+  });
+});
+
+describe('Ứng xử kiểu tấm – kiểu thanh, hai sườn gộp, tấm trực hướng (EN 1993-1-5 §4.5, A.1, A.2)', () => {
+  const E = 200e3;
+  const rhoPlate = (lp: number, psi: number) => (lp > 0.5 + Math.sqrt(Math.max(0.085 - 0.055 * psi, 0)) ? Math.min(1, (lp - 0.055 * (3 + psi)) / (lp * lp)) : 1);
+  it('không có sườn ngang (a = ∞): ξ = 1 → ρ_c = ρ kiểu tấm', () => {
+    const p = effectiveSection(girder(true), STEEL, 235).N!.panel!;
+    expect(p.method).toBe('A.2');
+    expect(p.sigmaCrC).toBe(0);
+    expect(p.xi).toBe(1);
+    expect(p.lambdaP).toBeCloseTo(Math.sqrt(235 / p.sigmaCrP), 10);
+    expect(p.rho).toBeCloseTo(rhoPlate(p.lambdaP, p.psi), 10);
+    expect(p.rhoC).toBeCloseTo(p.rho, 10);
+  });
+  it('có sườn ngang: σ_cr,c = π²EI/(A·a²), nội suy ρ_c = (ρ − χ_c)ξ(2 − ξ) + χ_c', () => {
+    const a = 2500;
+    const st = effectiveSection(girder(true), STEEL, 235, a).N!;
+    const c = st.columns![0], p = st.panel!;
+    expect(c.sigmaCrCol).toBeCloseTo((Math.PI ** 2 * E * c.Isl) / (c.Asl * a * a), 6);
+    const xi = Math.min(1, Math.max(0, p.sigmaCrP / p.sigmaCrC - 1));
+    expect(p.xi).toBeCloseTo(xi, 10);
+    expect(p.rhoC).toBeCloseTo((p.rho - p.chiC) * xi * (2 - xi) + p.chiC, 10);
+    expect(p.rhoC).toBeGreaterThanOrEqual(Math.min(p.rho, p.chiC) - 1e-12);
+    expect(p.rhoC).toBeLessThanOrEqual(Math.max(p.rho, p.chiC) + 1e-12);
+  });
+  it('hai sườn kề nhau: có trường hợp gộp A = A₁ + A₂, I = I₁ + I₂, đặt tại hợp lực', () => {
+    const spec: SectionSpec = { kind: 'I', bt: 320, tt: 18, hw: 1500, tw: 8, bb: 320, tb: 18, stiffeners: [{ pos: 300, b: 60, t: 8, sides: 1 }, { pos: 500, b: 60, t: 8, sides: 1 }] };
+    const st = effectiveSection(spec, STEEL, 235).N!;
+    const [c1, c2] = st.columns!.filter((c) => c.kind === 'riêng');
+    const g = st.columns!.find((c) => c.kind === 'gộp')!;
+    expect(g).toBeTruthy();
+    expect(g.Asl).toBeCloseTo(c1.Asl + c2.Asl, 6);
+    expect(g.Isl).toBeCloseTo(c1.Isl + c2.Isl, 6);
+    // nén đều: hợp lực theo diện tích
+    expect(g.pos).toBeCloseTo((c1.Asl * c1.pos + c2.Asl * c2.pos) / (c1.Asl + c2.Asl), 6);
+    expect(g.b1 + g.b2).toBeCloseTo(1500, 6);
+    expect(g.b1).toBeCloseTo(g.pos, 6);
+    // σ_cr,p lấy nhỏ nhất trong các trường hợp
+    expect(st.panel!.sigmaCrP).toBeCloseTo(Math.min(...st.columns!.map((c) => c.sigmaCrP)), 10);
+    // hai sườn gần nhau, yếu: trường hợp gộp quyết định
+    expect(st.panel!.governing).toContain('gộp');
+  });
+  it('≥ 3 sườn, nén đều (ψ = 1): tấm trực hướng A.1', () => {
+    const hw = 1600, tw = 8;
+    const stiff = [400, 800, 1200].map((pos) => ({ pos, b: 80, t: 8, sides: 2 as const }));
+    const spec: SectionSpec = { kind: 'I', bt: 400, tt: 20, hw, tw, bb: 400, tb: 20, stiffeners: stiff };
+    const p = effectiveSection(spec, STEEL, 235).N!.panel!;
+    expect(p.method).toBe('A.1');
+    expect(p.psi).toBeCloseTo(1, 10);
+    const Isl = (hw * tw ** 3) / 12 + 3 * 2 * ((8 * 80 ** 3) / 12 + 80 * 8 * (tw / 2 + 40) ** 2);
+    const Ip = (hw * tw ** 3) / (12 * (1 - 0.3 ** 2));
+    const gamma = Isl / Ip, delta = (3 * 2 * 80 * 8) / (hw * tw);
+    expect(p.A1!.gamma).toBeCloseTo(gamma, 6);
+    expect(p.A1!.delta).toBeCloseTo(delta, 10);
+    const k = (4 * (1 + Math.sqrt(gamma))) / (2 * (1 + delta));
+    expect(p.A1!.kSigma).toBeCloseTo(k, 6);
+    expect(p.sigmaCrP).toBeCloseTo((k * Math.PI ** 2 * E * tw * tw) / (12 * 0.91 * hw * hw), 6);
+    // a hữu hạn, α ≤ γ^¼: công thức thứ nhất
+    const a = 2000;
+    const q = effectiveSection(spec, STEEL, 235, a).N!.panel!;
+    const al = a / hw;
+    expect(al).toBeLessThanOrEqual(Math.pow(gamma, 0.25));
+    expect(q.A1!.kSigma).toBeCloseTo((2 * ((1 + al * al) ** 2 + gamma - 1)) / (al * al * 2 * (1 + delta)), 6);
+  });
+  it('uốn (ψ < 0.5): ≥ 3 sườn vẫn dùng A.2', () => {
+    const stiff = [300, 600, 900].map((pos) => ({ pos, b: 80, t: 8, sides: 2 as const }));
+    const spec: SectionSpec = { kind: 'I', bt: 400, tt: 20, hw: 1600, tw: 8, bb: 400, tb: 20, stiffeners: stiff };
+    const p = effectiveSection(spec, STEEL, 235).MzPos!.panel;
+    if (p) expect(p.method).toBe('A.2');
   });
 });

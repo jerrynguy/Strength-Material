@@ -10,6 +10,8 @@ import { designFrame } from '../../core/design';
 import { DesignCard } from '../DesignCard';
 import { FrameStabilityCard } from '../stability/StabilityChecks';
 import { FrameBeamColumnCard } from '../stability/BeamColumnCards';
+import { FrameLtbCard, defaultLtbOptions } from '../stability/LtbCard';
+import type { FrameLtbOptions } from '../../core/ltb';
 import { LocalCard } from '../stability/LocalCard';
 import type { LocalOptions } from '../../core/localBuckling';
 import { FrameGeneral, FrameGeometry, FrameLoads } from './FrameEditor';
@@ -31,7 +33,10 @@ export function memberClass(mr: MemberResult) {
 
 export interface FrameMu { in: Record<string, number>; out: Record<string, number> }
 
-export function FrameApp({ model, setModel, replace, local, setLocal, mu, setMu }: {
+export function FrameApp({ model, setModel, replace, local, setLocal, mu, setMu, ltb, setLtb }: {
+  /** thiết lập uốn – xoắn các thanh (giữ ở App để báo cáo dùng cùng giá trị) */
+  ltb: FrameLtbOptions;
+  setLtb: (o: FrameLtbOptions) => void;
   local: LocalOptions;
   setLocal: (o: LocalOptions) => void;
   /** μ trong / ngoài mặt phẳng từng thanh (giữ ở App để báo cáo PDF dùng cùng giá trị) */
@@ -101,6 +106,7 @@ export function FrameApp({ model, setModel, replace, local, setLocal, mu, setMu 
             <FrameDisp res={res} />
             <FrameStabilityCard res={res1} model={model} mu={memberMu} setMu={setMemberMu} local={local} />
             <FrameBeamColumnCard model={model} res={res1} muOut={muOut} setMuOut={setMuOut} local={local} />
+            <FrameLtbCard model={model} res={res1} opt={ltb} setOpt={setLtb} local={local} />
             {(() => {
               const lm = res1.members.find((m) => m.id === localMem) ?? res1.members[0];
               if (!lm) return null;
@@ -151,7 +157,8 @@ export function FrameApp({ model, setModel, replace, local, setLocal, mu, setMu 
                 <DesignCard
                   allowable={model.material.allowable}
                   allowableLabel={model.materials?.length && model.members.some((b) => b.materialId) ? 'theo vật liệu từng thanh' : undefined}
-                  run={(o) => designFrame(model, sid, { ...o, memberMu })}
+                  run={(o) => designFrame(model, sid, { ...o, memberMu, frameLtb: o.ltb ? ltb : null })}
+                  ltb={defaultLtbOptions()}
                   showMu={false}
                   localOpt={local}
                   apply={(spec) => set((m) => ({ ...m, sections: m.sections.map((x) => (x.id === sid ? { ...x, spec } : x)) }))}

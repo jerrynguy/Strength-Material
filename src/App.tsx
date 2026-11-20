@@ -10,11 +10,11 @@ import { DesignCard } from './ui/DesignCard';
 import { STAB_PRESETS, StabilityApp, defaultStabModel, type StabModel } from './ui/stability/StabilityApp';
 import { BeamStabilityCard, type StabOpenRequest } from './ui/stability/StabilityChecks';
 import { BeamBeamColumnCard } from './ui/stability/BeamColumnCards';
-import { LtbCard, defaultLtbOptions } from './ui/stability/LtbCard';
+import { LtbCard, defaultFrameLtbOptions, defaultLtbOptions } from './ui/stability/LtbCard';
 import { LocalCard } from './ui/stability/LocalCard';
 import { ReportShell } from './ui/report/ReportShell';
 import { DEFAULT_BEAM_STAB, type BeamStabParams } from './core/beamAxial';
-import type { LtbOptions } from './core/ltb';
+import type { FrameLtbOptions, LtbOptions } from './core/ltb';
 import { DEFAULT_LOCAL, type LocalOptions } from './core/localBuckling';
 import type { Model } from './core/types';
 import { BeamView } from './ui/BeamView';
@@ -72,6 +72,7 @@ export default function App() {
   const [beamStab, setBeamStab] = useState<BeamStabParams>(() => ({ ...DEFAULT_BEAM_STAB, ...load<Partial<BeamStabParams>>(BSTAB_KEY, () => ({})) }));
   useEffect(() => save(BSTAB_KEY, beamStab), [beamStab]);
   const [frameMu, setFrameMu] = useState<FrameMu>({ in: {}, out: {} });
+  const [frameLtb, setFrameLtb] = useState<FrameLtbOptions>(defaultFrameLtbOptions);
   const [so, setSo] = useState(false);
   const [ltbOpt, setLtbOpt] = useState<LtbOptions>(defaultLtbOptions);
   // f_y và khoảng cách sườn ngang dùng chung giữa thẻ uốn – xoắn và thẻ ổn định cục bộ (một nguồn)
@@ -187,7 +188,7 @@ export default function App() {
       {mode === 'stab' ? (
         <StabilityApp key={version} model={stab} setModel={(fn) => setStab((m) => fn(m))} local={localOpts.stab} setLocal={setLocalFor('stab')} />
       ) : mode === 'frame' ? (
-        <FrameApp key={version} model={frame} setModel={(fn) => setFrame((m) => fn(m))} replace={replaceFrame} local={localOpts.frame} setLocal={setLocalFor('frame')} mu={frameMu} setMu={setFrameMu} />
+        <FrameApp key={version} model={frame} setModel={(fn) => setFrame((m) => fn(m))} replace={replaceFrame} local={localOpts.frame} setLocal={setLocalFor('frame')} mu={frameMu} setMu={setFrameMu} ltb={frameLtb} setLtb={setFrameLtb} />
       ) : (
       <main className="layout" key={version}>
         <div className="col-edit">
@@ -263,7 +264,7 @@ export default function App() {
       {reportOpen && (
         <ReportShell
           onClose={closeReport}
-          input={mode === 'beam' ? { mode, model, ltb: ltbMerged, local: localOpts.beam, stab: beamStab } : mode === 'frame' ? { mode, model: frame, local: localOpts.frame, mu: frameMu } : { mode, model: stab, local: localOpts.stab }}
+          input={mode === 'beam' ? { mode, model, ltb: ltbMerged, local: localOpts.beam, stab: beamStab } : mode === 'frame' ? { mode, model: frame, local: localOpts.frame, mu: frameMu, ltb: frameLtb } : { mode, model: stab, local: localOpts.stab }}
         />
       )}
       <footer className="foot muted">
