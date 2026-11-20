@@ -169,6 +169,7 @@ Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, r�
   - Kiểm tra thêm bền tại chân cột (N + G)/A ≤ [σ]; ổn định cục bộ dùng N + G.
   - Chọn tiết diện thử dần tính G theo từng số hiệu.
   - Kiểm chứng Greenhill: công-xôn (qL)_th = 7,837EI/L²; hai đầu khớp 18,6EI/L².
+  - Áp dụng cả trong chế độ thanh thẳng: với cột bật trọng lượng bản thân dọc trục, thẻ “Kiểm tra ổn định”, báo cáo và chọn số hiệu thép dùng N_tđ (lực ở đỉnh lấy tại x = L⁻), kèm kiểm tra bền tại chân cột.
 - **Khung: mỗi thanh một vật liệu riêng.**
   - Thẻ “Thư viện vật liệu” có các mẫu (thép CT3, S355/Q345, bê tông B20, gỗ — giá trị [σ] chỉ để tham khảo); mỗi thanh chọn vật liệu ở mục “Thanh”, bỏ trống thì dùng vật liệu chung.
   - E của từng thanh được dùng khi giải khung (độ cứng, P-Δ, bài toán ổn định); [σ], ν, f_y của vật liệu thanh được dùng cho kiểm tra bền, ổn định, nén – uốn, cục bộ và chọn số hiệu thép (hệ số sử dụng theo [σ] từng thanh).

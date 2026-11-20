@@ -55,3 +55,36 @@ describe('Khối lượng riêng và trọng lượng bản thân', () => {
     a.forEach((c, i) => expect(rel(b[i].sigma, c.sigma)).toBeLessThan(1e-9));
   });
 });
+
+import { beamSelfWeightNtd, selfWeightColumn } from '../src/core/stability';
+
+describe('Thẻ ổn định chế độ dầm dùng N_tđ khi có trọng lượng bản thân', () => {
+  const col = (P: number): Model => ({
+    title: '', length: 8, material: { ...STEEL }, section: { kind: 'catalog', family: 'CHS', name: 'Ø168.3×6.3', rotate: false },
+    supports: [support('A', 0, 'fixed')], hinges: [], selfWeight: 'x',
+    loads: [{ id: 'p', type: 'force', name: 'P', x: 8, Fx: -P, Fy: 0, Fz: 0 }],
+  });
+  it('lực ở đỉnh lấy đúng P; N_tđ trùng với chế độ Ổn định', () => {
+    const m = col(120);
+    const res = analyze(m);
+    const sw = beamSelfWeightNtd(m, res, 2)!;
+    expect(sw.Nbase - sw.G).toBeCloseTo(120, 6);
+    const ref = selfWeightColumn(m.section, res.section!, m.material, { N: 120, L: 8, Ly: 8, sameL: true, muZ: 2, muY: 2 });
+    expect(sw.Ntd).toBeCloseTo(ref.Ntd, 9);
+    expect(sw.Ntd).toBeGreaterThan(120);
+    expect(sw.Ntd).toBeLessThan(120 + sw.G);
+  });
+  it('không áp dụng khi trọng lượng bản thân theo −y hoặc không bật', () => {
+    const m = { ...col(120), selfWeight: 'y' as const };
+    expect(beamSelfWeightNtd(m, analyze(m), 2)).toBeNull();
+    const n = { ...col(120), selfWeight: undefined };
+    expect(beamSelfWeightNtd(n, analyze(n), 2)).toBeNull();
+  });
+  it('chọn số hiệu với điều kiện ổn định dùng N_tđ (không thận trọng hơn cách lấy N + G)', () => {
+    const opt = { family: 'CHS', rotate: false, deflRatio: 0, selfWeight: false, stability: true, mu: 2 };
+    const c = designBeam(col(120), opt);
+    const ok = c.find((x) => x.ok)!;
+    expect(ok).toBeTruthy();
+    expect(ok.stabUtil).toBeGreaterThan(0);
+  });
+});

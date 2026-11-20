@@ -3,9 +3,9 @@ import type { AnalysisResult } from '../../core/analysis';
 import { memberLocal, withYield, type FrameModel, type FrameResult } from '../../core/frame';
 import { aeffIfClass4 } from '../../core/effective';
 import { DEFAULT_LOCAL, type LocalOptions } from '../../core/localBuckling';
-import { BUCKLING_MATERIALS, checkStability, type BucklingMaterial } from '../../core/stability';
+import { BUCKLING_MATERIALS, beamSelfWeightNtd, checkStability, type BucklingMaterial } from '../../core/stability';
 import { fmt } from '../../core/stress';
-import { effectiveRestraints, type Model, type SectionSpec, selfWeightPerM } from '../../core/types';
+import { effectiveRestraints, type Model, type SectionSpec } from '../../core/types';
 import { Card, NumField, Select } from '../fields';
 
 const REG = { euler: 'Euler', empirical: 'Iasinski', short: 'ngắn' };
@@ -46,11 +46,15 @@ export function BeamStabilityCard({ res, model, onOpen, local = DEFAULT_LOCAL }:
   let Nc = 0;
   for (const s of res.forceSamples) Nc = Math.max(Nc, -s.N);
   if (!(Nc > 0)) return null;
+  // cột có trọng lượng bản thân dọc trục: dùng lực tương đương ở đỉnh N_tđ (giống chế độ Ổn định)
+  const sw = beamSelfWeightNtd(model, res, mu);
+  const Ncheck = sw ? sw.Ntd : Nc;
+  const sigBase = (Nc * 1e3) / res.section.A;
   const r = checkStability(res.section, {
-    N: Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: model.material.allowable,
+    N: Ncheck, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: model.material.allowable,
     params: BUCKLING_MATERIALS[mat], nRequired: nReq, Aeff: aeffIfClass4(model.section, model.material, local.fy, local.stiffenerSpacing),
   });
-  const ok = r.okPhi && r.okN;
+  const ok = r.okPhi && r.okN && (!sw || sigBase <= model.material.allowable);
   return (
     <Card title="Kiểm tra ổn định (thanh có lực nén)">
       <div className="row">
@@ -61,19 +65,31 @@ export function BeamStabilityCard({ res, model, onOpen, local = DEFAULT_LOCAL }:
       </div>
       <table className="kv wide">
         <tbody>
-          <tr><th>Lực nén lớn nhất N</th><td>{fmt(Nc, 2)} kN</td></tr>
+          {sw ? (
+            <>
+              <tr><th>Lực ở đỉnh · trọng lượng bản thân G</th><td>{fmt(sw.Nbase - sw.G, 2)} kN · {fmt(sw.G, 3)} kN (lực nén tại chân N + G = {fmt(Nc, 2)} kN)</td></tr>
+              <tr><th>Lực tương đương ở đỉnh N_tđ</th><td><b>{fmt(sw.Ntd, 2)} kN</b>{sw.planes.some((p) => p.exact) ? ` = N_th,đỉnh/α_th (tương đương N + ${fmt((sw.Ntd - (sw.Nbase - sw.G)) / (sw.G || 1), 3)}·G)` : ' = N + G (μ không chuẩn — thiên về an toàn)'}</td></tr>
+              <tr><th>Bền tại chân cột (N + G)/A ≤ [σ]</th><td className={sigBase <= model.material.allowable ? 'good' : 'bad'}>{fmt(sigBase, 2)} {sigBase <= model.material.allowable ? '≤' : '>'} {model.material.allowable} MPa</td></tr>
+            </>
+          ) : (
+            <tr><th>Lực nén lớn nhất N</th><td>{fmt(Nc, 2)} kN</td></tr>
+          )}
           <tr><th>λ_max = μL/i_min</th><td>{fmt(r.lambdaMax, 2)} ({REG[r.regime]})</td></tr>
           <tr><th>σ_th · P_th</th><td>{fmt(r.sigmaCr, 2)} MPa · {fmt(r.Pcr, 2)} kN</td></tr>
-          <tr><th>n_ôđ = P_th/N</th><td className={r.okN ? 'good' : 'bad'}>{fmt(r.nActual, 3)}</td></tr>
-          <tr><th>σ = N/A ≤ φ[σ]</th><td className={r.okPhi ? 'good' : 'bad'}>{fmt(r.sigma, 2)} {r.okPhi ? '≤' : '>'} {r.phi === null ? '—' : `${fmt(r.phi, 3)}·${model.material.allowable} = ${fmt(r.allowPhi, 2)}`} MPa</td></tr>
+          <tr><th>n_ôđ = P_th/{sw ? 'N_tđ' : 'N'}</th><td className={r.okN ? 'good' : 'bad'}>{fmt(r.nActual, 3)}</td></tr>
+          <tr><th>σ = {sw ? 'N_tđ' : 'N'}/A ≤ φ[σ]</th><td className={r.okPhi ? 'good' : 'bad'}>{fmt(r.sigma, 2)} {r.okPhi ? '≤' : '>'} {r.phi === null ? '—' : `${fmt(r.phi, 3)}·${model.material.allowable} = ${fmt(r.allowPhi, 2)}`} MPa</td></tr>
         </tbody>
       </table>
       <p className={ok ? 'ok' : 'error'}>{ok ? 'Thanh đủ ổn định.' : 'Thanh KHÔNG đủ ổn định.'}</p>
       {r.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
+      {sw && <details><summary>Lời giải trọng lượng bản thân</summary><ul className="steps">{sw.steps.map((l, i) => <li key={i}>{l}</li>)}</ul></details>}
+      {model.selfWeight === 'y' && (
+        <p className="hint">Trọng lượng bản thân đang tác dụng ngang (−y); nếu đây là cột đứng, chọn “cột đứng, chân tại x = 0” ở phần tải trọng để kể đúng lực dọc.</p>
+      )}
       {res.forceSamples.some((s) => s.Mz !== 0 || s.My !== 0) && (
         <p className="hint">Thanh chịu nén kèm uốn: kiểm tra trên chỉ xét nén đúng tâm; cần kiểm tra thêm nén – uốn đồng thời.</p>
       )}
-      <button onClick={() => onOpen({ N: model.selfWeight === 'x' && res.section ? Math.max(0, Nc - selfWeightPerM(model.material, res.section.A) * model.length) : Nc, L: model.length, mu, section: model.section, material: model.material, title: model.title, selfWeight: model.selfWeight === 'x' })}>
+      <button onClick={() => onOpen({ N: sw ? sw.Nbase - sw.G : Nc, L: model.length, mu, section: model.section, material: model.material, title: model.title, selfWeight: model.selfWeight === 'x' })}>
         Mở chi tiết trong mục Ổn định →
       </button>
     </Card>

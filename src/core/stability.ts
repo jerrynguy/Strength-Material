@@ -11,7 +11,7 @@
  * Bảng φ(λ) và các hệ số a, b lấy theo bảng tra thường dùng trong giáo trình SBVL ở Việt Nam
  * (giá trị tham khảo — có thể sửa trực tiếp trên giao diện).
  */
-import { analyze } from './analysis';
+import { analyze, type AnalysisResult } from './analysis';
 import type { SectionProps } from './section';
 import { densityOf, selfWeightPerM, type Material, type Model, type SectionSpec, type Support } from './types';
 
@@ -340,4 +340,14 @@ export function selfWeightColumn(
   const Ntd = Math.max(...planes.map((p) => p.Ntd));
   if (G > 0) steps.push(`Lực nén tương đương dùng kiểm tra ổn định: N_tđ = ${f(Ntd, 3)} kN`);
   return { G, q, Nbase: o.N + G, Ntd, planes, steps };
+}
+
+/**
+ * Chế độ thanh thẳng: cột có kể trọng lượng bản thân dọc trục (chân tại x = 0).
+ * Lực ở đỉnh = lực nén ngay dưới đỉnh (x = L⁻); trả về N_tđ theo selfWeightColumn với μ cho trước.
+ */
+export function beamSelfWeightNtd(model: Model, res: AnalysisResult, mu: number): SelfWeightResult | null {
+  if (model.selfWeight !== 'x' || !res.ok || !res.section) return null;
+  const Ntop = Math.max(0, -res.internalAt(model.length, 'left').N);
+  return selfWeightColumn(model.section, res.section, model.material, { N: Ntop, L: model.length, Ly: model.length, sameL: true, muZ: mu, muY: mu });
 }

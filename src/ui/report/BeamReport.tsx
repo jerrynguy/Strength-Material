@@ -5,7 +5,7 @@ import { classify } from '../../core/classify';
 import { aeffIfClass4 } from '../../core/effective';
 import { checkLocal, type LocalOptions } from '../../core/localBuckling';
 import { checkLTB, type LtbOptions } from '../../core/ltb';
-import { BUCKLING_MATERIALS, checkStability } from '../../core/stability';
+import { BUCKLING_MATERIALS, beamSelfWeightNtd, checkStability } from '../../core/stability';
 import { equilibriumSteps, sectionSteps } from '../../core/steps';
 import { fmt, maxNormalOnSection, stressAt } from '../../core/stress';
 import { SUPPORT_LABELS, effectiveRestraints, type InternalForces, type Model, densityOf } from '../../core/types';
@@ -79,13 +79,15 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt }: { model: Model
   let Nc = 0;
   for (const s of res.forceSamples) Nc = Math.max(Nc, -s.N);
   const mu = guessMu(model);
+  const swCol = Nc > 0 ? beamSelfWeightNtd(model, res, mu) : null;
   const axial = Nc > 0 ? checkStability(sec, {
-    N: Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 2, Aeff: aeffIfClass4(model.section, model.material, lopt.fy, lopt.stiffenerSpacing),
+    N: swCol ? swCol.Ntd : Nc, Lz: model.length, Ly: model.length, muZ: mu, muY: mu, E: model.material.E, allowable: allow, params: BUCKLING_MATERIALS.CT3, nRequired: 2, Aeff: aeffIfClass4(model.section, model.material, lopt.fy, lopt.stiffenerSpacing),
   }) : null;
   const bc = parts.stability && Nc > 0 ? checkBeamColumn(model, 1.5, BUCKLING_MATERIALS.CT3, lopt) : null;
   const ltb = parts.stability ? checkLTB(model, res, ltbOpt) : null;
   const local = parts.stability ? checkLocal(model.section, model.material, res.forceSamples, lopt) : null;
-  if (axial) conclusions.push({ label: `Ổn định nén đúng tâm (μ = ${mu})`, ok: axial.okPhi, detail: `σ = ${fmt(axial.sigma, 2)} MPa so với φ[σ] = ${fmt(axial.allowPhi, 2)} MPa (λ = ${fmt(axial.lambdaMax, 1)})` });
+  if (swCol) conclusions.push({ label: 'Bền tại chân cột (N + G)/A', ok: (Nc * 1e3) / sec.A <= allow, detail: `σ = ${fmt((Nc * 1e3) / sec.A, 2)} MPa so với [σ] = ${allow} MPa` });
+  if (axial) conclusions.push({ label: `Ổn định nén đúng tâm (μ = ${mu}${swCol ? ', N_tđ có kể trọng lượng bản thân' : ''})`, ok: axial.okPhi, detail: `σ = ${fmt(axial.sigma, 2)} MPa so với φ[σ] = ${fmt(axial.allowPhi, 2)} MPa (λ = ${fmt(axial.lambdaMax, 1)})` });
   if (bc && bc.planes.some((p) => p.M1)) conclusions.push({ label: 'Nén – uốn đồng thời (bậc hai, giáo trình)', ok: bc.ok2 && bc.okN, detail: `σ_II = ${bc.sigma2 === null ? '—' : fmt(bc.sigma2, 2)} MPa; σ(n·tải) = ${bc.sigmaN === null ? '—' : fmt(bc.sigmaN, 2)} MPa${bc.sigmaInter !== null ? `; công thức tương tác ${fmt((bc.sigmaInter / allow) * 100, 1)}%${bc.okInter ? '' : ' (không đạt — thiên về an toàn)'}` : ''}` });
   if (ltb?.applicable) conclusions.push({ label: 'Ổn định uốn – xoắn', ok: ltb.ok, detail: `|M| = ${fmt(Math.abs(ltb.Mmax), 2)} kN·m so với χ_LT·W·[σ] = ${fmt(ltb.Mrd, 2)} kN·m (M_cr = ${fmt(ltb.Mcr, 2)})` });
   if (local?.applicable) conclusions.push({ label: model.section.kind === 'I' && model.section.stiffeners?.length ? 'Ổn định cục bộ (bụng có sườn dọc)' : 'Ổn định cục bộ', ok: local.ok, detail: `Tiết diện loại ${local.sectionClass || '—'}${local.effCheck ? `; tiết diện hữu hiệu ${fmt(local.effCheck.util * 100, 0)}%` : ''}${local.shear?.needCheck ? `; bụng chịu cắt ${fmt(local.shear.util * 100, 0)}%` : ''}` });
@@ -198,13 +200,15 @@ export function BeamReport({ model, parts, ltbOpt, local: lopt }: { model: Model
       {parts.stability && (axial || ltb?.applicable || local?.applicable) && (
         <RSection n={N()} title="Kiểm tra ổn định">
           {axial && (
-            <RSub title={`Ổn định nén đúng tâm (N = ${fmt(Nc, 2)} kN, μ = ${mu} đoán từ liên kết, bảng φ thép CT3)`}>
+            <RSub title={swCol
+              ? `Ổn định nén đúng tâm (cột có trọng lượng bản thân: N đỉnh = ${fmt(swCol.Nbase - swCol.G, 2)} kN, G = ${fmt(swCol.G, 3)} kN, N_tđ = ${fmt(swCol.Ntd, 2)} kN; μ = ${mu}, bảng φ thép CT3)`
+              : `Ổn định nén đúng tâm (N = ${fmt(Nc, 2)} kN, μ = ${mu} đoán từ liên kết, bảng φ thép CT3)`}>
               <RKV rows={[
                 ['λ_max · chế độ', `${fmt(axial.lambdaMax, 2)} · ${axial.regime === 'euler' ? 'Euler' : axial.regime === 'empirical' ? 'Iasinski' : 'thanh ngắn'}`],
                 ['σ_th · P_th · n_ôđ', `${fmt(axial.sigmaCr, 2)} MPa · ${fmt(axial.Pcr, 2)} kN · ${fmt(axial.nActual, 3)}`],
                 ['σ = N/A so với φ[σ]', <Verdict ok={axial.okPhi}>{fmt(axial.sigma, 2)} {axial.okPhi ? '≤' : '>'} {fmt(axial.allowPhi, 2)} MPa</Verdict>],
               ]} />
-              {parts.steps && <RSteps lines={axial.steps} />}
+              {parts.steps && <RSteps lines={[...(swCol?.steps ?? []), ...axial.steps]} />}
             </RSub>
           )}
           {bc && bc.planes.some((p) => p.M1) && (

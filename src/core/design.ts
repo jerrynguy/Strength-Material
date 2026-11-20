@@ -14,7 +14,7 @@ import { STEEL_DENSITY, STEEL_FAMILIES } from './steelTables';
 import { aeffIfClass4, checkEffective, effectiveSection } from './effective';
 import { checkLocal, type LocalOptions } from './localBuckling';
 import { checkLTB, type LtbOptions } from './ltb';
-import { BUCKLING_MATERIALS, checkStability } from './stability';
+import { BUCKLING_MATERIALS, beamSelfWeightNtd, checkStability } from './stability';
 import { maxNormalOnSection, stressAt } from './stress';
 import { densityOf, selfWeightPerM, type InternalForces, type Material, type Model, type SectionSpec } from './types';
 
@@ -111,7 +111,9 @@ export function designBeam(model: Model, opt: DesignOptions): Candidate[] {
     let defl = 0;
     for (const d of res.dispSamples) defl = Math.max(defl, Math.hypot(d.v, d.w));
     const deflLimit = opt.deflRatio > 0 ? (model.length * 1e3) / opt.deflRatio : 0;
-    const st = opt.stability ? stabUtilOf(sec, Nc, model.length, opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240, opt.local?.stiffenerSpacing ?? 0) : undefined) : { util: 0, lambda: 0 };
+    // cột có trọng lượng bản thân dọc trục: dùng N_tđ (lực tương đương ở đỉnh)
+    const swc = opt.stability && Nc > 0 ? beamSelfWeightNtd({ ...model, section: spec, loads }, res, opt.mu) : null;
+    const st = opt.stability ? stabUtilOf(sec, swc ? swc.Ntd : Nc, model.length, opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, opt.local?.fy ?? 240, opt.local?.stiffenerSpacing ?? 0) : undefined) : { util: 0, lambda: 0 };
     let ltbUtil = 0;
     if (opt.ltb) {
       const l = checkLTB({ ...model, section: spec, loads }, res, opt.ltb);
