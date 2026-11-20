@@ -51,15 +51,26 @@ export interface FMember {
   releaseJ: boolean;
   /** Khoảng cách sườn ngang riêng của thanh (mm); bỏ trống = dùng giá trị chung của khung; 0 = không có sườn ngang */
   stiffenerSpacing?: number;
-  /** Giới hạn chảy riêng của thanh (MPa); bỏ trống = dùng f_y chung của khung */
+  /** Giới hạn chảy riêng của thanh (MPa); bỏ trống = dùng f_y của vật liệu hoặc f_y chung của khung */
   fy?: number;
+  /** Vật liệu riêng (id trong thư viện vật liệu); bỏ trống = vật liệu chung */
+  materialId?: string;
+}
+
+/** Vật liệu của một thanh */
+export function memberMaterial(model: Pick<FrameModel, 'material' | 'materials'>, m?: { materialId?: string } | null): Material {
+  if (m?.materialId) {
+    const f = model.materials?.find((x) => x.id === m.materialId);
+    if (f) return f;
+  }
+  return model.material;
 }
 
 /** Thông số ổn định cục bộ áp cho một thanh: f_y chung, khoảng cách sườn ngang riêng (nếu có). */
-export function memberLocal(local: { fy: number; stiffenerSpacing: number }, m?: { stiffenerSpacing?: number; fy?: number } | null): { fy: number; stiffenerSpacing: number } {
+export function memberLocal(local: { fy: number; stiffenerSpacing: number }, m?: { stiffenerSpacing?: number; fy?: number } | null, mat?: Material | null): { fy: number; stiffenerSpacing: number } {
   const has = (v: number | undefined | null) => v !== undefined && v !== null && Number.isFinite(v);
   return {
-    fy: m && has(m.fy) && (m.fy as number) > 0 ? (m.fy as number) : local.fy,
+    fy: m && has(m.fy) && (m.fy as number) > 0 ? (m.fy as number) : mat && has(mat.fy) && (mat.fy as number) > 0 ? (mat.fy as number) : local.fy,
     stiffenerSpacing: m && has(m.stiffenerSpacing) ? (m.stiffenerSpacing as number) : local.stiffenerSpacing,
   };
 }
@@ -95,9 +106,17 @@ export type FLoad =
     }
   | { id: string; type: 'mdist'; name: string; memberId: string; a: number; b: number; q1: number; q2: number; dir: FDistDir };
 
+/** Vật liệu trong thư viện của khung */
+export interface FMaterial extends Material {
+  id: string;
+}
+
 export interface FrameModel {
   title: string;
+  /** Vật liệu chung (dùng cho thanh không chọn vật liệu riêng) */
   material: Material;
+  /** Thư viện vật liệu */
+  materials?: FMaterial[];
   sections: FSection[];
   nodes: FNode[];
   members: FMember[];
@@ -143,6 +162,8 @@ export interface MemberResult {
   s: number;
   section: SectionProps;
   sectionSpec: SectionSpec;
+  /** Vật liệu của thanh */
+  material: Material;
   /** Lực đầu i và đầu j (tác dụng lên thanh, hệ địa phương) */
   endI: [number, number, number];
   endJ: [number, number, number];
@@ -246,13 +267,14 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
     else secMap.set(s.id, { props: computeSection(s.spec), spec: s.spec });
   }
   if (!(model.material.E > 0)) errors.push('Mô đun đàn hồi E phải dương');
+  for (const mt of model.materials ?? []) if (!(mt.E > 0)) errors.push(`Vật liệu ${mt.name}: E phải dương`);
   if (model.members.length === 0) errors.push('Chưa có thanh nào');
 
   let span = 0;
   for (const a of model.nodes) for (const b of model.nodes) span = Math.max(span, Math.hypot(a.x - b.x, a.y - b.y));
   const tol = 1e-9 * Math.max(1, span);
 
-  interface Geo { m: FMember; i: number; j: number; L: number; c: number; s: number; sec: { props: SectionProps; spec: SectionSpec } }
+  interface Geo { m: FMember; i: number; j: number; L: number; c: number; s: number; sec: { props: SectionProps; spec: SectionSpec }; mat: Material; E: number }
   const geos: Geo[] = [];
   for (const m of model.members) {
     const i = nodeIdx.get(m.i), j = nodeIdx.get(m.j);
@@ -262,7 +284,8 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
     if (!(L > tol)) { errors.push(`Thanh ${m.name}: chiều dài bằng 0`); continue; }
     const sec = secMap.get(m.sectionId);
     if (!sec) { errors.push(`Thanh ${m.name}: chưa chọn tiết diện hợp lệ`); continue; }
-    geos.push({ m, i, j, L, c: (nj.x - ni.x) / L, s: (nj.y - ni.y) / L, sec });
+    const mat = memberMaterial(model, m);
+    geos.push({ m, i, j, L, c: (nj.x - ni.x) / L, s: (nj.y - ni.y) / L, sec, mat, E: mat.E * 1e9 });
   }
   const geoById = new Map(geos.map((g) => [g.m.id, g]));
   for (const ld of model.loads) {
@@ -380,7 +403,6 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
   }
 
   // ───────── 2. Phương pháp ma trận độ cứng ─────────
-  const E = model.material.E * 1e9;
   let nd = 0;
   const nodeDof: [number, number, number | null][] = [];
   for (let k = 0; k < nN; k++) nodeDof.push([nd++, nd++, hasRot(k) ? nd++ : null]);
@@ -449,8 +471,8 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
   const elems: { mIdx: number; e: number; ids: number[]; c: number; s: number; l: number; EA: number; EI: number }[] = [];
   meshes.forEach((ms, mIdx) => {
     const { g, ts, dofs } = ms;
-    const EA = E * g.sec.props.A * 1e-6;
-    const EI = E * g.sec.props.Iz * 1e-12;
+    const EA = g.E * g.sec.props.A * 1e-6;
+    const EI = g.E * g.sec.props.Iz * 1e-12;
     const dl = memberDists.get(g.m.id)!;
     elemFeq.push([]);
     for (let e = 0; e + 1 < ts.length; e++) {
@@ -710,7 +732,7 @@ export function analyzeFrame(modelIn: FrameModel, opts: FrameAnalyzeOptions = {}
     }
     const disp = ts.map((t, q) => ({ s: t, ux: u[dofs[q][0]] * 1e3, uy: u[dofs[q][1]] * 1e3 }));
     return {
-      id: g.m.id, name: g.m.name, L: g.L, c: g.c, s: g.s, section: g.sec.props, sectionSpec: g.sec.spec,
+      id: g.m.id, name: g.m.name, L: g.L, c: g.c, s: g.s, section: g.sec.props, sectionSpec: g.sec.spec, material: g.mat,
       endI, endJ, keyS, samples, disp, internalAt, actions, dists,
     };
   });

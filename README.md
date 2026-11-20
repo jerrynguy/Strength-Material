@@ -157,7 +157,12 @@ Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, r�
   - Phần ổn định: bảng thanh sườn (b1/b2, A_sl, I_sl, a_c, σ_cr,sl → σ_cr,c, λ̄_c, α_e, χ_c, ρ_c), ổn định cắt có sườn dọc (k_τ, τ_cr, χ_w), lời giải.
   - Báo cáo khung có phần riêng cho từng thanh có sườn.
 - **Thông số ổn định cục bộ trong báo cáo:** f_y và khoảng cách sườn ngang a lấy đúng theo giá trị đang nhập trong thẻ “Ổn định cục bộ” của từng chế độ (lưu trên trình duyệt). Các giá trị này cũng được dùng cho chọn số hiệu thép, tiết diện hữu hiệu trong kiểm tra ổn định nén, nén – uốn và uốn – xoắn.
-- **Khung: mỗi thanh một f_y riêng.** Ô “f_y riêng” trong danh sách thanh, hoặc ô f_y của thanh trong thẻ ổn định cục bộ. Bỏ trống thì thanh dùng f_y chung của khung. f_y riêng được dùng cho ổn định cục bộ (ε), tiết diện hữu hiệu, và làm σ_ch của thanh trong kiểm tra nén – uốn và công thức Iasinski cho thanh ngắn. Báo cáo có cột “f_y (MPa)” đánh dấu “(riêng)”. Ứng suất cho phép [σ] vẫn dùng chung theo vật liệu.
+- **Khung: mỗi thanh một vật liệu riêng.**
+  - Thẻ “Thư viện vật liệu” có các mẫu (thép CT3, S355/Q345, bê tông B20, gỗ — giá trị [σ] chỉ để tham khảo); mỗi thanh chọn vật liệu ở mục “Thanh”, bỏ trống thì dùng vật liệu chung.
+  - E của từng thanh được dùng khi giải khung (độ cứng, P-Δ, bài toán ổn định); [σ], ν, f_y của vật liệu thanh được dùng cho kiểm tra bền, ổn định, nén – uốn, cục bộ và chọn số hiệu thép (hệ số sử dụng theo [σ] từng thanh).
+  - Báo cáo có bảng vật liệu và vật liệu của từng thanh.
+  - f_y của thanh lấy theo thứ tự: f_y riêng của thanh → f_y của vật liệu → f_y chung của khung.
+- **Khung: mỗi thanh một f_y riêng.** Ô “f_y riêng” trong danh sách thanh, hoặc ô f_y của thanh trong thẻ ổn định cục bộ. Bỏ trống thì thanh dùng f_y chung của khung. f_y riêng được dùng cho ổn định cục bộ (ε), tiết diện hữu hiệu, và làm σ_ch của thanh trong kiểm tra nén – uốn và công thức Iasinski cho thanh ngắn. Báo cáo có cột “f_y (MPa)” đánh dấu “(riêng)”. Ứng suất cho phép [σ] lấy theo vật liệu của thanh.
 - **Khung: mỗi thanh một khoảng cách sườn ngang.**
   - Nhập trong danh sách thanh (ô “a sườn ngang riêng”) hoặc ngay trong thẻ ổn định cục bộ của thanh; lưu cùng mô hình (.json).
   - Thanh không đặt giá trị riêng thì dùng giá trị chung của khung; 0 nghĩa là không có sườn ngang.

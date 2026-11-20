@@ -77,9 +77,9 @@ function stabUtilOf(sec: SectionProps, Nc: number, L: number, mu: number, E: num
   return { util: r.phi === null ? Infinity : r.sigma / r.allowPhi, lambda: r.lambdaMax };
 }
 
-function finish(c: Omit<Candidate, 'util' | 'ok'>, allowable: number): Candidate {
+function finish(c: Omit<Candidate, 'util' | 'ok'>, allowable: number, ratios?: { sig: number; tau: number }): Candidate {
   const tauAllow = allowable / Math.sqrt(3);
-  const util = Math.max(Math.abs(c.sigma) / allowable, c.tau / tauAllow, c.deflLimit > 0 ? c.defl / c.deflLimit : 0, c.stabUtil, c.ltbUtil, c.localUtil);
+  const util = Math.max(ratios ? ratios.sig : Math.abs(c.sigma) / allowable, ratios ? ratios.tau : c.tau / tauAllow, c.deflLimit > 0 ? c.defl / c.deflLimit : 0, c.stabUtil, c.ltbUtil, c.localUtil);
   return { ...c, util, ok: !c.error && util <= 1 };
 }
 
@@ -159,17 +159,18 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
       out.push(finish({ ...base, sigma: 0, tau: 0, defl: 0, deflLimit: 0, stabUtil: 0, lambda: 0, ltbUtil: 0, localUtil: 0, sectionClass: 0, error: res.errors[0] }, model.material.allowable));
       continue;
     }
-    let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0, stabUtil = 0, lambda = 0, localUtil = 0, sectionClass = 0;
+    let sigma = 0, tau = 0, util = 0, defl = 0, deflLimit = 0, stabUtil = 0, lambda = 0, localUtil = 0, sectionClass = 0, sigU = 0, tauU = 0;
     for (const mr of res.members) {
       if (!memberIds.has(mr.id)) continue;
-      const mloc = opt.local ? memberLocal(opt.local, model.members.find((x) => x.id === mr.id)) : null;
+      const mat = mr.material ?? model.material;
+      const mloc = opt.local ? memberLocal(opt.local, model.members.find((x) => x.id === mr.id), mat) : null;
       if (opt.local) {
-        const lc = checkLocal(spec, model.material, mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), mloc!);
+        const lc = checkLocal(spec, mat, mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), mloc!);
         if (lc.applicable) {
           sectionClass = Math.max(sectionClass, lc.sectionClass);
           localUtil = Math.max(localUtil, lc.shear ? lc.shear.util : 0);
           if (lc.sectionClass === 4) {
-            const ec = checkEffective(effectiveSection(spec, model.material, mloc!.fy, mloc!.stiffenerSpacing), mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), model.material.allowable);
+            const ec = checkEffective(effectiveSection(spec, mat, mloc!.fy, mloc!.stiffenerSpacing), mr.samples.map((s) => ({ N: s.N, Qy: s.Q, Qz: 0, T: 0, Mz: s.M, My: 0 })), mat.allowable);
             if (ec) localUtil = Math.max(localUtil, ec.util);
           }
         }
@@ -177,7 +178,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
       if (opt.stability) {
         let Nc = 0;
         for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
-        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, model.material.E, model.material.allowable, Nc > 0 ? aeffIfClass4(spec, model.material, mloc?.fy ?? 240, mloc?.stiffenerSpacing ?? 0) : undefined, mloc?.fy);
+        const st = stabUtilOf(sec, Nc, mr.L, opt.memberMu?.[mr.id] ?? opt.mu, mat.E, mat.allowable, Nc > 0 ? aeffIfClass4(spec, mat, mloc?.fy ?? 240, mloc?.stiffenerSpacing ?? 0) : undefined, mloc?.fy);
         if (st.util > stabUtil) { stabUtil = st.util; lambda = st.lambda; }
       }
       for (const s of mr.samples) {
@@ -185,7 +186,10 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
         const m = maxNormalOnSection(sec, F);
         const v = Math.abs(m.max) > Math.abs(m.min) ? m.max : m.min;
         if (Math.abs(v) > Math.abs(sigma)) sigma = v;
-        tau = Math.max(tau, tauMax(sec, F, model.material));
+        const tq = tauMax(sec, F, mat);
+        tau = Math.max(tau, tq);
+        sigU = Math.max(sigU, Math.abs(v) / mat.allowable);
+        tauU = Math.max(tauU, tq / (mat.allowable / Math.sqrt(3)));
       }
       if (opt.deflRatio > 0) {
         // độ võng tương đối của thanh so với dây cung nối hai đầu
@@ -200,7 +204,7 @@ export function designFrame(model: FrameModel, sectionId: string, opt: DesignOpt
         }
       }
     }
-    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil, lambda, ltbUtil: 0, localUtil, sectionClass }, model.material.allowable));
+    out.push(finish({ ...base, sigma, tau, defl, deflLimit, stabUtil, lambda, ltbUtil: 0, localUtil, sectionClass }, model.material.allowable, { sig: sigU, tau: tauU }));
   }
   return out.sort((a, b) => a.mass - b.mass);
 }

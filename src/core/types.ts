@@ -89,6 +89,8 @@ export interface Material {
   nu: number;
   /** Ứng suất cho phép [σ], MPa */
   allowable: number;
+  /** Giới hạn chảy f_y (MPa) — tuỳ chọn, dùng cho ổn định cục bộ / σ_ch */
+  fy?: number;
 }
 
 export type SectionSpec =

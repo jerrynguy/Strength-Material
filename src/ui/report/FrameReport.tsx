@@ -24,7 +24,6 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
   if (!res.ok) {
     return <RSection n="1" title="Kết quả"><p className="r-bad">Không giải được: {res.errors.join(' ')}</p></RSection>;
   }
-  const allow = model.material.allowable;
   const nodeName = (id: string) => model.nodes.find((x) => x.id === id)?.name ?? '?';
   const secName = (id: string) => model.sections.find((x) => x.id === id)?.name ?? '?';
   const a = parts.stability ? frameAnalyses(model, 1.5) : null;
@@ -38,18 +37,19 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
     }
     let Nc = 0;
     for (const s of mr.samples) Nc = Math.max(Nc, -s.N);
-    const mloc = memberLocal(lopt, model.members.find((x) => x.id === mr.id));
-    const muIn = res.buckling && Nc > 0 ? (Math.PI / mr.L) * Math.sqrt((model.material.E * 1e9 * mr.section.Iz * 1e-12) / (res.buckling.alpha * Nc * 1e3)) : 1;
+    const mat = mr.material;
+    const mloc = memberLocal(lopt, model.members.find((x) => x.id === mr.id), mat);
+    const muIn = res.buckling && Nc > 0 ? (Math.PI / mr.L) * Math.sqrt((mat.E * 1e9 * mr.section.Iz * 1e-12) / (res.buckling.alpha * Nc * 1e3)) : 1;
     const axial = Nc > 0 ? checkStability(mr.section, {
-      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: model.material.E, allowable: allow, params: withYield(BUCKLING_MATERIALS.CT3, mloc.fy), nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, mloc.fy, mloc.stiffenerSpacing),
+      N: Nc, Lz: mr.L, Ly: mr.L, muZ: muIn, muY: 1, E: mat.E, allowable: mat.allowable, params: withYield(BUCKLING_MATERIALS.CT3, mloc.fy), nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, mat, mloc.fy, mloc.stiffenerSpacing),
     }) : null;
     const bc = a && Nc > 0 ? checkFrameMember(a, mr.id, 1, model, withYield(BUCKLING_MATERIALS.CT3, mloc.fy), mloc) : null;
-    const local = parts.stability ? checkLocal(mr.sectionSpec, model.material, mr.samples.map(toIF), mloc) : null;
+    const local = parts.stability ? checkLocal(mr.sectionSpec, mat, mr.samples.map(toIF), mloc) : null;
     return { mr, sig, x, Nc, muIn, axial, bc, local, mloc };
   });
   const concl: { label: string; ok: boolean | null; detail: ReactNode }[] = [];
   const worstSig = rows.reduce((p, r) => (Math.abs(r.sig) > Math.abs(p.sig) ? r : p), rows[0]);
-  concl.push({ label: 'Bền theo ứng suất pháp (mọi thanh)', ok: Math.abs(worstSig.sig) <= allow, detail: `|σ|max = ${fmt(Math.abs(worstSig.sig), 2)} MPa ở thanh ${worstSig.mr.name}` });
+  concl.push({ label: 'Bền theo ứng suất pháp (mọi thanh)', ok: rows.every((r) => Math.abs(r.sig) <= r.mr.material.allowable), detail: `|σ|max = ${fmt(Math.abs(worstSig.sig), 2)} MPa ở thanh ${worstSig.mr.name} ([σ] = ${worstSig.mr.material.allowable} MPa); sử dụng lớn nhất ${fmt(Math.max(...rows.map((r) => Math.abs(r.sig) / r.mr.material.allowable)) * 100, 0)}%` });
   if (res.buckling) concl.push({ label: 'Hệ số tới hạn của khung α_th', ok: res.buckling.alpha > 1, detail: `${fmt(res.buckling.alpha, 3)}${res.buckling.alpha < 10 ? ' (< 10: nên kể hiệu ứng bậc hai)' : ''}` });
   const comp = rows.filter((r) => r.axial);
   if (comp.length) concl.push({ label: 'Ổn định các thanh chịu nén (φ)', ok: comp.every((r) => r.axial!.okPhi), detail: comp.map((r) => `${r.mr.name}: ${fmt((r.axial!.sigma / (r.axial!.allowPhi || 1)) * 100, 0)}%`).join('; ') });
@@ -68,12 +68,16 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
       {parts.inputs && (
         <RSection n={N()} title="Sơ đồ tính và dữ liệu đầu vào">
           <RFig caption="Hình 1. Sơ đồ khung"><FrameView model={model} res={res} mode="model" /></RFig>
-          <RKV rows={[['Vật liệu', `${model.material.name}: E = ${model.material.E} GPa, ν = ${model.material.nu}, [σ] = ${allow} MPa`]]} />
+          <RTable head={['Vật liệu', 'E (GPa)', 'ν', '[σ] (MPa)', 'f_y (MPa)', 'Dùng cho thanh']}
+            rows={[{ id: '', ...model.material, name: `${model.material.name} (chung)` }, ...(model.materials ?? [])].map((mt) => [
+              mt.name, fmt(mt.E, 1), fmt(mt.nu, 2), fmt(mt.allowable, 1), mt.fy ? fmt(mt.fy, 0) : '—',
+              model.members.filter((b) => (b.materialId && (model.materials ?? []).some((x) => x.id === b.materialId) ? b.materialId : '') === mt.id).map((b) => b.name).join(', ') || '—',
+            ])} />
           <RTable head={['Nút', 'X (m)', 'Y (m)']} rows={model.nodes.map((x) => [x.name, fmt(x.x, 3), fmt(x.y, 3)])} />
-          <RTable head={['Thanh', 'Đầu i → j', 'L (m)', 'Tiết diện', 'Khớp đầu']}
+          <RTable head={['Thanh', 'Đầu i → j', 'L (m)', 'Tiết diện', 'Vật liệu', 'Khớp đầu']}
             rows={res.members.map((mr) => {
               const m = model.members.find((x) => x.id === mr.id)!;
-              return [m.name, `${nodeName(m.i)} → ${nodeName(m.j)}`, fmt(mr.L, 3), secName(m.sectionId), [m.releaseI && 'i', m.releaseJ && 'j'].filter(Boolean).join(', ') || '—'];
+              return [m.name, `${nodeName(m.i)} → ${nodeName(m.j)}`, fmt(mr.L, 3), secName(m.sectionId), mr.material.name, [m.releaseI && 'i', m.releaseJ && 'j'].filter(Boolean).join(', ') || '—'];
             })} />
           {model.sections.map((s) => {
             const mr = res.members.find((m) => model.members.find((x) => x.id === m.id)?.sectionId === s.id);
@@ -125,7 +129,7 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
       {parts.stress && (
         <RSection n={N()} title="Kiểm tra bền">
           <RTable head={['Thanh', 'Tiết diện', '|σ|max (MPa)', 'Vị trí (m)', 'Kết luận']}
-            rows={rows.map((r) => [r.mr.name, r.mr.section.label, fmt(Math.abs(r.sig), 2), fmt(r.x, 3), <Verdict ok={Math.abs(r.sig) <= allow}>{Math.abs(r.sig) <= allow ? '≤' : '>'} [σ] = {allow}</Verdict>])} />
+            rows={rows.map((r) => [r.mr.name, `${r.mr.section.label} — ${r.mr.material.name}`, fmt(Math.abs(r.sig), 2), fmt(r.x, 3), <Verdict ok={Math.abs(r.sig) <= r.mr.material.allowable}>{Math.abs(r.sig) <= r.mr.material.allowable ? '≤' : '>'} [σ] = {r.mr.material.allowable}</Verdict>])} />
           {parts.steps && (
             <RSub title={`Lời giải mặt cắt nguy hiểm — thanh ${worstSig.mr.name}, s = ${fmt(worstSig.x, 3)} m`}>
               <RSteps lines={sectionSteps({
@@ -157,7 +161,7 @@ export function FrameReport({ model, parts, local: lopt }: { model: FrameModel; 
                 <Verdict ok={r.bc!.ok2}>{r.bc!.sigma2 === null ? '—' : fmt(r.bc!.sigma2, 1)}</Verdict>,
                 <Verdict ok={r.bc!.okN}>{r.bc!.sigmaN === null ? 'mất ổn định' : fmt(r.bc!.sigmaN, 1)}</Verdict>,
                 <Verdict ok={r.bc!.okInter}>{r.bc!.sigmaInter === null ? 'không áp dụng' : fmt(r.bc!.sigmaInter, 1)}</Verdict>])}
-              note={`Nén – uốn: (1) σ_II ≤ [σ] = ${allow}; (2) σ(1.5·tải) ≤ σ_ch = f_y của thanh; (3) N/(φA) + M/(W(1 − N/N_th)) ≤ [σ].`} />
+              note={`Nén – uốn: (1) σ_II ≤ [σ] của vật liệu thanh; (2) σ(1.5·tải) ≤ σ_ch = f_y của thanh; (3) N/(φA) + M/(W(1 − N/N_th)) ≤ [σ].`} />
           )}
           {locs.length > 0 && (
             <RTable head={['Thanh', 'f_y (MPa)', 'Sườn ngang a (mm)', 'Loại tiết diện', 'Tấm bất lợi', 'Tiết diện hữu hiệu', 'Bụng chịu cắt']}

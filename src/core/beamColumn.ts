@@ -199,7 +199,8 @@ export function checkFrameMember(
   if (!(Nc > 0)) return null;
   const m2 = a.r2.ok ? a.r2.members.find((m) => m.id === memberId) : undefined;
   const mn = a.rn.ok ? a.rn.members.find((m) => m.id === memberId) : undefined;
-  const E = model.material.E * 1e9;
+  const mat = m1.material ?? model.material;
+  const E = mat.E * 1e9;
   const alpha = a.r1.buckling?.alpha;
   const NcrIn = alpha ? alpha * Nc : null;
   const EIy = E * sec.Iy * 1e-12;
@@ -217,11 +218,11 @@ export function checkFrameMember(
       W: W(sec.Iy, Math.max(sec.zMax, -sec.zMin)),
     },
   ];
-  const Wz = weffZ(m1.sectionSpec, model.material, local.fy, Math.sign(maxAbs(m1.samples.map((s) => s.M))) || 1, local.stiffenerSpacing);
+  const Wz = weffZ(m1.sectionSpec, mat, local.fy, Math.sign(maxAbs(m1.samples.map((s) => s.M))) || 1, local.stiffenerSpacing);
   if (Wz && Wz < planes[0].W) planes[0].W = Wz;
   return finish({
-    Aeff: aeffIfClass4(m1.sectionSpec, model.material, local.fy, local.stiffenerSpacing),
-    sec, E: model.material.E, allowable: model.material.allowable, params, n: a.n, Nc, planes,
+    Aeff: aeffIfClass4(m1.sectionSpec, mat, local.fy, local.stiffenerSpacing),
+    sec, E: mat.E, allowable: mat.allowable, params, n: a.n, Nc, planes,
     sigma1: sigmaMax(sec, m1.samples.map(toIF)),
     sigma2: m2 ? sigmaMax(sec, m2.samples.map(toIF)) : null,
     sigmaN: mn ? sigmaMax(sec, mn.samples.map(toIF)) : null,

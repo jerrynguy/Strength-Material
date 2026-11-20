@@ -111,7 +111,7 @@ export function FrameBeamColumnCard({ model, res, muOut, setMuOut, local }: {
   const a = useMemo(() => frameAnalyses(model, n), [model, n]);
   const rows = res.members
     .map((mr) => {
-      const ml = local ? memberLocal(local, model.members.find((x) => x.id === mr.id)) : undefined;
+      const ml = local ? memberLocal(local, model.members.find((x) => x.id === mr.id), mr.material) : undefined;
       return { mr, r: checkFrameMember(a, mr.id, muOut[mr.id] ?? 1, model, ml ? withYield(BUCKLING_MATERIALS[mat], ml.fy) : BUCKLING_MATERIALS[mat], ml) };
     })
     .filter((x) => x.r !== null) as { mr: FrameResult['members'][number]; r: BeamColumnResult }[];
@@ -157,7 +157,7 @@ export function FrameBeamColumnCard({ model, res, muOut, setMuOut, local }: {
       <p className="hint">
         μ trong mặt phẳng khung được tính tự động từ hệ số tới hạn của cả khung (kể chuyển vị ngang); μ ngoài mặt phẳng nhập theo cách giằng
         (mặc định 1). Thanh có lực nén nhỏ trong khung sẽ có μ tương đương lớn — đó là đặc điểm của cách suy μ từ α_th của cả khung (thiên về
-        an toàn); cột chịu lực chính mới là thanh quyết định. Ứng suất đơn vị MPa, so với [σ] = {model.material.allowable} MPa (cột 1, 3) và σ_ch (cột 2).
+        an toàn); cột chịu lực chính mới là thanh quyết định. Ứng suất đơn vị MPa, so với [σ] của vật liệu từng thanh (cột 1, 3) và σ_ch = f_y của thanh (cột 2).
       </p>
       {HINT}
     </Card>

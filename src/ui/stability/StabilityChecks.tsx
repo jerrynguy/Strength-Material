@@ -103,7 +103,7 @@ export function FrameStabilityCard({ res, model, mu, setMu, local = DEFAULT_LOCA
           <button onClick={() => {
             const next = { ...mu };
             for (const { mr, Nc } of rows) {
-              const EI = model.material.E * 1e9 * mr.section.Iz * 1e-12;
+              const EI = mr.material.E * 1e9 * mr.section.Iz * 1e-12;
               next[mr.id] = Math.round(((Math.PI / mr.L) * Math.sqrt(EI / (res.buckling!.alpha * Nc * 1e3))) * 1000) / 1000;
             }
             setMu(next);
@@ -117,8 +117,8 @@ export function FrameStabilityCard({ res, model, mu, setMu, local = DEFAULT_LOCA
             {rows.map(({ mr, Nc }) => {
               const m = mu[mr.id] ?? 1;
               const r = checkStability(mr.section, {
-                N: Nc, Lz: mr.L, Ly: mr.L, muZ: m, muY: m, E: model.material.E, allowable: model.material.allowable,
-                params: withYield(BUCKLING_MATERIALS[mat], memberLocal(local, model.members.find((x) => x.id === mr.id)).fy), nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, model.material, memberLocal(local, model.members.find((x) => x.id === mr.id)).fy, memberLocal(local, model.members.find((x) => x.id === mr.id)).stiffenerSpacing),
+                N: Nc, Lz: mr.L, Ly: mr.L, muZ: m, muY: m, E: mr.material.E, allowable: mr.material.allowable,
+                params: withYield(BUCKLING_MATERIALS[mat], memberLocal(local, model.members.find((x) => x.id === mr.id), mr.material).fy), nRequired: 1, Aeff: aeffIfClass4(mr.sectionSpec, mr.material, memberLocal(local, model.members.find((x) => x.id === mr.id), mr.material).fy, memberLocal(local, model.members.find((x) => x.id === mr.id), mr.material).stiffenerSpacing),
               });
               return (
                 <tr key={mr.id}>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DIST_DIR_LABELS, type FDistDir, type FLoad, type FrameModel, type FSupport, type FSupportKind } from '../../core/frame';
+import { DIST_DIR_LABELS, type FDistDir, type FLoad, type FMaterial, type FrameModel, type FSupport, type FSupportKind } from '../../core/frame';
 import { fdist, fmember, fnode, fnodeLoad, fpoint, fsupport, inclinedBeam } from '../../core/framePresets';
 import { SECTION_DEFAULTS } from '../../core/section';
 import { uid } from '../../core/presets';
@@ -27,8 +27,14 @@ export function FrameGeneral({ model, set, onReplace }: { model: FrameModel; set
         <div className="row">
           <TextField label="Tên bài toán" value={model.title} onChange={(v) => set((s) => ({ ...s, title: v }))} width={280} />
         </div>
+        <p className="muted small">Vật liệu chung (cho các thanh không chọn vật liệu riêng):</p>
         <MaterialRow m={model.material} setMat={(p) => set((s) => ({ ...s, material: { ...s.material, ...p } }))} />
+        <div className="row">
+          <NumField label="f_y vật liệu chung (tuỳ chọn)" unit="MPa" value={model.material.fy ?? 0} width={130}
+            onChange={(v) => set((s) => ({ ...s, material: { ...s.material, fy: v > 0 ? v : undefined } }))} title="0 = không khai báo; khi đó dùng f_y chung trong thẻ ổn định cục bộ" />
+        </div>
       </Card>
+      <MaterialLibrary model={model} set={set} />
       <Card title="Tạo nhanh dầm nghiêng">
         <div className="row">
           <NumField label="Nhịp ngang l" unit="m" value={q.l} onChange={(v) => setQ({ ...q, l: v })} />
@@ -111,6 +117,9 @@ export function FrameGeometry({ model, set }: { model: FrameModel; set: Setter }
                 <Select label="Đầu i" value={b.i} options={nodeOpts} onChange={(v) => upd({ i: v })} />
                 <Select label="Đầu j" value={b.j} options={nodeOpts} onChange={(v) => upd({ j: v })} />
                 <Select label="Tiết diện" value={b.sectionId} options={secOpts} onChange={(v) => upd({ sectionId: v })} />
+                <Select label="Vật liệu" value={b.materialId && (model.materials ?? []).some((x) => x.id === b.materialId) ? b.materialId : ''}
+                  onChange={(v) => upd({ materialId: v || undefined })}
+                  options={[{ value: '', label: `(chung) ${model.material.name}` }, ...(model.materials ?? []).map((x) => ({ value: x.id, label: x.name }))]} />
                 <button className="del" title="Xoá thanh" onClick={() => set((m) => ({
                   ...m, members: m.members.filter((x) => x.id !== b.id), loads: m.loads.filter((l) => l.type === 'node' || l.memberId !== b.id),
                 }))}>✕</button>
@@ -259,6 +268,58 @@ export function FrameLoads({ model, set }: { model: FrameModel; set: Setter }) {
       <p className="hint">
         a, b đo dọc theo thanh từ đầu i (m). Lực theo hệ tổng thể: Fy &lt; 0, q &lt; 0 (phương đứng) là hướng xuống.
         Phương “vuông góc thanh” lấy dương theo trục y′ (quay +90° từ hướng i → j).
+      </p>
+    </Card>
+  );
+}
+
+const MATERIAL_TEMPLATES: { key: string; label: string; m: Omit<FMaterial, 'id'> }[] = [
+  { key: 'ct3', label: 'Thép CT3 / CCT34', m: { name: 'Thép CT3', E: 200, nu: 0.3, allowable: 160, fy: 240 } },
+  { key: 's355', label: 'Thép S355 / Q345 (tham khảo)', m: { name: 'Thép S355', E: 200, nu: 0.3, allowable: 210, fy: 345 } },
+  { key: 'b20', label: 'Bê tông B20 (tham khảo)', m: { name: 'Bê tông B20', E: 27.5, nu: 0.2, allowable: 11.5 } },
+  { key: 'wood', label: 'Gỗ nhóm V (tham khảo)', m: { name: 'Gỗ nhóm V', E: 10, nu: 0.3, allowable: 12 } },
+];
+
+/** Thư viện vật liệu của khung — mỗi thanh chọn một vật liệu */
+function MaterialLibrary({ model, set }: { model: FrameModel; set: Setter }) {
+  const [tpl, setTpl] = useState('s355');
+  const list = model.materials ?? [];
+  const upd = (id: string, p: Partial<FMaterial>) => set((m) => ({ ...m, materials: (m.materials ?? []).map((x) => (x.id === id ? { ...x, ...p } : x)) }));
+  return (
+    <Card title="Thư viện vật liệu" actions={
+      <>
+        <Select value={tpl} onChange={setTpl} options={MATERIAL_TEMPLATES.map((t) => ({ value: t.key, label: t.label }))} />
+        <button onClick={() => {
+          const t = MATERIAL_TEMPLATES.find((x) => x.key === tpl)!;
+          set((m) => ({ ...m, materials: [...(m.materials ?? []), { id: uid('mat'), ...t.m }] }));
+        }}>+ Vật liệu</button>
+      </>
+    }>
+      {list.length === 0 && <p className="muted">Chưa có vật liệu riêng — mọi thanh dùng vật liệu chung. Thêm vật liệu rồi chọn ở mục “Thanh”.</p>}
+      {list.map((mt) => {
+        const users = model.members.filter((b) => b.materialId === mt.id).map((b) => b.name);
+        return (
+          <div key={mt.id} className="item">
+            <div className="row">
+              <TextField label="Tên" value={mt.name} width={140} onChange={(v) => upd(mt.id, { name: v })} />
+              <NumField label="E" unit="GPa" value={mt.E} width={100} onChange={(v) => upd(mt.id, { E: v })} />
+              <NumField label="ν" value={mt.nu} width={70} onChange={(v) => upd(mt.id, { nu: v })} />
+              <NumField label="[σ]" unit="MPa" value={mt.allowable} width={100} onChange={(v) => upd(mt.id, { allowable: v })} />
+              <NumField label="f_y" unit="MPa" value={mt.fy ?? 0} width={100} onChange={(v) => upd(mt.id, { fy: v > 0 ? v : undefined })} title="0 = không khai báo" />
+              <button className="del" title="Xoá (các thanh đang dùng sẽ quay về vật liệu chung)"
+                onClick={() => set((m) => ({
+                  ...m,
+                  materials: (m.materials ?? []).filter((x) => x.id !== mt.id),
+                  members: m.members.map((b) => (b.materialId === mt.id ? { ...b, materialId: undefined } : b)),
+                }))}>✕</button>
+            </div>
+            <p className="hint">Dùng cho: {users.length ? users.join(', ') : 'chưa thanh nào'}</p>
+          </div>
+        );
+      })}
+      <p className="hint">
+        Mỗi thanh dùng E (độ cứng khi giải khung), ν, [σ] (kiểm tra bền, ổn định) và f_y (ổn định cục bộ, σ_ch) của vật liệu của nó. Giá trị [σ] của
+        các mẫu chỉ để tham khảo — sửa theo tiêu chuẩn áp dụng. f_y của thanh: ô “f_y riêng” của thanh → f_y của vật liệu → f_y chung của khung.
       </p>
     </Card>
   );

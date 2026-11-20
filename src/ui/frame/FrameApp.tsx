@@ -103,12 +103,12 @@ export function FrameApp({ model, setModel, replace, local, setLocal }: {
                   key={`local-${lm.id}`}
                   title={`Ổn định cục bộ bản cánh, bản bụng — thanh ${lm.name}`}
                   aLabel={`a sườn ngang của ${lm.name}${model.members.find((x) => x.id === lm.id)?.stiffenerSpacing !== undefined ? ' (riêng)' : ' (= chung)'}`}
-                  fyLabel={`f_y của ${lm.name}${model.members.find((x) => x.id === lm.id)?.fy !== undefined ? ' (riêng)' : ' (= chung)'}`}
+                  fyLabel={`f_y của ${lm.name}${model.members.find((x) => x.id === lm.id)?.fy !== undefined ? ' (riêng)' : lm.material.fy ? ' (theo vật liệu)' : ' (= chung)'}`}
                   spec={lm.sectionSpec}
-                  material={model.material}
-                  opt={memberLocal(local, model.members.find((x) => x.id === lm.id))}
+                  material={lm.material}
+                  opt={memberLocal(local, model.members.find((x) => x.id === lm.id), lm.material)}
                   setOpt={(o) => {
-                    const cur = memberLocal(local, model.members.find((x) => x.id === lm.id));
+                    const cur = memberLocal(local, model.members.find((x) => x.id === lm.id), lm.material);
                     const patch: { fy?: number; stiffenerSpacing?: number } = {};
                     if (o.fy !== cur.fy) patch.fy = o.fy;
                     if (o.stiffenerSpacing !== cur.stiffenerSpacing) patch.stiffenerSpacing = o.stiffenerSpacing;
@@ -159,7 +159,7 @@ export function FrameApp({ model, setModel, replace, local, setLocal }: {
                 title={`Ứng suất tại mặt cắt trên thanh ${mr.name}`}
                 sec={mr.section}
                 spec={mr.sectionSpec}
-                material={model.material}
+                material={mr.material}
                 F={toIF(mr.internalAt(sPick, side))}
                 steps={sectionSteps(
                   {
