@@ -1,5 +1,5 @@
 import { fmt } from '../../core/stress';
-import { DRIVE_AXLES_DEFAULT, MOD_TYPES, SAFE_HSA, SAFE_SSA, SPINE_MOMENTS, defaultModular, type ModType, type ModularInput, type ModularResult, type Suspension } from '../../core/modular';
+import { BEAUFORT, DRIVE_AXLES_DEFAULT, MOD_TYPES, type ModLashing, SAFE_HSA, SAFE_SSA, SPINE_MOMENTS, defaultModular, type ModType, type ModularInput, type ModularResult, type Suspension } from '../../core/modular';
 import { NumField, Select } from '../fields';
 
 const Pass = ({ ok }: { ok: boolean | null }) => (ok === null ? <span className="muted">—</span> : <b className={ok ? 'pass' : 'fail'}>{ok ? 'ĐẠT' : 'KHÔNG ĐẠT'}</b>);
@@ -99,15 +99,59 @@ export function ModularEditor({ mi, set, cargoMass, others, cogAuto }: { mi: Mod
         <NumField label="Dốc ngang chưa bù β_GT" unit="°" value={mi.betaGT ?? 0} width={70} onChange={(x) => set({ betaGT: x })} />
       </div>
       <div className="row">
-        <NumField label="Áp lực gió W_P" unit="kN/m²" value={mi.windP ?? 0} width={85} onChange={(x) => set({ windP: x })} />
-        <NumField label="Diện tích chắn gió" unit="m²" value={mi.windA ?? 0} width={80} onChange={(x) => set({ windA: x })} />
+        <Select label="Cấp gió Beaufort (trang 16)" value={String(BEAUFORT.find((b) => b.p === mi.windP && b.n === mi.beaufort)?.n ?? 'custom')}
+          options={[...BEAUFORT.map((b) => ({ value: String(b.n), label: `${b.n} — ${b.label}, ${b.v} m/s: ${b.p} kg/m²` })), { value: 'custom', label: 'Tuỳ chỉnh' }]}
+          onChange={(k) => { const b = BEAUFORT.find((x) => String(x.n) === k); if (b) set({ beaufort: b.n, windP: b.p }); }} />
+        <NumField label="Áp lực gió W_P" unit="kg/m²" value={mi.windP ?? 0} width={85} onChange={(x) => set({ windP: x, beaufort: -1 })} />
+      </div>
+      <div className="row">
+        <NumField label="Diện tích mặt trước A_FRONT" unit="m²" value={mi.windAFront ?? 0} width={80} title="Chắn gió theo phương dọc" onChange={(x) => set({ windAFront: x })} />
+        <NumField label="Diện tích mặt bên A_SIDE" unit="m²" value={mi.windASide ?? 0} width={80} title="Chắn gió theo phương ngang" onChange={(x) => set({ windASide: x })} />
         <NumField label="Hệ số hình dạng S_f" value={mi.windSf ?? 1} width={65} onChange={(x) => set({ windSf: x })} />
       </div>
       <div className="row">
         <NumField label="Góc gió φ" unit="°" value={mi.windPhi ?? 0} width={70} title="0° = gió dọc xe, 90° = gió ngang" onChange={(x) => set({ windPhi: x })} />
         <NumField label="Tâm mặt chắn gió CoW" unit="m" value={mi.cow ?? 0} width={80} title="Chiều cao tâm mặt chắn gió trên vùng ổn định; 0 = lấy bằng CoG" onChange={(x) => set({ cow: x })} />
       </div>
-      <p className="hint">Vận tốc vào cua, bán kính cua và gia tốc phanh lấy từ thẻ “Điều kiện đường”. Dốc chưa bù = góc đường − góc xe (sau khi xe tự cân bằng thủy lực).</p>
+      <p className="hint">Vận tốc vào cua, bán kính cua và gia tốc phanh lấy từ thẻ “Điều kiện đường” (phanh theo quãng đường: a = V0²/(2·S_T)). Dốc chưa bù = góc đường − góc xe (sau khi xe tự cân bằng thủy lực).</p>
+      <p className="lead">Dây chằng (trang 13–14)</p>
+      {(mi.lashings ?? []).map((l, i) => {
+        const upd = (p: Partial<ModLashing>) => set({ lashings: (mi.lashings ?? []).map((x, j) => (j === i ? { ...x, ...p } : x)) });
+        return (
+          <div key={i} className="row sub">
+            <Select label={i === 0 ? 'Góc phần tư' : undefined} value={String(l.q)} options={[{ value: '1', label: 'Q1 (X+, Y+)' }, { value: '2', label: 'Q2 (X−, Y+)' }, { value: '3', label: 'Q3 (X−, Y−)' }, { value: '4', label: 'Q4 (X+, Y−)' }]}
+              onChange={(x) => upd({ q: Number(x) as 1 | 2 | 3 | 4 })} />
+            <NumField label={i === 0 ? 'Số dây' : undefined} value={l.n} width={55} onChange={(x) => upd({ n: Math.max(0, Math.round(x)) })} />
+            <NumField label={i === 0 ? 'Cc' : undefined} unit="t" value={l.cc} width={70} onChange={(x) => upd({ cc: x })} />
+            <NumField label={i === 0 ? 'φ (so phương đứng)' : undefined} unit="°" value={l.phi} width={65} onChange={(x) => upd({ phi: x })} />
+            <NumField label={i === 0 ? 'Ω (so trục X)' : undefined} unit="°" value={l.omega} width={65} onChange={(x) => upd({ omega: x })} />
+            <button className="del" onClick={() => set({ lashings: (mi.lashings ?? []).filter((_, j) => j !== i) })}>×</button>
+          </div>
+        );
+      })}
+      <div className="row">
+        <button onClick={() => set({ lashings: [...(mi.lashings ?? []), { q: 1, n: 1, cc: 10, phi: 45, omega: 45 }] })}>+ nhóm dây</button>
+        <button onClick={() => set({ lashings: [1, 2, 3, 4].map((q) => ({ q: q as 1 | 2 | 3 | 4, n: 1, cc: 10, phi: 45, omega: 45 })) })}>4 góc phần tư, mỗi góc 1 dây</button>
+      </div>
+      <p className="hint">Cc_X = sin φ·cos Ω·Cc; Cc_Y = sin φ·sin Ω·Cc; Cc_Z = cos φ·Cc. X dọc xe, Y ngang xe, Z thẳng đứng. Hệ số ma sát lấy từ thẻ “Ma sát & hệ số”.</p>
+      <p className="lead">Cổ ngỗng (trang 15)</p>
+      <div className="row checks">
+        <label className="check"><input type="checkbox" checked={!!mi.gooseneck} onChange={(e) => set({ gooseneck: e.target.checked })} />Dùng cổ ngỗng (goose neck, 2 xi lanh, xe treo 3 điểm)</label>
+      </div>
+      {mi.gooseneck && <>
+        <div className="row">
+          <NumField label="Đường kính xi lanh trục D_AXLE" unit="mm" value={mi.gnDAxle ?? 0} width={80} onChange={(x) => set({ gnDAxle: x })} />
+          <NumField label="Đường kính xi lanh cổ ngỗng D_GN" unit="mm" value={mi.gnDNeck ?? 0} width={80} onChange={(x) => set({ gnDNeck: x })} />
+        </div>
+        <div className="row">
+          <NumField label="L1" unit="m" value={mi.gnL1 ?? 0} width={70} onChange={(x) => set({ gnL1: x })} />
+          <NumField label="L2" unit="m" value={mi.gnL2 ?? 0} width={70} onChange={(x) => set({ gnL2: x })} />
+          <NumField label="Tự trọng cổ ngỗng" unit="t" value={mi.gnWeight ?? 0} width={75} onChange={(x) => set({ gnWeight: x })} />
+        </div>
+        <div className="row checks">
+          <label className="check"><input type="checkbox" checked={!!mi.gnSquare} onChange={(e) => set({ gnSquare: e.target.checked })} />Dùng tỉ số diện tích (D_GN/D_AXLE)² thay cho tỉ số đường kính như trên thẻ</label>
+        </div>
+      </>}
       <p className="hint">Theo thẻ tham khảo: SPMT 30 t, pull type 25 t mỗi trục dòng; mỗi trục dòng có 2 trục (cụm bánh). Lực kéo cần = (cản lăn + dốc) × tổng trọng lượng.
         Pull type: lực kéo tối đa = 80% trọng lượng trên trục chủ động của xe kéo.</p>
     </>
@@ -187,6 +231,33 @@ export function GroundExtTables({ x }: { x: ModularResult }) {
           <tbody>
             {e.forces.map((f, i) => <tr key={i}><td>{f.label}</td><td>{fmt(f.F, 3)}</td><td>{fmt(f.Fs, 3)}</td><td>{f.n}</td><td>{fmt(f.Faxle, 4)}</td></tr>)}
             <tr><td>Tổng thêm trên trục (ngang / dọc)</td><td colSpan={3}></td><td>{fmt(e.axleT, 4)} / {fmt(e.axleL, 4)}</td></tr>
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
+export function SecuringTables({ x }: { x: ModularResult }) {
+  const s = x.securing, g = x.gooseneck, a = x.advice;
+  return (
+    <>
+      {a && <p className={a.pick ? 'ok' : 'warn'}>Chọn kiểu treo (trang 16): treo 3 điểm {a.ok3 ? 'đủ' : 'không đủ'} ổn định; treo 4 điểm {a.ok4 ? 'đủ' : 'không đủ'}. {a.reason}</p>}
+      <table className="grid">
+        <thead><tr><th>Chằng buộc (trang 13–14)</th><th>Phương</th><th>Lực cần (t)</th><th>Ma sát lớn nhất (t)</th><th>Cần chằng (t)</th><th>Dây có (t)</th><th></th></tr></thead>
+        <tbody>
+          {s.rows.map((r, i) => <tr key={i}><td>{r.force}</td><td>{r.dir}</td><td>{fmt(r.req, 2)}</td><td>{r.fric === null ? '—' : fmt(r.fric, 2)}</td><td><b>{fmt(r.apply, 2)}</b></td><td>{r.cap === null ? '—' : fmt(r.cap, 2)}</td><td><Pass ok={r.ok} /></td></tr>)}
+        </tbody>
+      </table>
+      <p className="hint">Lực tác dụng lên hàng (theo W_L): ly tâm {fmt(s.curve, 2)}; gió dọc / ngang {fmt(s.windL, 2)} / {fmt(s.windT, 2)}; tăng tốc dọc / ngang {fmt(s.accL, 2)} / {fmt(s.accT, 2)}; dốc dọc / ngang {fmt(s.gradL, 2)} / {fmt(s.gradT, 2)} t.</p>
+      {g && (
+        <table className="grid">
+          <thead><tr><th>Cổ ngỗng (trang 15)</th><th>Giá trị</th></tr></thead>
+          <tbody>
+            <tr><td>F_SUSPENSION = W_L / 3</td><td>{fmt(g.Fsusp, 3)} t</td></tr>
+            <tr><td>Lực trục nhóm đơn khi không có cổ ngỗng F_AXLE-1 ({g.n} trục)</td><td>{fmt(g.Faxle1, 3)} t</td></tr>
+            <tr><td>Lực trục khi có cổ ngỗng F_AXLE-2</td><td>{fmt(g.Faxle2, 3)} t</td></tr>
+            <tr><td>Lực lên mâm kéo F_5th</td><td>{fmt(g.F5th, 3)} t</td></tr>
           </tbody>
         </table>
       )}

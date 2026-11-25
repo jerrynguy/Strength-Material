@@ -2,7 +2,7 @@ import { fmt } from '../../core/stress';
 import { DIR_LABEL, analyzeTransport, modularInputOf, type TransportModel } from '../../core/transport';
 import { conclusionItems } from '../transport/TransportApp';
 import { TransportView } from '../transport/TransportView';
-import { GroundExtTables, StabilityPlan } from '../transport/ModularCards';
+import { GroundExtTables, SecuringTables, StabilityPlan } from '../transport/ModularCards';
 import { RConclusion, RFig, RKV, RSection, RSteps, RSub, RTable, Verdict, type ReportParts } from './primitives';
 
 export function TransportReport({ model, parts }: { model: TransportModel; parts: ReportParts }) {
@@ -60,7 +60,7 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
             ['Lực kéo', `cản lăn ${mi.rolling}%; dốc ${mi.grade}%; PPU ${mi.ppu} t${mi.type === 'spmt' ? `; lực đẩy ${mi.propulsion} t / trục chủ động; ${mi.hpPer10} HP / 10 trục dòng` : `; ${mi.trucks} xe kéo, ${mi.truckDriveWeight} t trên trục chủ động, tự trọng ${mi.truckWeight} t / xe`}`],
             ['Hiệu ứng cân bằng', `hố sâu ${mi.pothole} mm; ${mi.axlesPerGroup} trục trong nhóm treo`],
             ['Ổn định', `${mod.wide === 2 ? 'module đôi' : 'module đơn'}; D_AB = ${fmt(mod.stab?.DAB ?? mi.axleBase ?? 0, 3)} m; treo ${mi.suspension ?? '3'} điểm; trọng tâm chung ${mod.stab ? fmt(mod.stab.cog, 3) : '—'} m trên vùng ổn định (${(mi.cogMode ?? 'load') === 'load' ? 'tính từ hàng, bỏ qua xe module' : 'nhập tay'}); yêu cầu S_HSA ${mi.hsa ?? 8}°, S_SSA ${mi.ssa ?? 5}°`],
-            ['Áp lực nền, ngoại lực', `T_W = ${fmt(mod.ground.TW, 3)} m; [p] = ${mi.pAllow ?? 0} t/m² (kết luận theo cách ${mod.ground.method}); vào cua V0 = ${fmt(mi.vCurve ?? 0, 3)} m/s, r = ${fmt(mi.radius ?? 0, 2)} m; gia tốc ${fmt(mi.accel ?? 0, 3)} m/s², φ = ${mi.accPhi ?? 0}°; gió W_P = ${mi.windP ?? 0} kN/m², A = ${mi.windA ?? 0} m², S_f = ${mi.windSf ?? 1}, φ = ${mi.windPhi ?? 0}°; dốc chưa bù α_GL = ${mi.alphaGL ?? 0}°, β_GT = ${mi.betaGT ?? 0}°`],
+            ['Áp lực nền, ngoại lực', `T_W = ${fmt(mod.ground.TW, 3)} m; [p] = ${mi.pAllow ?? 0} t/m² (kết luận theo cách ${mod.ground.method}); vào cua V0 = ${fmt(mi.vCurve ?? 0, 3)} m/s, r = ${fmt(mi.radius ?? 0, 2)} m; gia tốc ${fmt(mi.accel ?? 0, 3)} m/s², φ = ${mi.accPhi ?? 0}°; gió W_P = ${mi.windP ?? 0} kg/m², A_FRONT = ${mi.windAFront ?? 0} m², A_SIDE = ${mi.windASide ?? 0} m², S_f = ${mi.windSf ?? 1}, φ = ${mi.windPhi ?? 0}°; dốc chưa bù α_GL = ${mi.alphaGL ?? 0}°, β_GT = ${mi.betaGT ?? 0}°`],
             ['Dầm sống', `trục dòng thò ra: ${mi.overhangFront ?? 0} (trước), ${mi.overhangRear ?? 0} (sau); M cho phép ${mi.spineM ?? '—'} t·m`],
           ]} />
           {parts.diagrams && mod.stab && <RFig caption="Vùng ổn định (hình chiếu bằng) và trọng tâm chung"><StabilityPlan x={mod} /></RFig>}
@@ -85,7 +85,8 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
             note="Theo thẻ tham khảo xe module thủy lực (The Works International / ITI), cách gần đúng: trọng tâm ở trọng tâm vùng ổn định, các trục cách đều; chưa kể hệ số động." />
           {mod.notes.length > 0 && <RSteps lines={mod.notes} />}
           <GroundExtTables x={mod} />
-          {parts.steps && <RSteps lines={[...mod.steps, ...(mod.stab?.steps ?? []), ...mod.spine.steps, ...mod.ground.steps, ...(mod.ext?.steps ?? [])]} />}
+          <SecuringTables x={mod} />
+          {parts.steps && <RSteps lines={[...mod.steps, ...(mod.stab?.steps ?? []), ...mod.spine.steps, ...mod.ground.steps, ...(mod.ext?.steps ?? []), ...mod.securing.steps, ...(mod.gooseneck?.steps ?? [])]} />}
         </RSection>
       ) : (<>
       <RSection n={N()} title="Tải trọng trục và kích thước bao">

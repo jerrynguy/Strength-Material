@@ -6,7 +6,7 @@ import {
 } from '../../core/transport';
 import { Card, NumField, Select, TextField } from '../fields';
 import { TransportView } from './TransportView';
-import { GroundExtTables, ModularEditor, ModularTable, StabilityPlan } from './ModularCards';
+import { GroundExtTables, SecuringTables, ModularEditor, ModularTable, StabilityPlan } from './ModularCards';
 import { defaultModular, type ModularInput } from '../../core/modular';
 
 type SetFn = (fn: (m: TransportModel) => TransportModel) => void;
@@ -368,12 +368,13 @@ function ModularCard({ r }: { r: TransportResult }) {
       <StabilityPlan x={x} />
       <ModularTable x={x} />
       <GroundExtTables x={x} />
+      <SecuringTables x={x} />
       {x.notes.map((n, i) => <p key={i} className="warn">{n}</p>)}
       <table className="grid">
         <tbody>{r.dim.checks.map((c, i) => <tr key={i}><td>{c.label}</td><td>{fmt(c.value, 3)} m{c.limit > 0 ? ` (giới hạn ${c.limit} m)` : ''}</td><td><Pass ok={c.ok} /></td></tr>)}</tbody>
       </table>
       <p className="hint">Theo thẻ tham khảo xe module thủy lực (cách gần đúng: trọng tâm ở trọng tâm vùng ổn định, các trục cách đều); chưa kể hệ số động.</p>
-      <details><summary>Lời giải</summary><ol className="steps">{[...x.steps, ...(x.stab?.steps ?? []), ...x.spine.steps, ...x.ground.steps, ...(x.ext?.steps ?? [])].map((l, i) => <li key={i}>{l}</li>)}</ol></details>
+      <details><summary>Lời giải</summary><ol className="steps">{[...x.steps, ...(x.stab?.steps ?? []), ...x.spine.steps, ...x.ground.steps, ...(x.ext?.steps ?? []), ...x.securing.steps, ...(x.gooseneck?.steps ?? [])].map((l, i) => <li key={i}>{l}</li>)}</ol></details>
     </Card>
   );
 }
