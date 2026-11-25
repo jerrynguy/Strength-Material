@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { fmt } from '../../core/stress';
 import {
-  BRAKE_MODES, DIR_LABEL, EN12195_ROAD, equalShare, FRICTION_PRESETS, analyzeTransport, toT,
+  BRAKE_MODES, DIR_LABEL, loadCogAboveStability, EN12195_ROAD, equalShare, FRICTION_PRESETS, analyzeTransport, toT,
   type Barge, type Blocking, type OtherLoad, type Cargo, type Ground, type Coefficients, type Direct, type Limits, type Road, type TopOver, type TransportModel, type TransportResult, type Vehicle, type VehicleKind,
 } from '../../core/transport';
 import { Card, NumField, Select, TextField } from '../fields';
 import { TransportView } from './TransportView';
-import { ModularEditor, ModularTable } from './ModularCards';
+import { ModularEditor, ModularTable, StabilityPlan } from './ModularCards';
 import { defaultModular, type ModularInput } from '../../core/modular';
 
 type SetFn = (fn: (m: TransportModel) => TransportModel) => void;
@@ -140,7 +140,7 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
             <NumField label="Rộng xe" unit="m" value={v.width} width={90} onChange={(x) => veh({ width: x })} />
           </div>
           {kind === 'modular' ? (
-            <ModularEditor mi={model.modular ?? defaultModular()} set={mod} cargoMass={c.mass} others={(model.others ?? []).reduce((s, o) => s + o.mass, 0)} />
+            <ModularEditor mi={model.modular ?? defaultModular()} set={mod} cargoMass={c.mass} others={(model.others ?? []).reduce((s, o) => s + o.mass, 0)} cogAuto={loadCogAboveStability(model)} />
           ) : (<>
           <div className="row">
             <NumField label="Chốt kéo cách mép trước" unit="m" value={v.kingpinX} width={90} onChange={(x) => veh({ kingpinX: x })} />
@@ -365,12 +365,14 @@ function ModularCard({ r }: { r: TransportResult }) {
   const x = r.modular!;
   return (
     <Card title={`Xe module thủy lực — ${x.spec.label}`}>
+      <StabilityPlan x={x} />
       <ModularTable x={x} />
+      {x.notes.map((n, i) => <p key={i} className="warn">{n}</p>)}
       <table className="grid">
         <tbody>{r.dim.checks.map((c, i) => <tr key={i}><td>{c.label}</td><td>{fmt(c.value, 3)} m{c.limit > 0 ? ` (giới hạn ${c.limit} m)` : ''}</td><td><Pass ok={c.ok} /></td></tr>)}</tbody>
       </table>
-      <p className="hint">Theo thẻ tham khảo xe module thủy lực: chưa kể hệ số động; chưa kiểm tra góc ổn định thủy lực / kết cấu (S_HSA, S_SSA).</p>
-      <details><summary>Lời giải</summary><ol className="steps">{x.steps.map((l, i) => <li key={i}>{l}</li>)}</ol></details>
+      <p className="hint">Theo thẻ tham khảo xe module thủy lực (cách gần đúng: trọng tâm ở trọng tâm vùng ổn định, các trục cách đều); chưa kể hệ số động.</p>
+      <details><summary>Lời giải</summary><ol className="steps">{[...x.steps, ...(x.stab?.steps ?? []), ...x.spine.steps].map((l, i) => <li key={i}>{l}</li>)}</ol></details>
     </Card>
   );
 }

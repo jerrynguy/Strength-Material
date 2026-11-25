@@ -2,6 +2,7 @@ import { fmt } from '../../core/stress';
 import { DIR_LABEL, analyzeTransport, type TransportModel } from '../../core/transport';
 import { conclusionItems } from '../transport/TransportApp';
 import { TransportView } from '../transport/TransportView';
+import { StabilityPlan } from '../transport/ModularCards';
 import { RConclusion, RFig, RKV, RSection, RSteps, RSub, RTable, Verdict, type ReportParts } from './primitives';
 
 export function TransportReport({ model, parts }: { model: TransportModel; parts: ReportParts }) {
@@ -58,7 +59,10 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
             ['Cấu hình', mi.units.length ? `${mi.units.map((u) => u.lines).join(' + ')} = ${mod.lines} trục dòng${mi.type === 'spmt' ? `; trục chủ động ${mi.units.map((u) => u.drive).join(' + ')}` : ''}` : `${mod.lines} trục dòng (theo số cần)`],
             ['Lực kéo', `cản lăn ${mi.rolling}%; dốc ${mi.grade}%; PPU ${mi.ppu} t${mi.type === 'spmt' ? `; lực đẩy ${mi.propulsion} t / trục chủ động; ${mi.hpPer10} HP / 10 trục dòng` : `; ${mi.trucks} xe kéo, ${mi.truckDriveWeight} t trên trục chủ động, tự trọng ${mi.truckWeight} t / xe`}`],
             ['Hiệu ứng cân bằng', `hố sâu ${mi.pothole} mm; ${mi.axlesPerGroup} trục trong nhóm treo`],
+            ['Ổn định', `${mod.wide === 2 ? 'module đôi' : 'module đơn'}; D_AB = ${fmt(mod.stab?.DAB ?? mi.axleBase ?? 0, 3)} m; treo ${mi.suspension ?? '3'} điểm; trọng tâm chung ${mod.stab ? fmt(mod.stab.cog, 3) : '—'} m trên vùng ổn định (${(mi.cogMode ?? 'load') === 'load' ? 'tính từ hàng, bỏ qua xe module' : 'nhập tay'}); yêu cầu S_HSA ${mi.hsa ?? 8}°, S_SSA ${mi.ssa ?? 5}°`],
+            ['Dầm sống', `trục dòng thò ra: ${mi.overhangFront ?? 0} (trước), ${mi.overhangRear ?? 0} (sau); M cho phép ${mi.spineM ?? '—'} t·m`],
           ]} />
+          {parts.diagrams && mod.stab && <RFig caption="Vùng ổn định (hình chiếu bằng) và trọng tâm chung"><StabilityPlan x={mod} /></RFig>}
           <RTable head={['Hạng mục', 'Giá trị', 'Kết luận']}
             rows={[
               ['Tải đặt lên xe', `${fmt(mod.payload, 3)} t`, '—'],
@@ -69,10 +73,17 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
               ...(mod.ppuHp !== null ? [['Công suất PPU', `${fmt(mod.ppuHp, 1)} HP (${fmt(mod.ppuKw ?? 0, 1)} kW)`, '—']] : []),
               ...(mod.trucksReq !== null ? [['Số xe kéo cần', String(mod.trucksReq), '—']] : []),
               ['Độ nghiêng khi một nhóm treo qua hố', `${fmt(mod.lean, 1)} mm`, '—'],
+              ...(mod.stab ? [
+                ['Tải một trục W_axle / khả năng trục A_C', `${fmt(mod.stab.Waxle, 3)} / ${fmt(mod.stab.Ac, 3)} t`, '—'],
+                ['Độ dời trọng tâm tới giới hạn kết cấu (dọc / ngang)', `${fmt(mod.stab.sLong, 3)} / ${fmt(mod.stab.sTrans, 3)} m`, '—'],
+              ] : []),
+              ...mod.spine.ends.filter((e) => e.n > 0).map((e) => [`Dầm sống — ${e.label.toLowerCase()} (${e.n} trục dòng thò ra)`, `M = ${fmt(e.M, 1)} t·m`, '—']),
+              ['Số trục dòng được thò ra (theo khả năng trục)', String(mod.spine.nMax), '—'],
               ...r.dim.checks.map((a) => [a.label, `${fmt(a.value, 3)} m${a.limit > 0 ? ` (giới hạn ${a.limit} m)` : ''}`, ok(a.ok)]),
             ]}
-            note="Theo thẻ tham khảo xe module thủy lực (The Works International / ITI): chưa kể hệ số động; chưa kiểm tra góc ổn định thủy lực / kết cấu (S_HSA, S_SSA)." />
-          {parts.steps && <RSteps lines={mod.steps} />}
+            note="Theo thẻ tham khảo xe module thủy lực (The Works International / ITI), cách gần đúng: trọng tâm ở trọng tâm vùng ổn định, các trục cách đều; chưa kể hệ số động." />
+          {mod.notes.length > 0 && <RSteps lines={mod.notes} />}
+          {parts.steps && <RSteps lines={[...mod.steps, ...(mod.stab?.steps ?? []), ...mod.spine.steps]} />}
         </RSection>
       ) : (<>
       <RSection n={N()} title="Tải trọng trục và kích thước bao">
