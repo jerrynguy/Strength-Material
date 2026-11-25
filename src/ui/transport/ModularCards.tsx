@@ -1,11 +1,11 @@
 import { fmt } from '../../core/stress';
-import { DRIVE_AXLES_DEFAULT, MOD_TYPES, defaultModular, type ModType, type ModularInput, type ModularResult } from '../../core/modular';
+import { DRIVE_AXLES_DEFAULT, MOD_TYPES, SAFE_HSA, SAFE_SSA, SPINE_MOMENTS, defaultModular, type ModType, type ModularInput, type ModularResult, type Suspension } from '../../core/modular';
 import { NumField, Select } from '../fields';
 
 const Pass = ({ ok }: { ok: boolean | null }) => (ok === null ? <span className="muted">—</span> : <b className={ok ? 'pass' : 'fail'}>{ok ? 'ĐẠT' : 'KHÔNG ĐẠT'}</b>);
 
 /** Ô nhập xe module thủy lực — nằm trong thẻ "Xe" của tab Vận chuyển */
-export function ModularEditor({ mi, set, cargoMass, others }: { mi: ModularInput; set: (p: Partial<ModularInput>) => void; cargoMass: number; others: number }) {
+export function ModularEditor({ mi, set, cargoMass, others, cogAuto }: { mi: ModularInput; set: (p: Partial<ModularInput>) => void; cargoMass: number; others: number; cogAuto: number }) {
   const spec = MOD_TYPES[mi.type];
   const spmt = mi.type === 'spmt';
   const unit = (i: number, p: Partial<{ lines: number; drive: number }>) => set({ units: mi.units.map((u, j) => (j === i ? { ...u, ...p } : u)) });
@@ -13,13 +13,18 @@ export function ModularEditor({ mi, set, cargoMass, others }: { mi: ModularInput
     <>
       <div className="row">
         <Select<ModType> label="Loại xe module" value={mi.type} options={(Object.keys(MOD_TYPES) as ModType[]).map((k) => ({ value: k, label: MOD_TYPES[k].label }))}
-          onChange={(k) => { const d = defaultModular(k); set({ type: k, payloadPerLine: d.payloadPerLine, units: k === 'spmt' ? (mi.units.length ? mi.units : d.units) : mi.units.map((u) => ({ ...u, drive: 0 })) }); }} />
+          onChange={(k) => { const d = defaultModular(k); const sp = MOD_TYPES[k]; set({ type: k, payloadPerLine: d.payloadPerLine, axleBase: (mi.wide ?? 1) === 2 ? sp.axleBaseDouble : sp.axleBaseSingle, spineM: d.spineM, units: k === 'spmt' ? (mi.units.length ? mi.units : d.units) : mi.units.map((u) => ({ ...u, drive: 0 })) }); }} />
         <NumField label="Tải trọng / trục dòng" unit="t" value={mi.payloadPerLine} width={85} onChange={(x) => set({ payloadPerLine: x })} />
         <NumField label="Tự trọng / trục dòng" unit="t" value={mi.selfPerLine} width={85} onChange={(x) => set({ selfPerLine: x })} />
       </div>
       <p className="hint">{spec.label}: {spec.tires} lốp / trục dòng; khoảng cách trục dòng {fmt(spec.axleSpacing, 2)} m; bề rộng cơ sở {fmt(spec.axleBaseSingle, 2)} m (module đơn) / {fmt(spec.axleBaseDouble, 2)} m (module đôi);
         cao sàn {fmt(spec.deckH, 2)} ± {fmt(spec.stroke, 2)} m. Hàng {fmt(cargoMass, 3)} t lấy từ thẻ Hàng hoá; gối kê / dầm / mâm xoay {fmt(others, 3)} t lấy từ thẻ Tải khác trên xe.</p>
-      <p className="lead">Cấu hình module (để trống = dùng số trục dòng cần)</p>
+      <div className="row">
+        <Select label="Ghép module" value={String(mi.wide ?? 1)} options={[{ value: '1', label: 'Module đơn' }, { value: '2', label: 'Module đôi (2 hàng song song)' }]}
+          onChange={(w) => set({ wide: w === '2' ? 2 : 1, axleBase: w === '2' ? spec.axleBaseDouble : spec.axleBaseSingle })} />
+        <NumField label="Bề rộng cơ sở D_AB" unit="m" value={mi.axleBase ?? spec.axleBaseSingle} width={85} title="Khoảng cách tâm hai cụm bánh ngoài cùng — bề rộng vùng ổn định" onChange={(x) => set({ axleBase: x })} />
+      </div>
+      <p className="lead">Cấu hình module theo chiều dài xe (để trống = dùng số trục dòng cần)</p>
       {mi.units.map((u, i) => (
         <div key={i} className="row sub">
           <NumField label={i === 0 ? 'Số trục dòng' : undefined} value={u.lines} width={80}
@@ -54,9 +59,67 @@ export function ModularEditor({ mi, set, cargoMass, others }: { mi: ModularInput
         <NumField label="Độ sâu hố" unit="mm" value={mi.pothole} width={85} onChange={(x) => set({ pothole: x })} />
         <NumField label="Số trục trong nhóm treo" value={mi.axlesPerGroup} width={75} title="Treo 4 điểm: thường 2 trục / nhóm; treo 3 điểm: nhóm lớn 4 trục" onChange={(x) => set({ axlesPerGroup: Math.max(1, Math.round(x)) })} />
       </div>
+      <p className="lead">Ổn định (thẻ tham khảo trang 5–6)</p>
+      <div className="row">
+        <Select<Suspension> label="Kiểu treo" value={mi.suspension ?? '3'} options={[{ value: '3', label: 'Treo 3 điểm (vùng ổn định tam giác)' }, { value: '4', label: 'Treo 4 điểm (vùng ổn định chữ nhật)' }]} onChange={(x) => set({ suspension: x })} />
+      </div>
+      <div className="row">
+        <Select label="Trọng tâm chung trên vùng ổn định" value={mi.cogMode ?? 'load'} options={[{ value: 'load', label: 'Tính từ hàng (bỏ qua xe module, thiên về an toàn)' }, { value: 'manual', label: 'Nhập tay' }]}
+          onChange={(x) => set({ cogMode: x as 'load' | 'manual', cog: x === 'manual' ? Math.round(cogAuto * 1000) / 1000 : mi.cog })} />
+        {(mi.cogMode ?? 'load') === 'manual'
+          ? <NumField label="CoG" unit="m" value={mi.cog ?? 0} width={80} onChange={(x) => set({ cog: x })} />
+          : <span className="muted small">CoG = cao sàn + trọng tâm hàng − {fmt(spec.stabilityElev, 3)} = {fmt(cogAuto, 3)} m</span>}
+      </div>
+      <div className="row">
+        <NumField label="Góc thủy lực yêu cầu S_HSA" unit="°" value={mi.hsa ?? SAFE_HSA} width={70} onChange={(x) => set({ hsa: x })} />
+        <NumField label="Góc kết cấu yêu cầu S_SSA" unit="°" value={mi.ssa ?? SAFE_SSA} width={70} onChange={(x) => set({ ssa: x })} />
+      </div>
+      <p className="lead">Dầm sống (trang 8)</p>
+      <div className="row">
+        <NumField label="Trục dòng thò ra — đầu trước" value={mi.overhangFront ?? 0} width={70} onChange={(x) => set({ overhangFront: Math.max(0, Math.round(x)) })} />
+        <NumField label="— đầu sau" value={mi.overhangRear ?? 0} width={70} onChange={(x) => set({ overhangRear: Math.max(0, Math.round(x)) })} />
+      </div>
+      <div className="row">
+        <Select label="Mô men cho phép (trung bình nhiều hãng)" value={SPINE_MOMENTS.find((s) => s.m === mi.spineM)?.key ?? 'custom'}
+          options={[...SPINE_MOMENTS.map((s) => ({ value: s.key, label: `${s.label}: ${s.m} t·m` })), ...(SPINE_MOMENTS.some((s) => s.m === mi.spineM) ? [] : [{ value: 'custom', label: 'Tuỳ chỉnh' }])]}
+          onChange={(k) => { const s = SPINE_MOMENTS.find((x) => x.key === k); if (s) set({ spineM: s.m }); }} />
+        <NumField label="M cho phép" unit="t·m" value={mi.spineM ?? 0} width={85} onChange={(x) => set({ spineM: x })} />
+      </div>
       <p className="hint">Theo thẻ tham khảo: SPMT 30 t, pull type 25 t mỗi trục dòng; mỗi trục dòng có 2 trục (cụm bánh). Lực kéo cần = (cản lăn + dốc) × tổng trọng lượng.
         Pull type: lực kéo tối đa = 80% trọng lượng trên trục chủ động của xe kéo.</p>
     </>
+  );
+}
+
+/** Hình chiếu bằng: vùng ổn định (chữ nhật / tam giác) và các điểm P, S */
+export function StabilityPlan({ x }: { x: ModularResult }) {
+  const st = x.stab;
+  if (!st) return null;
+  const TL = st.TL, B = Math.max(st.DAB + 0.6, 1);
+  const W = 620, pad = 16, top = 18;
+  const s = Math.min((W - 2 * pad) / TL, 160 / B);
+  const H = B * s + top + 2 * pad;
+  const X = (u: number) => W / 2 + u * s;
+  const Y = (v: number) => top + pad + (B / 2 - v) * s;
+  const L2 = TL / 4, D2 = st.DAB / 2;
+  // vùng ổn định: chữ nhật T_L/2 × D_AB (treo 4 điểm), tam giác đỉnh ở đầu trước (treo 3 điểm); trọng tâm ở trọng tâm vùng
+  const poly = st.suspension === '4'
+    ? [[-L2, -D2], [L2, -D2], [L2, D2], [-L2, D2]]
+    : [[-TL / 6, -D2], [-TL / 6, D2], [TL / 3, 0]];
+  const pts = poly.map(([u, v]) => `${X(u)},${Y(v)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="beam-svg" role="img" aria-label="Vùng ổn định">
+      <rect x={X(-TL / 2)} y={Y(B / 2)} width={TL * s} height={B * s} className="beam" />
+      {Array.from({ length: x.linesLong }, (_, i) => {
+        const u = -TL / 2 + x.spec.axleSpacing * (i + 0.5);
+        return <g key={i}>{[-D2, D2].map((v, j) => <rect key={j} x={X(u) - 4} y={Y(v) - 6} width={8} height={12} className="support-fill" />)}</g>;
+      })}
+      <polygon points={pts} className="tv-stab" />
+      <circle cx={X(0)} cy={Y(0)} r={5} className="tv-cg" />
+      <text x={X(-TL / 2)} y={top} className="lbl tiny">{st.suspension === '4' ? 'Treo 4 điểm — vùng chữ nhật T_L/2 × D_AB' : 'Treo 3 điểm — vùng tam giác'}</text>
+      <text x={X(TL / 2)} y={top} textAnchor="end" className="lbl tiny">đầu trước →</text>
+      <text x={X(0) + 8} y={Y(0) - 6} className="lbl tiny">CoG</text>
+    </svg>
   );
 }
 
@@ -72,7 +135,13 @@ export function ModularTable({ x }: { x: ModularResult }) {
         {x.ppuHp !== null && <tr><td>Công suất PPU</td><td>{fmt(x.ppuHp, 1)} HP ({fmt(x.ppuKw ?? 0, 1)} kW)</td><td></td></tr>}
         {x.trucksReq !== null && <tr><td>Số xe kéo cần</td><td>{x.trucksReq}</td><td></td></tr>}
         <tr><td>Độ nghiêng khi một nhóm treo qua hố</td><td>{fmt(x.lean, 1)} mm</td><td></td></tr>
-        <tr><td>Chiều dài theo số trục dòng (ước tính)</td><td>{x.lines} × {fmt(x.spec.axleSpacing, 2)} = {fmt(x.length, 2)} m</td><td></td></tr>
+        <tr><td>Chiều dài xe T_L</td><td>{x.linesLong} × {fmt(x.spec.axleSpacing, 2)} = {fmt(x.length, 2)} m{x.wide === 2 ? ' (module đôi)' : ''}</td><td></td></tr>
+        {x.stab && <>
+          <tr><td>Tải một trục W_axle / khả năng trục A_C</td><td>{fmt(x.stab.Waxle, 3)} / {fmt(x.stab.Ac, 3)} t ({x.stab.axles} trục)</td><td></td></tr>
+          <tr><td>Độ dời trọng tâm tới giới hạn kết cấu (dọc / ngang)</td><td>{fmt(x.stab.sLong, 3)} / {fmt(x.stab.sTrans, 3)} m</td><td></td></tr>
+        </>}
+        {x.spine.ends.filter((e) => e.n > 0).map((e, i) => <tr key={'sp' + i}><td>Dầm sống — {e.label.toLowerCase()} ({e.n} trục dòng thò ra)</td><td>M = {fmt(e.M, 1)} t·m</td><td></td></tr>)}
+        <tr><td>Số trục dòng được thò ra (theo khả năng trục)</td><td>{x.spine.nMax} (M_cho phép / (A_C·2·D_AS) = {fmt(x.spine.ratio, 2)})</td><td></td></tr>
       </tbody>
     </table>
   );

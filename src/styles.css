@@ -345,3 +345,4 @@ details summary { cursor: pointer; color: var(--accent); }
 .lift-rope { stroke: var(--ink); stroke-width: 1.2; }
 table.grid td.hl { background: var(--accent-soft); font-weight: 700; }
 .chart-wrap { overflow-x: auto; }
+.tv-stab { fill: var(--tone-c); fill-opacity: 0.15; stroke: var(--tone-c); stroke-width: 1.5; stroke-dasharray: 5 3; }

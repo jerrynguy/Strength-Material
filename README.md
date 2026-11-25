@@ -251,7 +251,17 @@ Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trê
     PPU = số trục dòng / 10 × 100 HP;
   - pull type: lực kéo tối đa = 80% trọng lượng trên trục chủ động của xe kéo;
   - hiệu ứng cân bằng: độ nghiêng = độ sâu hố / số trục trong nhóm treo.
-  Chưa kiểm tra góc ổn định thủy lực / kết cấu (S_HSA, S_SSA) vì thẻ không cho công thức.
+  - module đơn / đôi (2 hàng song song): tổng số trục dòng, tự trọng và trục chủ động nhân theo số hàng;
+  - **ổn định thủy lực** (trang 5): treo 4 điểm Hα = arctan((T_L/4)/CoG), Hβ = arctan((D_AB/2)/CoG);
+    treo 3 điểm Hα = arctan((T_L/6)/CoG), Hβ = arctan((D_AB/3)/CoG); yêu cầu ≥ S_HSA = 8°;
+  - **ổn định kết cấu** (trang 6): W_axle = (W_T + W_L) / số trục, A_C = 0,5 × tải trọng trục dòng; độ dời trọng tâm
+    CoG_shift theo công thức treo 4 / 3 điểm; Sα, Sβ = arctan(CoG_shift / CoG); yêu cầu ≥ S_SSA = 5°;
+    cảnh báo khi W_TOT > 0,5 (hoặc 2/3) khả năng xe;
+  - chiều cao trọng tâm chung trên vùng ổn định nhập tay, hoặc tính từ hàng (cao sàn + trọng tâm hàng − cao độ vùng ổn định
+    0,363 m SPMT / 0,381 m pull type), bỏ qua xe module nên thiên về an toàn;
+  - **dầm sống** (trang 8): M = W_axleline·D_AS·(1 + 2 + … + n) với n trục dòng thò ra ngoài hàng ở mỗi đầu, so với mô men cho phép
+    (pull type 560 / 725, SPMT 650 / 775 t·m); số trục dòng được thò ra từ M_cho phép / (A_C·2·D_AS) ≥ 1 + … + n.
+  Các công thức là cách gần đúng của thẻ: trọng tâm ở trọng tâm vùng ổn định, các trục cách đều.
 
 Mọi hệ số (c, f_s, f_μ, μ, giới hạn tải trục) đều sửa được để theo quy trình riêng. Có lời giải từng bước và báo cáo PDF.
 
