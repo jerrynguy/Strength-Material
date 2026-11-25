@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { G, analyzeTransport, axleLoads, bargeCheck, groundPressure, checkSliding, checkTipping, defaultTransport, migrateRoad, pipeType2, roadCheck, type TransportModel } from '../src/core/transport';
+import { G, analyzeTransport, axleLoads, bargeCheck, groundPressure, checkSliding, checkTipping, defaultTransport, migrateCoef, migrateRoad, pipeType2, roadCheck, type TransportModel } from '../src/core/transport';
 
 const none = (m: TransportModel): TransportModel => ({
   ...m, topOver: { ...m.topOver, n: 0 }, direct: { ...m.direct, nLong: 0, nTrans: 0 }, blocking: { fwd: 0, rear: 0, side: 0 },
@@ -141,5 +141,35 @@ describe('Áp lực nền và tỉ lệ tải sà lan', () => {
     expect(b.uc * 100).toBeCloseTo(47.55, 2);
     expect(b.ok).toBe(true);
     expect(bargeCheck({ name: 'x', dwt: 50, ucLimit: 80, items: [{ name: 'a', mass: 41 }] }).ok).toBe(false);
+  });
+});
+
+describe('Hệ số theo EN 12195-1: f_s theo từng phương, ma sát khi chặn', () => {
+  it('f_s = 1,25 phương tiến, 1,1 phương lùi và ngang', () => {
+    const base = none(defaultTransport());
+    // 10 t, μ = 0,3, vắt nóc α = 90°, STF 400 daN
+    const m: TransportModel = { ...base, mu: 0.3, cargo: { ...base.cargo, mass: 10 }, topOver: { n: 1, alpha: 90, stf: 400, lc: 2500 } };
+    const W = 10 * G;
+    const fwd = checkSliding(m, 'fwd'), rear = checkSliding(m, 'rear');
+    expect(fwd.nTopOverReq).toBe(Math.ceil(((0.8 - 0.3) * W * 1.25) / (2 * 0.3 * 4)));
+    expect(rear.nTopOverReq).toBe(Math.ceil(((0.5 - 0.3) * W * 1.1) / (2 * 0.3 * 4)));
+    expect(rear.topOver).toBeCloseTo((2 * 1 * 0.3 * 4) / 1.1, 9);
+    expect(fwd.topOver).toBeCloseTo((2 * 1 * 0.3 * 4) / 1.25, 9);
+  });
+  it('chỉ chặn: ma sát dùng μ (không nhân f_μ); có chằng trực tiếp mới dùng μ·f_μ', () => {
+    const base = none(defaultTransport());
+    const blk: TransportModel = { ...base, mu: 0.4, blocking: { fwd: 50, rear: 0, side: 0 } };
+    const s = checkSliding(blk, 'fwd');
+    expect(s.muUsed).toBe(0.4);
+    expect(s.capacity).toBeCloseTo(0.4 * base.cargo.mass * G + 50, 9);
+    const withDirect = checkSliding({ ...blk, direct: { nLong: 2, nTrans: 2, lc: 2000, alpha: 45, beta: 30 } }, 'fwd');
+    expect(withDirect.muUsed).toBeCloseTo(0.4 * 0.75, 12);
+  });
+  it('dữ liệu cũ có fsLong: giữ cho phương tiến, phương lùi lấy 1,1', () => {
+    const c = migrateCoef({ cxF: 0.8, fsLong: 1.3 } as never);
+    expect(c.fsFwd).toBe(1.3);
+    expect(c.fsRear).toBe(1.1);
+    expect((c as unknown as { fsLong?: number }).fsLong).toBeUndefined();
+    expect(migrateCoef(undefined).fsRear).toBe(1.1);
   });
 });

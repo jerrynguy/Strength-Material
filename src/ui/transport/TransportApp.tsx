@@ -89,11 +89,12 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
             <NumField label="c_z" unit="g" value={k.cz} width={80} onChange={(x) => coef({ cz: x })} />
           </div>
           <div className="row">
-            <NumField label="f_s dọc" value={k.fsLong} width={70} onChange={(x) => coef({ fsLong: x })} />
+            <NumField label="f_s tiến" value={k.fsFwd} width={70} onChange={(x) => coef({ fsFwd: x })} />
+            <NumField label="f_s lùi" value={k.fsRear} width={70} onChange={(x) => coef({ fsRear: x })} />
             <NumField label="f_s ngang" value={k.fsTrans} width={70} onChange={(x) => coef({ fsTrans: x })} />
             <NumField label="f_μ" value={k.fmu} width={70} onChange={(x) => coef({ fmu: x })} />
           </div>
-          <p className="hint">Đường bộ: c_x = 0,8 (tiến), 0,5 (lùi), c_y = 0,5, c_z = 1,0. f_s là hệ số an toàn cho chằng vắt qua nóc; f_μ = 0,75 quy đổi ma sát khi chằng trực tiếp hoặc chặn.
+          <p className="hint">Đường bộ: c_x = 0,8 (tiến), 0,5 (lùi), c_y = 0,5, c_z = 1,0. f_s là hệ số an toàn cho chằng vắt qua nóc: 1,25 (tiến), 1,1 (lùi, ngang); f_μ = 0,75 quy đổi ma sát khi chằng trực tiếp (chặn dùng μ).
             Hàng dễ lắc lư (wobbling) nên tăng c_y lật. Có thể sửa các hệ số theo quy trình riêng.</p>
         </Card>
 
@@ -314,7 +315,7 @@ function SlideCard({ r }: { r: TransportResult }) {
           ))}
         </tbody>
       </table>
-      <p className="hint">Lực (kN). UC = lực quán tính / tổng khả năng giữ. Khi có chằng trực tiếp hoặc chặn, ma sát dùng μ·f_μ cho mọi thành phần (thiên về an toàn).</p>
+      <p className="hint">Lực (kN). UC = lực quán tính / tổng khả năng giữ. Có chằng trực tiếp thì ma sát dùng μ·f_μ cho mọi thành phần (thiên về an toàn); chỉ chặn hoặc vắt nóc thì dùng μ.</p>
       {r.slide.map((s) => (
         <details key={s.dir}><summary>Lời giải – {DIR_LABEL[s.dir].toLowerCase()}</summary><ol className="steps">{s.steps.map((l, i) => <li key={i}>{l}</li>)}</ol></details>
       ))}

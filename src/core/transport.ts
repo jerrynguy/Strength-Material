@@ -27,16 +27,28 @@ export interface Coefficients {
   cyTip: number;
   /** thành phần thẳng đứng hướng xuống */
   cz: number;
-  /** hệ số an toàn chằng vắt qua nóc, phương dọc */
-  fsLong: number;
-  /** hệ số an toàn chằng vắt qua nóc, phương ngang */
+  /** hệ số an toàn chằng vắt qua nóc theo phương tiến (EN 12195-1: 1,25) */
+  fsFwd: number;
+  /** hệ số an toàn chằng vắt qua nóc theo phương lùi (EN 12195-1: 1,1) */
+  fsRear: number;
+  /** hệ số an toàn chằng vắt qua nóc theo phương ngang (EN 12195-1: 1,1) */
   fsTrans: number;
-  /** hệ số chuyển đổi ma sát khi chằng trực tiếp / chặn */
+  /** hệ số chuyển đổi ma sát khi chằng trực tiếp (EN 12195-1: 0,75); chặn dùng μ */
   fmu: number;
 }
 
 /** EN 12195-1:2010, vận chuyển đường bộ */
-export const EN12195_ROAD: Coefficients = { cxF: 0.8, cxR: 0.5, cy: 0.5, cyTip: 0.5, cz: 1.0, fsLong: 1.25, fsTrans: 1.1, fmu: 0.75 };
+export const EN12195_ROAD: Coefficients = { cxF: 0.8, cxR: 0.5, cy: 0.5, cyTip: 0.5, cz: 1.0, fsFwd: 1.25, fsRear: 1.1, fsTrans: 1.1, fmu: 0.75 };
+
+/**
+ * Hệ số đã lưu ở phiên bản cũ có một f_s chung cho phương dọc (fsLong, dùng cho cả tiến và lùi):
+ * giữ giá trị đó cho phương tiến, phương lùi lấy theo EN 12195-1 (1,1).
+ */
+export function migrateCoef(saved: (Partial<Coefficients> & { fsLong?: number }) | undefined, d: Coefficients = EN12195_ROAD): Coefficients {
+  if (!saved) return { ...d };
+  const { fsLong, ...rest } = saved;
+  return { ...d, ...(fsLong !== undefined && rest.fsFwd === undefined ? { fsFwd: fsLong } : {}), ...rest };
+}
 
 /** Hệ số ma sát tham khảo (EN 12195-1 phụ lục B, mặt tiếp xúc khô, sạch) */
 export const FRICTION_PRESETS: { label: string; mu: number }[] = [
@@ -404,13 +416,14 @@ export function checkSliding(m: TransportModel, dir: Dir): SlideResult {
   const W = cargo.mass * G;
   const c = coefOf(coef, dir);
   const long = dir !== 'side';
-  const fs = long ? coef.fsLong : coef.fsTrans;
+  const fs = dir === 'fwd' ? coef.fsFwd : dir === 'rear' ? coef.fsRear : coef.fsTrans;
   const BC = Math.max(0, dir === 'fwd' ? blocking.fwd : dir === 'rear' ? blocking.rear : blocking.side);
   const nD = Math.max(0, long ? dl.nLong : dl.nTrans);
   const useDirect = nD > 0 && dl.lc > 0;
   const useTop = to.n > 0 && to.stf > 0;
-  // Khi có chằng trực tiếp hoặc chặn, hàng được phép dịch chuyển nhỏ → dùng ma sát động μ·f_μ (cũng dùng cho dây vắt qua nóc khi kết hợp — thiên về an toàn)
-  const muUsed = useDirect || BC > 0 ? m.mu * coef.fmu : m.mu;
+  // EN 12195-1: f_μ chỉ áp dụng cho chằng trực tiếp; chặn và chằng vắt qua nóc dùng μ.
+  // Khi kết hợp chằng trực tiếp với cách khác, ma sát nền lấy μ·f_μ cho mọi thành phần (lựa chọn thiên về an toàn, không phải nguyên văn EN).
+  const muUsed = useDirect ? m.mu * coef.fmu : m.mu;
   const steps: string[] = [];
   const demand = c * W;
   const friction = muUsed * coef.cz * W;

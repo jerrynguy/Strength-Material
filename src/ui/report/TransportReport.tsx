@@ -22,7 +22,7 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
             ['Hàng', `${c.name}: m = ${fmt(c.mass, 3)} t; bao ${fmt(c.length, 3)} × ${fmt(c.width, 3)} × ${fmt(c.height, 3)} m (dài × rộng × cao)`],
             ['Chân đế, trọng tâm', `chân đế ${fmt(c.footL, 3)} × ${fmt(c.footW, 3)} m; trọng tâm cao d = ${fmt(c.cgH, 3)} m trên sàn, cách mép trước sàn ${fmt(c.cgX, 3)} m`],
             ['Ma sát', `μ = ${model.mu}; f_μ = ${k.fmu}`],
-            ['Hệ số gia tốc (EN 12195-1, đường bộ)', `c_x = ${k.cxF} (tiến), ${k.cxR} (lùi); c_y = ${k.cy} (trượt), ${k.cyTip} (lật); c_z = ${k.cz}; f_s = ${k.fsLong} (dọc), ${k.fsTrans} (ngang)`],
+            ['Hệ số gia tốc (EN 12195-1, đường bộ)', `c_x = ${k.cxF} (tiến), ${k.cxR} (lùi); c_y = ${k.cy} (trượt), ${k.cyTip} (lật); c_z = ${k.cz}; f_s = ${k.fsFwd} (tiến), ${k.fsRear} (lùi), ${k.fsTrans} (ngang)`],
             ['Chằng vắt qua nóc', model.topOver.n > 0 ? `${model.topOver.n} dây; α = ${model.topOver.alpha}°; STF = ${model.topOver.stf} daN; LC = ${model.topOver.lc} daN` : 'không dùng'],
             ['Chằng trực tiếp', model.direct.lc > 0 && (model.direct.nLong > 0 || model.direct.nTrans > 0) ? `LC = ${model.direct.lc} daN/nhánh; α = ${model.direct.alpha}°, β = ${model.direct.beta}°; nhánh làm việc: ${model.direct.nLong} (dọc), ${model.direct.nTrans} (ngang)` : 'không dùng'],
             ['Chặn', `BC = ${model.blocking.fwd} kN (trước), ${model.blocking.rear} kN (sau), ${model.blocking.side} kN (bên)`],
@@ -41,7 +41,7 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
       <RSection n={N()} title="Kiểm tra chống trượt (EN 12195-1)">
         <RTable head={['Phương', 'c', 'c·m·g (kN)', 'Ma sát (kN)', 'Vắt nóc (kN)', 'Trực tiếp (kN)', 'Chặn (kN)', 'UC', 'Kết luận']}
           rows={r.slide.map((s) => [DIR_LABEL[s.dir], s.c, fmt(s.demand, 2), fmt(s.friction, 2), fmt(s.topOver, 2), fmt(s.direct, 2), fmt(s.block, 2), fmt(s.uc, 3), ok(s.ok)])}
-          note="UC = lực quán tính / tổng khả năng giữ. Khi có chằng trực tiếp hoặc chặn, ma sát dùng μ·f_μ cho mọi thành phần." />
+          note="UC = lực quán tính / tổng khả năng giữ. Có chằng trực tiếp thì ma sát dùng μ·f_μ cho mọi thành phần (thiên về an toàn); chỉ chặn hoặc vắt nóc thì dùng μ." />
         {parts.steps && r.slide.map((s) => <RSub key={s.dir} title={`Trượt – ${DIR_LABEL[s.dir].toLowerCase()}`}><RSteps lines={s.steps} /></RSub>)}
       </RSection>
       <RSection n={N()} title="Kiểm tra chống lật (EN 12195-1)">

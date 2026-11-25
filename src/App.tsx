@@ -15,7 +15,7 @@ import { LocalCard } from './ui/stability/LocalCard';
 import { ReportShell } from './ui/report/ReportShell';
 import { ClassicalCard } from './ui/ClassicalCard';
 import { TransportApp } from './ui/transport/TransportApp';
-import { TRANSPORT_PRESETS, defaultTransport, migrateRoad, type TransportModel } from './core/transport';
+import { TRANSPORT_PRESETS, defaultTransport, migrateCoef, migrateRoad, type TransportModel } from './core/transport';
 import { DEFAULT_BEAM_STAB, type BeamStabParams } from './core/beamAxial';
 import type { FrameLtbOptions, LtbOptions } from './core/ltb';
 import { DEFAULT_LOCAL, type LocalOptions } from './core/localBuckling';
@@ -59,7 +59,7 @@ function mergeTransport(m: Partial<TransportModel>): TransportModel {
   const d = defaultTransport();
   return {
     ...d, ...m,
-    cargo: { ...d.cargo, ...m.cargo }, coef: { ...d.coef, ...m.coef }, topOver: { ...d.topOver, ...m.topOver }, direct: { ...d.direct, ...m.direct },
+    cargo: { ...d.cargo, ...m.cargo }, coef: migrateCoef(m.coef, d.coef), topOver: { ...d.topOver, ...m.topOver }, direct: { ...d.direct, ...m.direct },
     blocking: { ...d.blocking, ...m.blocking }, vehicle: { ...d.vehicle, ...m.vehicle }, limits: { ...d.limits, ...m.limits }, road: migrateRoad(m.road, d.road),
     ground: { ...d.ground, ...m.ground }, barges: Array.isArray(m.barges) ? m.barges : d.barges,
   };

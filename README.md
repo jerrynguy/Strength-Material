@@ -225,9 +225,9 @@ Thẻ “Lời giải theo phương pháp giáo trình” (và mục tương ứ
 Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trên xe đầu kéo + sơ mi rơ moóc:
 
 - **Chống trượt** theo phương tiến, lùi, ngang với hệ số đường bộ của EN 12195-1:2010 (c_x = 0,8 / 0,5; c_y = 0,5; c_z = 1,0):
-  - chằng vắt qua nóc: n ≥ (c − μ·c_z)·m·g·f_s / (2·μ·sinα·F_T), f_s = 1,25 (dọc) / 1,1 (ngang);
+  - chằng vắt qua nóc: n ≥ (c − μ·c_z)·m·g·f_s / (2·μ·sinα·F_T), f_s = 1,25 (tiến) / 1,1 (lùi) / 1,1 (ngang);
   - chằng trực tiếp (chéo): n·LC·(cosα·cosβ + μ·f_μ·sinα) ≥ (c − μ·f_μ·c_z)·m·g, f_μ = 0,75;
-  - chặn (blocking) theo khả năng BC; nhiều biện pháp kết hợp thì cộng khả năng giữ (dùng μ·f_μ, thiên về an toàn).
+  - chặn (blocking) theo khả năng BC, ma sát dùng μ; nhiều biện pháp kết hợp thì cộng khả năng giữ (có chằng trực tiếp thì dùng μ·f_μ cho mọi thành phần, thiên về an toàn).
 - **Chống lật**: hàng tự ổn định khi b/d ≥ c/c_z; nếu không, tính số dây vắt qua nóc cần (mô men n·F_T·w·sinα / f_s).
 - **Tải trọng trục**: cân bằng mô men quanh chốt kéo, các trục trong cụm chịu như nhau; tải chốt chia về trục trước và cụm sau đầu kéo; so với giới hạn nhập vào.
 - **Kích thước bao** (cao = cao sàn + cao hàng, rộng) so với giới hạn.
