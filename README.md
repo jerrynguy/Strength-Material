@@ -220,6 +220,21 @@ Thẻ “Lời giải theo phương pháp giáo trình” (và mục tương ứ
 - **Ổn định cắt** (EN 1993-1-5 A.3): k_τ có thêm k_τsl từ I_sl, đồng thời kiểm tra ô bụng lớn nhất.
 - **Kiểm chứng:** A_sl, σ_cr,sl, k_σ,p (A.1), trường hợp gộp và công thức nội suy khớp công thức; sườn khoẻ cho χ_c và ρ_c lớn hơn sườn yếu; sườn làm tăng W_eff và τ_cr. Ví dụ bụng 1400×8 thêm sườn 120×12 tại 0,2h_w: σ khi uốn giảm từ 154,7 xuống 141,1 MPa; τ_cr tăng từ 31,5 lên 49,2 MPa.
 
+## Vận chuyển & chằng buộc hàng (EN 12195-1)
+
+Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trên xe đầu kéo + sơ mi rơ moóc:
+
+- **Chống trượt** theo phương tiến, lùi, ngang với hệ số đường bộ của EN 12195-1:2010 (c_x = 0,8 / 0,5; c_y = 0,5; c_z = 1,0):
+  - chằng vắt qua nóc: n ≥ (c − μ·c_z)·m·g·f_s / (2·μ·sinα·F_T), f_s = 1,25 (dọc) / 1,1 (ngang);
+  - chằng trực tiếp (chéo): n·LC·(cosα·cosβ + μ·f_μ·sinα) ≥ (c − μ·f_μ·c_z)·m·g, f_μ = 0,75;
+  - chặn (blocking) theo khả năng BC; nhiều biện pháp kết hợp thì cộng khả năng giữ (dùng μ·f_μ, thiên về an toàn).
+- **Chống lật**: hàng tự ổn định khi b/d ≥ c/c_z; nếu không, tính số dây vắt qua nóc cần (mô men n·F_T·w·sinα / f_s).
+- **Tải trọng trục**: cân bằng mô men quanh chốt kéo, các trục trong cụm chịu như nhau; tải chốt chia về trục trước và cụm sau đầu kéo; so với giới hạn nhập vào.
+- **Kích thước bao** (cao = cao sàn + cao hàng, rộng) so với giới hạn.
+- **Đối chiếu điều kiện đường** (dốc, ly tâm khi vào cua, phanh) theo cách tính tĩnh học trong hồ sơ, quy ra hệ số gia tốc tương đương để so với EN.
+
+Mọi hệ số (c, f_s, f_μ, μ, giới hạn tải trục) đều sửa được để theo quy trình riêng. Có lời giải từng bước và báo cáo PDF.
+
 ## Xuất báo cáo PDF
 
 Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, rồi bấm **In / Lưu PDF** và chọn “Lưu dưới dạng PDF”. App xuất qua chức năng in của trình duyệt: tiếng Việt hiển thị đúng, hình vẽ dạng vector, chữ trong PDF chọn và tìm kiếm được, không cần thư viện ngoài.

@@ -327,3 +327,17 @@ button.linkish { border: 0; background: none; color: var(--accent); padding: 4px
 .eff-fig figcaption { font-size: 12px; color: var(--muted); text-align: center; }
 .sec-ineff { fill: #d83b2a; fill-opacity: 0.45; stroke: #d83b2a; stroke-width: 3; stroke-linejoin: round; }
 .stiff-ed { border-top: 1px dashed var(--line); padding-top: 6px; margin-top: 4px; }
+
+/* Vận chuyển & chằng buộc */
+.tv-wrap { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.tv-wrap > .tv:first-child { flex: 3 1 420px; min-width: 0; }
+.tv-rear { flex: 1 1 200px; max-width: 300px; width: 100%; height: auto; background: var(--soft); border-radius: 8px; }
+.tv-cargo { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.tv-cg { fill: var(--load); stroke: var(--panel); stroke-width: 1.5; }
+.tv-lash { stroke: var(--tone-c); stroke-width: 2; stroke-dasharray: 6 3; }
+.tv-block { fill: var(--support); }
+.tv-foot { stroke: var(--tone-b); stroke-width: 3; }
+b.pass { color: var(--ok); }
+b.fail { color: var(--err); }
+details { margin-top: 6px; font-size: 13px; }
+details summary { cursor: pointer; color: var(--accent); }
