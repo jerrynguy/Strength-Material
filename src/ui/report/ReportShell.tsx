@@ -14,14 +14,17 @@ import { PART_LABELS, type ReportParts } from './primitives';
 import { StabReport } from './StabReport';
 import { TransportReport } from './TransportReport';
 import type { TransportModel } from '../../core/transport';
+import type { LiftModel } from '../../core/lifting';
+import { LiftReport } from './LiftReport';
 
 export type ReportInput =
   | { mode: 'beam'; model: Model; ltb: LtbOptions; local: LocalOptions; stab?: BeamStabParams }
   | { mode: 'frame'; model: FrameModel; local: LocalOptions; mu?: FrameMu; ltb?: FrameLtbOptions }
   | { mode: 'stab'; model: StabModel; local: LocalOptions }
-  | { mode: 'transport'; model: TransportModel };
+  | { mode: 'transport'; model: TransportModel }
+  | { mode: 'lift'; model: LiftModel };
 
-const MODE_LABEL = { beam: 'Thanh thẳng (dầm, trục, cột)', frame: 'Khung phẳng / dầm nghiêng', stab: 'Ổn định thanh chịu nén', transport: 'Kiểm tra vận chuyển và chằng buộc hàng (EN 12195-1)' };
+const MODE_LABEL = { beam: 'Thanh thẳng (dầm, trục, cột)', frame: 'Khung phẳng / dầm nghiêng', stab: 'Ổn định thanh chịu nén', transport: 'Kiểm tra vận chuyển và chằng buộc hàng (EN 12195-1)', lift: 'Kiểm tra phương án nâng hạ bằng cẩu' };
 
 const PARTS_KEY = 'strength-material:report-parts';
 
@@ -86,7 +89,7 @@ export function ReportShell({ input, onClose }: { input: ReportInput; onClose: (
           <table className="r-meta">
             <tbody>
               <tr><th>Loại bài toán</th><td>{MODE_LABEL[input.mode]}</td><th>Ngày lập</th><td>{today}</td></tr>
-              <tr><th>Đơn vị</th><td>{input.mode === 'transport' ? 'khối lượng t; lực kN (1 t = 9,81 kN); dây daN; m' : 'kN, m, kN·m; mặt cắt mm; ứng suất MPa'}</td><th>Người lập</th><td>{author || '—'}</td></tr>
+              <tr><th>Đơn vị</th><td>{input.mode === 'lift' ? 'khối lượng, tải t; áp lực t/m² (1 t/m² ≈ 9,81 kPa); m' : input.mode === 'transport' ? 'khối lượng t; lực kN (1 t = 9,81 kN); dây daN; m' : 'kN, m, kN·m; mặt cắt mm; ứng suất MPa'}</td><th>Người lập</th><td>{author || '—'}</td></tr>
             </tbody>
           </table>
         </header>
@@ -94,8 +97,13 @@ export function ReportShell({ input, onClose }: { input: ReportInput; onClose: (
         {input.mode === 'frame' && <FrameReport model={input.model} parts={parts} local={input.local} mu={input.mu} ltb={input.ltb} />}
         {input.mode === 'stab' && <StabReport model={input.model} parts={parts} local={input.local} />}
         {input.mode === 'transport' && <TransportReport model={input.model} parts={parts} />}
+        {input.mode === 'lift' && <LiftReport model={input.model} parts={parts} />}
         <footer className="r-foot">
-          {input.mode === 'transport' ? (
+          {input.mode === 'lift' ? (
+            <>Phương pháp: tải nâng tính toán = (tải trên móc·CF·COG·TF·YF·SKL + phụ kiện)·DAF so với sức nâng theo bảng tải tại chiều dài cần và
+            bán kính làm việc; cáp, dây vải, ma ní theo SWL; áp lực nền = tải / diện tích chịu tải. Bảng tải trong phần mềm chỉ trích từ bản vẽ — người lập
+            chịu trách nhiệm đối chiếu bảng tải đầy đủ, phản lực chân chống của nhà sản xuất và sức chịu tải của nền.</>
+          ) : input.mode === 'transport' ? (
             <>Phương pháp: chằng buộc hàng theo EN 12195-1:2010 (vận chuyển đường bộ) — trượt và lật theo phương tiến, lùi, ngang; tải trọng trục bằng cân bằng
             tĩnh học, các trục trong một cụm chịu tải như nhau. Kết quả do phần mềm tính — người lập chịu trách nhiệm kiểm tra số liệu đầu vào và đối chiếu
             quy định hiện hành về tải trọng trục, kích thước xe.</>
