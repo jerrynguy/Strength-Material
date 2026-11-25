@@ -341,3 +341,7 @@ b.pass { color: var(--ok); }
 b.fail { color: var(--err); }
 details { margin-top: 6px; font-size: 13px; }
 details summary { cursor: pointer; color: var(--accent); }
+.lift-boom { stroke: var(--ink); stroke-width: 5; stroke-linecap: round; }
+.lift-rope { stroke: var(--ink); stroke-width: 1.2; }
+table.grid td.hl { background: var(--accent-soft); font-weight: 700; }
+.chart-wrap { overflow-x: auto; }
