@@ -1,7 +1,54 @@
 import type { TransportModel } from '../../core/transport';
+import { analyzeModular, defaultModular } from '../../core/modular';
+
+/** Hình chiếu dọc xe module thủy lực: sàn trên các trục dòng, hàng và trọng tâm (pull type có xe kéo phía trước) */
+function ModularView({ model }: { model: TransportModel }) {
+  const v = model.vehicle, c = model.cargo;
+  const mr = analyzeModular({ ...(model.modular ?? defaultModular()), load: c.mass, accessories: 0 });
+  const sp = mr.spec.axleSpacing, n = mr.lines;
+  const deckL = Math.max(n * sp, c.length);
+  const pull = model.modular?.type === 'pull';
+  const x0 = pull ? -6 : -0.5, x1 = deckL + 0.5;
+  const topH = v.deckH + c.height;
+  const W = 760, H = 250, pad = 24;
+  const s = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad - 14) / Math.max(topH + 0.3, 1));
+  const X = (x: number) => pad + (x - x0) * s;
+  const Y = (y: number) => H - pad - y * s;
+  const wr = 0.35;
+  const cx1 = deckL / 2 - c.length / 2;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="beam-svg tv" role="img" aria-label="Hình chiếu dọc xe module">
+      <line x1={pad / 2} x2={W - pad / 2} y1={Y(0)} y2={Y(0)} className="dim" />
+      <rect x={X(0)} y={Y(v.deckH)} width={deckL * s} height={Math.max(0.3, v.deckH - 2 * wr - 0.2) * s} className="beam" />
+      {Array.from({ length: n }, (_, i) => (
+        <g key={i}>
+          <line x1={X(sp / 2 + i * sp)} x2={X(sp / 2 + i * sp)} y1={Y(v.deckH - Math.max(0.3, v.deckH - 2 * wr - 0.2))} y2={Y(wr)} className="support" />
+          <circle cx={X(sp / 2 + i * sp)} cy={Y(wr)} r={wr * s} className="support-fill" />
+        </g>
+      ))}
+      {pull && (
+        <>
+          <rect x={X(-5.5)} y={Y(3)} width={2.2 * s} height={2 * s} className="beam" />
+          <rect x={X(-5.5)} y={Y(1)} width={5 * s} height={0.35 * s} className="beam" />
+          <line x1={X(-0.5)} x2={X(0)} y1={Y(1)} y2={Y(1)} className="support" />
+          {[-4.8, -2.2, -1].map((x, i) => <circle key={i} cx={X(x)} cy={Y(0.5)} r={0.5 * s} className="support-fill" />)}
+        </>
+      )}
+      <rect x={X(cx1)} y={Y(topH)} width={c.length * s} height={c.height * s} className="tv-cargo" />
+      <text x={X(deckL / 2)} y={Y(topH) - 4} textAnchor="middle" className="lbl tiny">{c.name} · {c.mass} t</text>
+      <circle cx={X(deckL / 2)} cy={Y(v.deckH + c.cgH)} r={5} className="tv-cg" />
+      <text x={W - pad} y={16} textAnchor="end" className="lbl tiny">{mr.spec.label}: {n} trục dòng × {sp} m · cao {topH.toFixed(2)} m</text>
+    </svg>
+  );
+}
 
 /** Hình chiếu đứng (dọc xe) và hình chiếu cạnh (nhìn từ phía sau) của tổ hợp xe – hàng */
 export function TransportView({ model, compact }: { model: TransportModel; compact?: boolean }) {
+  if (model.vehicleKind === 'modular') return <div className="tv-wrap"><ModularView model={model} /></div>;
+  return <TrailerView model={model} compact={compact} />;
+}
+
+function TrailerView({ model, compact }: { model: TransportModel; compact?: boolean }) {
   const v = model.vehicle, c = model.cargo;
   const rearX = v.kingpinX + v.fifthWheelOffset; // tâm cụm sau đầu kéo
   const frontX = rearX - v.wheelbase;

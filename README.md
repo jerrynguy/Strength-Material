@@ -243,6 +243,16 @@ Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trê
   ma sát f·Q (như hồ sơ) hoặc f·Q·cosθ. Ba trường hợp PASS/FAIL chỉ dùng ma sát: dốc dọc Q·sinθ; phanh khi xuống dốc
   Q·sinθ + m·a; vào cua trên dốc ngang m·v²/R + Q·sinβ. Quy ra hệ số gia tốc tương đương để so với EN.
 
+- **Xe module thủy lực (SPMT / pull type)** — chọn ở ô "Loại xe", theo thẻ tham khảo *Hydraulic Platform Transporters*
+  (The Works International / ITI):
+  - số trục dòng cần = (hàng + gối kê / dầm / mâm xoay) / tải trọng một trục dòng (SPMT 30 t, pull type 25 t), làm tròn lên; chưa kể hệ số động;
+  - lực kéo cần = (cản lăn % + dốc %) × tổng trọng lượng (hàng, gối kê, xe module, PPU, xe kéo);
+  - SPMT: trục chủ động cần = lực kéo / lực đẩy một trục (5–7 t), so với số trục chủ động của cấu hình (module 4 → 4; 6 → 4; super 6 → 6);
+    PPU = số trục dòng / 10 × 100 HP;
+  - pull type: lực kéo tối đa = 80% trọng lượng trên trục chủ động của xe kéo;
+  - hiệu ứng cân bằng: độ nghiêng = độ sâu hố / số trục trong nhóm treo.
+  Chưa kiểm tra góc ổn định thủy lực / kết cấu (S_HSA, S_SSA) vì thẻ không cho công thức.
+
 Mọi hệ số (c, f_s, f_μ, μ, giới hạn tải trục) đều sửa được để theo quy trình riêng. Có lời giải từng bước và báo cáo PDF.
 
 ## Nâng hạ bằng cẩu (lifting arrangement)

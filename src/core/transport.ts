@@ -10,6 +10,7 @@
  * Đơn vị: khối lượng t; chiều dài m; lực kN (hiển thị kèm tấn lực, 1 t = 9.81 kN); LC, STF của dây theo daN (nhãn EN 12195-2).
  */
 import { fmt } from './stress';
+import { analyzeModular, defaultModular, type ModularInput, type ModularResult } from './modular';
 
 export const G = 9.81;
 const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -258,6 +259,9 @@ export interface TransportModel {
   road: Road;
   /** tải khác trên xe (không phải hàng được chằng) */
   others?: OtherLoad[];
+  /** loại xe: đầu kéo + sơ mi rơ moóc (mặc định) hay xe module thủy lực (SPMT / pull type) */
+  vehicleKind?: VehicleKind;
+  modular?: ModularInput;
   ground: Ground;
   barges: Barge[];
 }
@@ -393,7 +397,12 @@ export interface BargeResult {
   steps: string[];
 }
 
+export type VehicleKind = 'trailer' | 'modular';
+
 export interface TransportResult {
+  kind: VehicleKind;
+  /** kết quả xe module thủy lực (khi kind = 'modular') */
+  modular: ModularResult | null;
   ground: GroundResult;
   barges: BargeResult[];
   slide: SlideResult[];
@@ -672,6 +681,11 @@ export function analyzeTransport(m: TransportModel): TransportResult {
   const road = roadCheck(m);
   const ground = groundPressure(m, axle);
   const barges = m.barges.map(bargeCheck);
+  const kind: VehicleKind = m.vehicleKind ?? 'trailer';
+  // Xe module: tải hàng lấy từ thẻ Hàng hoá, gối kê / dầm / mâm xoay lấy từ thẻ Tải khác trên xe
+  const modular = kind === 'modular'
+    ? analyzeModular({ ...(m.modular ?? defaultModular()), load: m.cargo.mass, accessories: (m.others ?? []).reduce((s, o) => s + o.mass, 0) })
+    : null;
   const warnings: string[] = [];
   const to = m.topOver;
   if (to.n > 0 && to.lc > 0 && to.stf > 0.5 * to.lc) warnings.push(`STF = ${to.stf} daN lớn hơn 0,5·LC = ${fmt(0.5 * to.lc, 0)} daN: EN 12195-1 giới hạn lực căng dùng trong tính toán ≤ 0,5·LC.`);
@@ -684,8 +698,11 @@ export function analyzeTransport(m: TransportModel): TransportResult {
   if (ground.worst && ground.worst.p > ground.whole.p * 1.05) warnings.push(`Áp lực dưới ${ground.worst.label.toLowerCase()} (${fmt(ground.worst.p, 2)} t/m²) lớn hơn cách chia đều cho toàn xe (${fmt(ground.whole.p, 2)} t/m²): nền chịu áp lực theo từng cụm trục, nên dùng giá trị lớn nhất.`);
   if (ground.overlap) warnings.push('Vệt chịu tải của các trục kề nhau chồng lên nhau: áp lực nền thực tế lớn hơn giá trị tính.');
   if (barges.length) warnings.push('Tỉ lệ tải sà lan chỉ so khối lượng với trọng tải; chưa kiểm tra ổn định nổi, mớn nước và sức bền boong sà lan.');
-  const ok = slide.every((s) => s.ok) && tip.every((x) => x.ok) && axle.ok && dim.ok && ground.ok && barges.every((b) => b.ok) && road.checks.every((c) => c.ok);
-  return { ground, barges, slide, tip, axle, dim, road, warnings, ok };
+  const vehicleOk = modular ? modular.ok : axle.ok && ground.ok;
+  if (modular) warnings.push('Xe module: số trục dòng tính theo thẻ tham khảo, chưa kể hệ số động; chưa kiểm tra góc ổn định thủy lực / kết cấu (S_HSA, S_SSA).');
+  const shown = modular ? warnings.filter((w) => !/cụm trục|Vệt chịu tải|chốt kéo|bập bênh|Sơ mi rơ moóc chưa có trục|Cụm trục phải|Chiều dài cơ sở/.test(w)) : warnings;
+  const ok = slide.every((s) => s.ok) && tip.every((x) => x.ok) && vehicleOk && dim.ok && barges.every((b) => b.ok) && road.checks.every((c) => c.ok);
+  return { kind, modular, ground, barges, slide, tip, axle, dim, road, warnings: shown, ok };
 }
 
 export const defaultTransport = (): TransportModel => ({
@@ -747,8 +764,32 @@ export function pipeType2(): TransportModel {
   };
 }
 
+/**
+ * Ví dụ trang 4 thẻ tham khảo xe module thủy lực: động cơ diesel 350 t trên SPMT 14 trục dòng (6 + 4 + 4), dốc 8%.
+ * Kích thước, trọng tâm, ma sát và chằng buộc của hàng là giả định để minh hoạ — thẻ tham khảo không cho.
+ */
+export function spmtDieselEngine(): TransportModel {
+  const d = defaultTransport();
+  return {
+    ...d,
+    title: 'SPMT 14 trục dòng — động cơ diesel 350 t (ví dụ thẻ tham khảo)',
+    cargo: { name: 'Động cơ diesel', mass: 350, length: 8, width: 4.5, height: 5, footL: 7, footW: 4, cgH: 2.2, cgX: 9.8 },
+    mu: 0.45,
+    topOver: { n: 0, alpha: 60, stf: 500, lc: 2500 },
+    direct: { nLong: 2, nTrans: 2, lc: 20000, alpha: 40, beta: 30 },
+    blocking: { fwd: 0, rear: 0, side: 0 },
+    vehicle: { ...d.vehicle, deckL: 19.6, deckH: 1.5, width: 2.43 },
+    limits: { ...d.limits, height: 0, width: 0 },
+    others: [],
+    vehicleKind: 'modular',
+    modular: defaultModular('spmt'),
+    barges: [],
+  };
+}
+
 export const TRANSPORT_PRESETS: { key: string; label: string; build: () => TransportModel }[] = [
   { key: 'pipe', label: 'Ống thép 26,1 t — bảng lực tác dụng lên hàng (kích thước xe, trọng tâm giả định)', build: defaultTransport },
+  { key: 'spmt', label: 'Xe module SPMT 14 trục dòng — động cơ 350 t, dốc 8% (ví dụ thẻ tham khảo)', build: spmtDieselEngine },
   { key: 'pipe2', label: 'Ống loại 2: 3 × 8,69 t, chằng vắt nóc 4 dây — áp lực nền theo bản vẽ (STF, đường kính ống tạm)', build: pipeType2 },
   {
     key: 'crate', label: 'Kiện gỗ 10 t trên sàn gỗ, chằng vắt qua nóc',
