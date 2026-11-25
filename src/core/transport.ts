@@ -686,6 +686,12 @@ export function modularInputOf(m: TransportModel): ModularInput {
     load: m.cargo.mass,
     accessories: (m.others ?? []).reduce((s, o) => s + o.mass, 0),
     cog: (mi.cogMode ?? 'load') === 'load' ? loadCogAboveStability(m) : mi.cog,
+    // bề rộng xe và điều kiện đường lấy từ thẻ Xe và thẻ Điều kiện đường
+    tw: m.vehicle.width,
+    vCurve: m.road.vCurve,
+    radius: m.road.radius,
+    accel: brakeAccel(m.road),
+    mu: m.mu,
   };
 }
 
@@ -781,7 +787,7 @@ export function pipeType2(): TransportModel {
 
 /**
  * Ví dụ trang 4 thẻ tham khảo xe module thủy lực: động cơ diesel 350 t trên SPMT 14 trục dòng (6 + 4 + 4), dốc 8%.
- * Kích thước, trọng tâm, ma sát và chằng buộc của hàng là giả định để minh hoạ — thẻ tham khảo không cho.
+ * Kích thước, trọng tâm, ma sát, chằng buộc của hàng và điều kiện đường là giả định để minh hoạ — thẻ tham khảo không cho.
  */
 export function spmtDieselEngine(): TransportModel {
   const d = defaultTransport();
@@ -798,6 +804,8 @@ export function spmtDieselEngine(): TransportModel {
     others: [],
     vehicleKind: 'modular',
     modular: defaultModular('spmt'),
+    // điều kiện đường giả định cho xe module chạy chậm: vào cua 5 km/h, R = 15 m; phanh từ 5 km/h dừng trong 2 s
+    road: { ...d.road, slope: 0, crossSlope: 0, vStraight: 1.39, vCurve: 1.39, radius: 15, brakeMode: 'time', brakeTime: 2 },
     barges: [],
   };
 }
@@ -832,9 +840,31 @@ export function pullTypeTransformer280(): TransportModel {
   };
 }
 
+/**
+ * Ví dụ trang 14 thẻ tham khảo: máy biến áp 180 t trên SPMT 6 trục dòng module đơn; dốc ngang 2°, dọc 5°; S_f 1,2; A_FRONT 150, A_SIDE 400 m²;
+ * gió Beaufort 4 góc 30°; phanh từ 30 km/h trong 40 m; vào cua 5 km/h, r = 15 m; μ = 0,15 (thép – gỗ dán).
+ * Kích thước, trọng tâm của hàng là giả định — thẻ không cho.
+ */
+export function spmtTransformer180(): TransportModel {
+  const d = spmtDieselEngine();
+  return {
+    ...d,
+    title: 'SPMT 6 trục dòng — máy biến áp 180 t, ngoại lực & chằng buộc (ví dụ thẻ trang 14)',
+    cargo: { name: 'Máy biến áp', mass: 180, length: 7.5, width: 4.5, height: 9, footL: 6, footW: 3.5, cgH: 3.5, cgX: 4.2 },
+    mu: 0.15,
+    vehicle: { ...d.vehicle, deckL: 8.4, deckH: 1.5, width: 2.43 },
+    road: { ...d.road, slope: 0, crossSlope: 0, vStraight: 8.33, vCurve: 1.39, radius: 15, brakeMode: 'distance', brakeDist: 40 },
+    modular: {
+      ...defaultModular('spmt'), units: [{ lines: 6, drive: 4 }], wide: 1, suspension: '3', cogMode: 'load',
+      beaufort: 4, windP: 3.9, windAFront: 150, windASide: 400, windSf: 1.2, windPhi: 30, accPhi: 0, alphaGL: 5, betaGT: 2,
+    },
+  };
+}
+
 export const TRANSPORT_PRESETS: { key: string; label: string; build: () => TransportModel }[] = [
   { key: 'pipe', label: 'Ống thép 26,1 t — bảng lực tác dụng lên hàng (kích thước xe, trọng tâm giả định)', build: defaultTransport },
   { key: 'spmt', label: 'Xe module SPMT 14 trục dòng — động cơ 350 t, dốc 8% (ví dụ thẻ tham khảo)', build: spmtDieselEngine },
+  { key: 'spmt180', label: 'Xe module SPMT 6 trục dòng — máy biến áp 180 t, ngoại lực & chằng buộc (ví dụ thẻ trang 14)', build: spmtTransformer180 },
   { key: 'pull400', label: 'Xe module pull type 2 × 16 trục dòng — bồn 400 t, góc ổn định (ví dụ thẻ trang 7)', build: pullTypeTank400 },
   { key: 'pull280', label: 'Xe module pull type 12 trục dòng — máy biến áp 280 t, dầm sống (ví dụ thẻ trang 8)', build: pullTypeTransformer280 },
   { key: 'pipe2', label: 'Ống loại 2: 3 × 8,69 t, chằng vắt nóc 4 dây — áp lực nền theo bản vẽ (STF, đường kính ống tạm)', build: pipeType2 },

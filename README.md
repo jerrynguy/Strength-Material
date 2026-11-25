@@ -261,6 +261,19 @@ Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trê
     0,363 m SPMT / 0,381 m pull type), bỏ qua xe module nên thiên về an toàn;
   - **dầm sống** (trang 8): M = W_axleline·D_AS·(1 + 2 + … + n) với n trục dòng thò ra ngoài hàng ở mỗi đầu, so với mô men cho phép
     (pull type 560 / 725, SPMT 650 / 775 t·m); số trục dòng được thò ra từ M_cho phép / (A_C·2·D_AS) ≥ 1 + … + n.
+  - **áp lực nền** (trang 9): cách 1 P = (W_T + W_L)/(T_L·T_W); cách 2 (lan truyền 45° tới độ sâu D_AS/2) P = (W_T + W_L)/(T_L·(T_W + D_AS));
+    chọn cách để kết luận so với áp lực cho phép;
+  - **ngoại lực** (trang 10–12): ly tâm F = W_TOT/g·V0²/r; gió F = cos φ·W_P·A_FRONT·S_f (dọc) / sin φ·W_P·A_SIDE·S_f (ngang), W_P theo kg/m²; tăng tốc / phanh F = W_TOT/g·cos φ / sin φ·a;
+    dốc chưa bù F = sin α_GL / sin β_GT·W_TOT. Lực treo F_SUSP = F·CoG (hoặc CoW)/(0,5·T_L) theo phương dọc, /D_AB theo phương ngang;
+    lực trục F_AXLE = F_SUSP / số trục của nhóm treo (treo 4 điểm: nhóm 2+3 và 1+2; treo 3 điểm: nhóm 2 và nhóm 1 / 2+3).
+    Vận tốc vào cua, bán kính, gia tốc phanh lấy từ thẻ Điều kiện đường. Tải trục kể ngoại lực = W_axle + tổng F_AXLE (cộng như xảy ra đồng thời) so với A_C.
+  - **chằng buộc** (trang 13–14): lực tác dụng lên hàng tính theo W_L; F_V = W_T nếu W_L ≥ W_T, ngược lại W_L;
+    F_H-L = F_WIND-L + F_ACC-L + F_2-L; F_H-T = F_CURVE + F_WIND-T + F_ACC-T + F_2-T; ma sát lớn nhất F_W = μ·cos(góc dốc)·(W_L + F_V);
+    lực chằng cần = max(0, F_H − F_W) theo X±, Y±, và F_V theo Z; dây chằng theo góc phần tư Q1–Q4 với Cc_X = sin φ·cos Ω·Cc,
+    Cc_Y = sin φ·sin Ω·Cc, Cc_Z = cos φ·Cc;
+  - **cổ ngỗng** (trang 15, treo 3 điểm, 2 xi lanh): F_SUSP = W_L/3; F_AXLE-1 = F_SUSP / số trục nhóm đơn;
+    F_AXLE-2 = F_SUSP / (số trục + (D_GN/D_AXLE)·2·(L2/L1)) — có tuỳ chọn dùng (D_GN/D_AXLE)²; F_5th = (F_AXLE-1 − F_AXLE-2)·số trục + Neck_W;
+  - **thang gió Beaufort** (trang 16) chọn áp lực gió; **chọn treo 3 / 4 điểm** theo trình tự của thẻ.
   Các công thức là cách gần đúng của thẻ: trọng tâm ở trọng tâm vùng ổn định, các trục cách đều.
 
 Mọi hệ số (c, f_s, f_μ, μ, giới hạn tải trục) đều sửa được để theo quy trình riêng. Có lời giải từng bước và báo cáo PDF.

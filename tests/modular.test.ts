@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeModular, defaultModular } from '../src/core/modular';
-import { analyzeTransport, pullTypeTank400, pullTypeTransformer280, spmtDieselEngine } from '../src/core/transport';
+import { BEAUFORT, analyzeModular, defaultModular, securingCheck } from '../src/core/modular';
+import { analyzeTransport, spmtTransformer180, pullTypeTank400, pullTypeTransformer280, spmtDieselEngine } from '../src/core/transport';
 
 describe('Xe module thủy lực — ví dụ trên thẻ tham khảo', () => {
   it('trang 3: bồn 342 t → SPMT 342/30 = 12 trục dòng; pull type 342/25 = 14 trục dòng', () => {
@@ -113,5 +113,122 @@ describe('Ổn định và dầm sống — ví dụ trên thẻ tham khảo', (
     expect(a.modular!.stab!.Ha).toBeCloseTo(39.5, 1);
     const b = analyzeTransport(pullTypeTransformer280());
     expect(b.modular!.spine.Mmax).toBeCloseTo(350, 6);
+  });
+});
+
+describe('Áp lực nền và ngoại lực — thẻ tham khảo trang 9–12', () => {
+  it('trang 9: máy biến áp 250 t, 12 trục dòng pull type, T_L 18, T_W 3, W_T 42 → 5,4 và 3,6 t/m²', () => {
+    const r = analyzeModular({ ...defaultModular('pull'), load: 250, units: [{ lines: 12, drive: 0 }], tw: 3 });
+    expect(r.lines * 3.5).toBeCloseTo(42, 9);
+    expect(r.ground.TL).toBeCloseTo(18, 9);
+    expect(r.ground.p1).toBeCloseTo(292 / 54, 9);
+    expect(r.ground.p1).toBeCloseTo(5.4, 1);
+    expect(r.ground.p2).toBeCloseTo(292 / 81, 9);
+    expect(r.ground.p2).toBeCloseTo(3.6, 1);
+    const chk = analyzeModular({ ...defaultModular('pull'), load: 250, units: [{ lines: 12, drive: 0 }], tw: 3, pAllow: 5, gpMethod: 1 });
+    expect(chk.ground.ok).toBe(false);
+    expect(analyzeModular({ ...defaultModular('pull'), load: 250, units: [{ lines: 12, drive: 0 }], tw: 3, pAllow: 5, gpMethod: 2 }).ground.ok).toBe(true);
+  });
+
+  const base = { ...defaultModular('pull'), load: 400, units: [{ lines: 16, drive: 0 }], wide: 2 as const, axleBase: 3.3, cog: 4.85, accel: 0, vCurve: 0, radius: 0 };
+
+  it('trang 10: lực ly tâm F = W_TOT/g·V0²/r; F_SUSP-T = F·CoG/D_AB; treo 3 điểm chia cho số trục nhóm 2 (1/4 số trục)', () => {
+    const r = analyzeModular({ ...base, suspension: '3', vCurve: 2, radius: 20 });
+    const f = r.ext!.forces.find((x) => x.label.startsWith('Ly tâm'))!;
+    expect(f.F).toBeCloseTo((512 / 9.81) * (4 / 20), 9);
+    expect(f.Fs).toBeCloseTo((f.F * 4.85) / 3.3, 9);
+    expect(f.n).toBe(16);
+    expect(f.Faxle).toBeCloseTo(f.Fs / 16, 9);
+    // vận tốc gấp đôi → lực ly tâm gấp 4
+    const r2 = analyzeModular({ ...base, suspension: '3', vCurve: 4, radius: 20 });
+    expect(r2.ext!.forces[0].F).toBeCloseTo(4 * f.F, 9);
+    // treo 4 điểm: chia cho nhóm 2+3 (nửa số trục)
+    expect(analyzeModular({ ...base, suspension: '4', vCurve: 2, radius: 20 }).ext!.forces[0].n).toBe(32);
+  });
+
+  it('trang 11: gió W_P–L = cos φ·W_P; F_SUSP-L = F·CoW/(0,5·T_L); tăng tốc a = V0/t, F_ACC = W_TOT/g·a', () => {
+    const r = analyzeModular({ ...base, suspension: '3', windP: 100, windAFront: 100, windASide: 100, windSf: 1.2, windPhi: 30, cow: 6, accel: 1.39 / 2, accPhi: 0 });
+    const wl = r.ext!.forces.find((x) => x.label === 'Gió (dọc)')!;
+    const wt = r.ext!.forces.find((x) => x.label === 'Gió (ngang)')!;
+    expect(wl.F).toBeCloseTo(Math.cos(Math.PI / 6) * 0.1 * 100 * 1.2, 9);
+    expect(wl.Fs).toBeCloseTo((wl.F * 6) / 12, 9);
+    expect(wt.Fs).toBeCloseTo((wt.F * 6) / 3.3, 9);
+    const acc = r.ext!.forces.find((x) => x.label === 'Tăng tốc / phanh (dọc)')!;
+    expect(acc.F).toBeCloseTo((512 / 9.81) * 0.695, 9);
+    expect(acc.Fs).toBeCloseTo((acc.F * 4.85) / 12, 9);
+    expect(acc.n).toBe(32);
+  });
+
+  it('trang 12: dốc chưa bù F = sin α_GL·W_TOT, sin β_GT·W_TOT; tải trục kể ngoại lực so với A_C', () => {
+    const r = analyzeModular({ ...base, suspension: '3', alphaGL: 2, betaGT: 1 });
+    const L = r.ext!.forces.find((x) => x.label === 'Dốc dọc chưa bù')!;
+    const T = r.ext!.forces.find((x) => x.label === 'Dốc ngang chưa bù')!;
+    expect(L.F).toBeCloseTo(Math.sin((2 * Math.PI) / 180) * 512, 9);
+    expect(T.F).toBeCloseTo(Math.sin(Math.PI / 180) * 512, 9);
+    expect(r.ext!.Waxle).toBeCloseTo(8 + Math.max(r.ext!.axleT, r.ext!.axleL), 9);
+    expect(r.notes.some((n) => /Dốc chưa bù/.test(n))).toBe(true);
+  });
+});
+
+describe('Chằng buộc, cổ ngỗng, chọn kiểu treo — thẻ tham khảo trang 13–16', () => {
+  it('trang 14: máy biến áp 180 t, SPMT 6 trục dòng — lực tác dụng lên hàng, F_V, ma sát và lực chằng cần', () => {
+    const r = analyzeTransport(spmtTransformer180()).modular!;
+    const s = r.securing;
+    expect(r.lines * 3.5).toBeCloseTo(21, 9); // W_T
+    // thẻ ghi 2,39 t; 180/9,81·1,39²/15 = 2,36 t (thẻ tính lệch)
+    expect(s.curve).toBeCloseTo((180 / 9.81) * (1.39 ** 2) / 15, 9);
+    expect(s.curve).toBeCloseTo(2.36, 2);
+    expect(s.windL).toBeCloseTo(0.61, 2); // cos30·3,9·150·1,2 kg
+    expect(s.windT).toBeCloseTo(0.94, 2); // sin30·3,9·400·1,2 kg
+    expect(s.accL).toBeCloseTo(15.91, 2); // 180/9,81·8,33²/(2·40)
+    expect(s.accT).toBeCloseTo(0, 9);
+    expect(s.gradL).toBeCloseTo(15.69, 2);
+    expect(s.gradT).toBeCloseTo(6.28, 2);
+    expect(s.Fv).toBeCloseTo(21, 9);
+    expect(s.FhL).toBeCloseTo(32.21, 2);
+    expect(s.FhT).toBeCloseTo(9.58, 2); // thẻ 9,61 do dùng 2,39
+    expect(s.FwL).toBeCloseTo(0.15 * Math.cos((5 * Math.PI) / 180) * 201, 9); // thẻ 30,03
+    expect(s.FwT).toBeCloseTo(0.15 * Math.cos((2 * Math.PI) / 180) * 201, 9); // thẻ 30,13
+    expect(s.FwT).toBeCloseTo(30.13, 1);
+    expect(s.reqX).toBeCloseTo(2.18, 2);
+    expect(s.reqY).toBe(0);
+    expect(s.reqZ).toBeCloseTo(21, 9);
+  });
+
+  it('trang 13: thành phần dây chằng Cc_X = sin φ·cos Ω·Cc, Cc_Y = sin φ·sin Ω·Cc, Cc_Z = cos φ·Cc theo góc phần tư', () => {
+    const mi = { ...defaultModular('spmt'), load: 180, mu: 0.15, accel: 0.867, lashings: [{ q: 1 as const, n: 2, cc: 10, phi: 60, omega: 30 }, { q: 3 as const, n: 1, cc: 10, phi: 45, omega: 0 }] };
+    const s = securingCheck(mi, 21);
+    const r = (d: number) => (d * Math.PI) / 180;
+    expect(s.cap!.xp).toBeCloseTo(2 * Math.sin(r(60)) * Math.cos(r(30)) * 10, 9);
+    expect(s.cap!.yp).toBeCloseTo(2 * Math.sin(r(60)) * Math.sin(r(30)) * 10, 9);
+    expect(s.cap!.xn).toBeCloseTo(Math.sin(r(45)) * 10, 9);
+    expect(s.cap!.yn).toBeCloseTo(0, 9);
+    expect(s.cap!.z).toBeCloseTo(2 * Math.cos(r(60)) * 10 + Math.cos(r(45)) * 10, 9);
+    expect(s.rows.find((x) => x.dir === 'Z')!.ok).toBe(s.cap!.z >= 21);
+  });
+
+  it('trang 15: cổ ngỗng — F_AXLE-2 = F_SUSP / (số trục + (D_GN/D_AXLE)·2·(L2/L1)); F_5th = (F_AXLE-1 − F_AXLE-2)·số trục + Neck_W', () => {
+    const r = analyzeModular({ ...defaultModular('pull'), load: 240, units: [{ lines: 8, drive: 0 }], suspension: '3', cog: 3,
+      gooseneck: true, gnDAxle: 200, gnDNeck: 250, gnL1: 2, gnL2: 1, gnWeight: 6 });
+    const g = r.gooseneck!;
+    expect(g.n).toBe(8); // nhóm đơn = nửa số trục (8 trục dòng × 2 / 2)
+    expect(g.Fsusp).toBeCloseTo(80, 9);
+    expect(g.Faxle1).toBeCloseTo(10, 9);
+    expect(g.Faxle2).toBeCloseTo(80 / (8 + 1.25 * 2 * 0.5), 9);
+    expect(g.F5th).toBeCloseTo((10 - g.Faxle2) * 8 + 6, 9);
+    const sq = analyzeModular({ ...defaultModular('pull'), load: 240, units: [{ lines: 8, drive: 0 }], cog: 3, gooseneck: true, gnDAxle: 200, gnDNeck: 250, gnL1: 2, gnL2: 1, gnSquare: true });
+    expect(sq.gooseneck!.Faxle2).toBeCloseTo(80 / (8 + 1.5625 * 2 * 0.5), 9);
+  });
+
+  it('trang 16: thang Beaufort và chọn kiểu treo — bắt đầu treo 3 điểm, không đủ thì treo 4 điểm, tránh treo 4 điểm khi W_TOT > 50%', () => {
+    expect(BEAUFORT[4].p).toBe(3.9);
+    expect(BEAUFORT[8].p).toBe(26.7);
+    const ok3 = analyzeModular({ ...defaultModular('pull'), load: 400, units: [{ lines: 16, drive: 0 }], wide: 2, axleBase: 3.3, cog: 4.85 });
+    expect(ok3.advice!.pick).toBe('3');
+    // trọng tâm cao: treo 3 điểm không đủ ổn định thủy lực ngang (D_AB/3) nhưng treo 4 điểm (D_AB/2) đủ; tải nhẹ < 50%
+    const high = analyzeModular({ ...defaultModular('pull'), load: 100, units: [{ lines: 16, drive: 0 }], wide: 2, axleBase: 3.3, cog: 9 });
+    expect(high.advice!.ok3).toBe(false);
+    expect(high.advice!.ok4).toBe(true);
+    expect(high.advice!.pick).toBe('4');
   });
 });
