@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { fmt } from '../../core/stress';
 import {
-  DIR_LABEL, EN12195_ROAD, FRICTION_PRESETS, analyzeTransport, toT,
+  BRAKE_MODES, DIR_LABEL, EN12195_ROAD, FRICTION_PRESETS, analyzeTransport, toT,
   type Barge, type Blocking, type Cargo, type Ground, type Coefficients, type Direct, type Limits, type Road, type TopOver, type TransportModel, type TransportResult, type Vehicle,
 } from '../../core/transport';
-import { Card, NumField, TextField } from '../fields';
+import { Card, NumField, Select, TextField } from '../fields';
 import { TransportView } from './TransportView';
 
 type SetFn = (fn: (m: TransportModel) => TransportModel) => void;
@@ -154,14 +154,30 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
           <p className="hint">Giá trị mặc định chỉ để tham khảo (trục đơn 10 t, cụm 2 trục 18 t, cụm 3 trục 24 t, cao 4,2 m, rộng 2,5 m). Đối chiếu văn bản hiện hành và giấy phép lưu hành. Nhập 0 để bỏ qua.</p>
         </Card>
 
-        <Card title="Điều kiện đường (đối chiếu)">
+        <Card title="Điều kiện đường (kiểm tra theo hồ sơ)">
           <div className="row">
-            <NumField label="Độ dốc θ" unit="°" value={model.road.slope} width={80} onChange={(x) => road({ slope: x })} />
-            <NumField label="Vận tốc vào cua" unit="km/h" value={model.road.vCurve} width={90} onChange={(x) => road({ vCurve: x })} />
-            <NumField label="Bán kính cua R" unit="m" value={model.road.radius} width={80} onChange={(x) => road({ radius: x })} />
-            <NumField label="Gia tốc phanh a" unit="m/s²" value={model.road.brake} width={90} onChange={(x) => road({ brake: x })} />
+            <NumField label="Dốc dọc θ" unit="°" value={model.road.slope} width={80} onChange={(x) => road({ slope: x })} />
+            <NumField label="Dốc ngang β" unit="°" value={model.road.crossSlope} width={80} onChange={(x) => road({ crossSlope: x })} />
           </div>
-          <p className="hint">Dùng để đối chiếu cách tính tĩnh học trong hồ sơ (lực theo dốc, ly tâm, phanh) với hệ số EN 12195-1.</p>
+          <div className="row">
+            <NumField label="Vận tốc vào cua" unit="m/s" value={model.road.vCurve} width={90} title={`= ${fmt(model.road.vCurve * 3.6, 2)} km/h`} onChange={(x) => road({ vCurve: x })} />
+            <NumField label="Bán kính cua R" unit="m" value={model.road.radius} width={80} onChange={(x) => road({ radius: x })} />
+          </div>
+          <div className="row">
+            <NumField label="Vận tốc chạy thẳng" unit="m/s" value={model.road.vStraight} width={90} title={`= ${fmt(model.road.vStraight * 3.6, 2)} km/h`} onChange={(x) => road({ vStraight: x })} />
+            <Select label="Lực phanh" value={model.road.brakeMode} options={BRAKE_MODES} onChange={(x) => road({ brakeMode: x })} />
+          </div>
+          <div className="row">
+            {model.road.brakeMode === 'accel' && <NumField label="Gia tốc phanh a" unit="m/s²" value={model.road.brake} width={90} onChange={(x) => road({ brake: x })} />}
+            {model.road.brakeMode === 'time' && <NumField label="Thời gian phanh t" unit="s" value={model.road.brakeTime} width={90} onChange={(x) => road({ brakeTime: x })} />}
+            {model.road.brakeMode === 'distance' && <NumField label="Quãng đường phanh s" unit="m" value={model.road.brakeDist} width={90} onChange={(x) => road({ brakeDist: x })} />}
+            <span className="muted small">a = {fmt(r.road.accel, 3)} m/s² ({fmt(r.road.accel / 9.81, 3)} g)</span>
+          </div>
+          <div className="row checks">
+            <label className="check"><input type="checkbox" checked={model.road.frictionCos} onChange={(e) => road({ frictionCos: e.target.checked })} />
+              Ma sát nhân cos góc dốc (f·Q·cosθ); bỏ chọn = f·Q như hồ sơ</label>
+          </div>
+          <p className="hint">Kiểm tra tĩnh học như bảng “Force effects to cargo”: lực gây trượt so với ma sát (chưa kể dây chằng), và quy ra hệ số gia tốc để so với EN 12195-1.</p>
         </Card>
 
         <Card title="Áp lực nền">
@@ -235,6 +251,7 @@ export function conclusionItems(r: TransportResult) {
     ...r.axle.checks.map((a) => ({ label: a.label, ok: a.ok, detail: `${fmt(a.value, 2)} t${a.limit > 0 ? ` so với ${fmt(a.limit, 2)} t` : ''}` })),
     ...r.dim.checks.map((a) => ({ label: a.label, ok: a.ok, detail: `${fmt(a.value, 3)} m${a.limit > 0 ? ` so với ${fmt(a.limit, 2)} m` : ''}` })),
     ...[r.ground.whole, ...(r.ground.worst ? [r.ground.worst] : [])].map((x) => ({ label: `Áp lực nền – ${x.label.toLowerCase()}`, ok: x.ok, detail: `p = ${fmt(x.p, 3)} t/m² (${fmt(x.p * 9.81, 1)} kPa) trên ${fmt(x.area, 2)} m²` })),
+    ...r.road.checks.map((c) => ({ label: `Hồ sơ: ${c.label.toLowerCase()}`, ok: c.ok, detail: `${c.formula} = ${fmt(c.force, 1)} kN so với F_ms = ${fmt(c.friction, 1)} kN` })),
     ...r.barges.map((b) => ({ label: `Tỉ lệ tải ${b.name}`, ok: b.ok, detail: `${fmt(b.total, 3)} / ${fmt(b.dwt, 3)} t = ${fmt(b.uc * 100, 2)}% (cho phép ${fmt(b.limit * 100, 1)}%)` })),
   ];
 }
@@ -315,20 +332,40 @@ function AxleCard({ r }: { r: TransportResult }) {
   );
 }
 
+export const RoadChecksTable = ({ r }: { r: TransportResult }) => (
+  <table className="grid">
+    <thead><tr><th>Trường hợp</th><th>Lực gây trượt</th><th>Ma sát F_ms</th><th>Tỉ số</th><th></th></tr></thead>
+    <tbody>
+      {r.road.checks.map((c, i) => (
+        <tr key={i}><td>{c.label}<br /><span className="muted small">{c.formula}</span></td><td>{kt(c.force)}</td><td>{kt(c.friction)}</td><td>{fmt(c.friction > 0 ? c.force / c.friction : Infinity, 3)}</td><td><Pass ok={c.ok} /></td></tr>
+      ))}
+    </tbody>
+  </table>
+);
+
 function RoadCard({ r, model }: { r: TransportResult; model: TransportModel }) {
   const x = r.road;
   return (
-    <Card title="Đối chiếu điều kiện đường">
+    <Card title="Kiểm tra theo hồ sơ (lực tác dụng lên hàng)">
       <table className="grid">
         <tbody>
-          <tr><td>Thành phần theo dốc m·g·sinθ</td><td>{kt(x.slope)}</td></tr>
+          <tr><td>Khối lượng hàng Q</td><td>{fmt(model.cargo.mass, 3)} t</td></tr>
+          <tr><td>Hệ số ma sát f</td><td>{model.mu}</td></tr>
+          <tr><td>Thành phần theo dốc dọc Q·sinθ</td><td>{kt(x.slope)}</td></tr>
+          <tr><td>Thành phần theo dốc ngang Q·sinβ</td><td>{kt(x.cross)}</td></tr>
           <tr><td>Lực ly tâm m·v²/R</td><td>{kt(x.centrifugal)}</td></tr>
-          <tr><td>Lực quán tính phanh m·a</td><td>{kt(x.braking)}</td></tr>
-          <tr><td>Ma sát μ·m·g·cosθ</td><td>{kt(x.frictionRoad)}</td></tr>
-          <tr><td>c_x tương đương (phanh khi xuống dốc)</td><td>{fmt(x.cxRoad, 3)} g {x.coveredX ? '≤' : '>'} {model.coef.cxF} g (EN) {x.coveredX ? '— EN bao trùm' : ''}</td></tr>
-          <tr><td>c_y tương đương (vào cua)</td><td>{fmt(x.cyRoad, 3)} g {x.coveredY ? '≤' : '>'} {model.coef.cy} g (EN) {x.coveredY ? '— EN bao trùm' : ''}</td></tr>
+          <tr><td>Lực quán tính phanh m·a (a = {fmt(x.accel, 3)} m/s²)</td><td>{kt(x.braking)}</td></tr>
+          <tr><td>Ma sát {model.road.frictionCos ? 'f·Q·cosθ (dọc) / f·Q·cosβ (ngang)' : 'f·Q'}</td><td>{kt(x.frictionLong)}{model.road.frictionCos && <> / {kt(x.frictionLat)}</>}</td></tr>
         </tbody>
       </table>
+      <RoadChecksTable r={r} />
+      <table className="grid">
+        <tbody>
+          <tr><td>c_x tương đương = sinθ + a/g</td><td>{fmt(x.cxRoad, 3)} g {x.coveredX ? '≤' : '>'} {model.coef.cxF} g (EN) {x.coveredX ? '— EN bao trùm' : ''}</td></tr>
+          <tr><td>c_y tương đương = v²/(gR) + sinβ</td><td>{fmt(x.cyRoad, 3)} g {x.coveredY ? '≤' : '>'} {model.coef.cy} g (EN) {x.coveredY ? '— EN bao trùm' : ''}</td></tr>
+        </tbody>
+      </table>
+      <p className="hint">Các kiểm tra này chỉ dùng ma sát, giống bảng trong hồ sơ. Kiểm tra theo EN 12195-1 ở trên dùng hệ số gia tốc lớn hơn và có kể dây chằng.</p>
       <details><summary>Lời giải</summary><ol className="steps">{x.steps.map((l, i) => <li key={i}>{l}</li>)}</ol></details>
     </Card>
   );

@@ -136,14 +136,46 @@ export interface Limits {
   width: number;
 }
 
+export type BrakeMode = 'accel' | 'time' | 'distance';
+
 export interface Road {
-  /** độ dốc dọc (°) */
+  /** độ dốc dọc θ (°) */
   slope: number;
-  /** vận tốc khi vào cua (km/h) và bán kính cua (m) */
+  /** độ dốc ngang β (°) — cộng thêm m·g·sinβ theo phương ngang khi vào cua */
+  crossSlope: number;
+  /** vận tốc chạy thẳng (m/s) — dùng để tính gia tốc phanh theo thời gian hoặc quãng đường */
+  vStraight: number;
+  /** vận tốc khi vào cua (m/s) và bán kính cua (m) */
   vCurve: number;
   radius: number;
-  /** gia tốc phanh (m/s²) */
+  /** cách nhập phanh: gia tốc trực tiếp, thời gian phanh, hay quãng đường phanh */
+  brakeMode: BrakeMode;
+  /** gia tốc phanh (m/s²), thời gian phanh (s), quãng đường phanh (m) */
   brake: number;
+  brakeTime: number;
+  brakeDist: number;
+  /** ma sát tính bằng f·Q·cosθ (true) hay f·Q như nhiều hồ sơ (false) */
+  frictionCos: boolean;
+}
+
+export const BRAKE_MODES: { value: BrakeMode; label: string }[] = [
+  { value: 'accel', label: 'Nhập gia tốc phanh a' },
+  { value: 'time', label: 'Từ vận tốc và thời gian phanh: a = v/t' },
+  { value: 'distance', label: 'Từ vận tốc và quãng đường phanh: a = v²/(2s)' },
+];
+
+/** Gia tốc phanh (m/s²) theo cách nhập */
+export function brakeAccel(r: Road): number {
+  if (r.brakeMode === 'time') return r.brakeTime > 0 ? r.vStraight / r.brakeTime : 0;
+  if (r.brakeMode === 'distance') return r.brakeDist > 0 ? (r.vStraight * r.vStraight) / (2 * r.brakeDist) : 0;
+  return r.brake;
+}
+
+/** Bổ sung trường còn thiếu cho dữ liệu đường đã lưu ở phiên bản cũ (vCurve trước đây tính bằng km/h) */
+export function migrateRoad(saved: Partial<Road> | undefined, d: Road): Road {
+  if (!saved) return d;
+  const old = saved.vStraight === undefined && saved.brakeMode === undefined;
+  return { ...d, ...saved, ...(old && typeof saved.vCurve === 'number' ? { vCurve: saved.vCurve / 3.6 } : {}) };
 }
 
 export interface Ground {
@@ -258,18 +290,33 @@ export interface DimResult {
   ok: boolean;
 }
 
+export interface RoadCheckRow {
+  label: string;
+  /** lực gây trượt và lực ma sát (kN) */
+  force: number;
+  friction: number;
+  ok: boolean;
+  formula: string;
+}
+
 export interface RoadResult {
   /** lực (kN) */
   slope: number;
+  cross: number;
   centrifugal: number;
   braking: number;
+  /** gia tốc phanh dùng tính (m/s²) */
+  accel: number;
+  /** ma sát theo phương dọc và ngang (kN) */
+  frictionLong: number;
+  frictionLat: number;
   /** hệ số gia tốc tương đương (g) */
   cxRoad: number;
   cyRoad: number;
   coveredX: boolean;
   coveredY: boolean;
-  /** kiểm tra trượt kiểu tĩnh học: lực tổng / ma sát μ·m·g·cosθ */
-  frictionRoad: number;
+  /** các kiểm tra trượt kiểu hồ sơ (chỉ ma sát, chưa kể dây chằng) */
+  checks: RoadCheckRow[];
   steps: string[];
 }
 
@@ -465,23 +512,46 @@ export function dimensions(m: TransportModel): DimResult {
 
 export function roadCheck(m: TransportModel): RoadResult {
   const r = m.road, W = m.cargo.mass * G;
-  const th = rad(r.slope);
-  const v = r.vCurve / 3.6;
+  const th = rad(r.slope), be = rad(r.crossSlope);
+  const v = r.vCurve;
+  const accel = brakeAccel(r);
   const slope = W * Math.sin(th);
+  const cross = W * Math.sin(be);
   const centrifugal = r.radius > 0 ? (m.cargo.mass * v * v) / r.radius : 0;
-  const braking = m.cargo.mass * r.brake;
-  const cxRoad = Math.sin(th) + r.brake / G;
-  const cyRoad = r.radius > 0 ? (v * v) / (G * r.radius) : 0;
-  const frictionRoad = m.mu * W * Math.cos(th);
-  const steps = [
-    `Thành phần trọng lượng theo dốc ${fmt(r.slope, 2)}°: m·g·sinθ = ${t(slope)}`,
-    `Lực ly tâm khi vào cua R = ${fmt(r.radius, 2)} m, v = ${fmt(r.vCurve, 2)} km/h (${fmt(v, 3)} m/s): m·v²/R = ${t(centrifugal)}`,
-    `Lực quán tính khi phanh a = ${fmt(r.brake, 3)} m/s²: m·a = ${t(braking)}`,
-    `Ma sát trên dốc: μ·m·g·cosθ = ${t(frictionRoad)}`,
-    `Phương dọc (phanh khi xuống dốc): ${t(slope + braking)} → tương đương c_x = sinθ + a/g = ${fmt(cxRoad, 3)} g ${cxRoad <= m.coef.cxF ? '≤' : '>'} c_x EN = ${fmt(m.coef.cxF, 2)} g`,
-    `Phương ngang (vào cua): tương đương c_y = v²/(g·R) = ${fmt(cyRoad, 3)} g ${cyRoad <= m.coef.cy ? '≤' : '>'} c_y EN = ${fmt(m.coef.cy, 2)} g`,
+  const braking = m.cargo.mass * accel;
+  const cxRoad = Math.sin(th) + accel / G;
+  const cyRoad = (r.radius > 0 ? (v * v) / (G * r.radius) : 0) + Math.sin(be);
+  const frictionLong = m.mu * W * (r.frictionCos ? Math.cos(th) : 1);
+  const frictionLat = m.mu * W * (r.frictionCos ? Math.cos(be) : 1);
+  const steps: string[] = [];
+  const aTxt = r.brakeMode === 'time'
+    ? `a = v/t = ${fmt(r.vStraight, 3)}/${fmt(r.brakeTime, 3)} = ${fmt(accel, 3)} m/s²`
+    : r.brakeMode === 'distance'
+      ? `a = v²/(2s) = ${fmt(r.vStraight, 3)}²/(2·${fmt(r.brakeDist, 3)}) = ${fmt(accel, 3)} m/s²`
+      : `a = ${fmt(accel, 3)} m/s² (nhập trực tiếp)`;
+  steps.push(`Gia tốc phanh: ${aTxt}`);
+  steps.push(`Thành phần trọng lượng theo dốc dọc θ = ${fmt(r.slope, 2)}°: Q·sinθ = ${t(slope)}`);
+  steps.push(`Thành phần trọng lượng theo dốc ngang β = ${fmt(r.crossSlope, 2)}°: Q·sinβ = ${t(cross)}`);
+  steps.push(`Lực ly tâm khi vào cua R = ${fmt(r.radius, 2)} m, v = ${fmt(v, 3)} m/s: m·v²/R = ${t(centrifugal)}`);
+  steps.push(`Lực quán tính khi phanh: m·a = ${fmt(m.cargo.mass, 3)}·${fmt(accel, 3)} = ${t(braking)}`);
+  steps.push(r.frictionCos
+    ? `Ma sát: phương dọc f·Q·cosθ = ${t(frictionLong)}; phương ngang f·Q·cosβ = ${t(frictionLat)}`
+    : `Ma sát (như hồ sơ, không nhân cos): f·Q = ${fmt(m.mu, 3)}·${fmt(W, 2)} = ${t(frictionLong)}`);
+  const row = (label: string, force: number, friction: number, formula: string): RoadCheckRow => {
+    const ok = force <= friction * (1 + 1e-9);
+    steps.push(`${label}: ${formula} = ${t(force)} ${ok ? '≤' : '>'} F_ms = ${t(friction)} → ${ok ? 'ĐẠT' : 'KHÔNG ĐẠT'}`);
+    return { label, force, friction, ok, formula };
+  };
+  const checks = [
+    row('Dốc dọc (đứng trên dốc)', slope, frictionLong, 'Q·sinθ'),
+    row('Phanh khi xuống dốc', slope + braking, frictionLong, 'Q·sinθ + m·a'),
+    row('Vào cua trên dốc ngang', centrifugal + cross, frictionLat, 'm·v²/R + Q·sinβ'),
   ];
-  return { slope, centrifugal, braking, cxRoad, cyRoad, coveredX: cxRoad <= m.coef.cxF + 1e-9, coveredY: cyRoad <= m.coef.cy + 1e-9, frictionRoad, steps };
+  steps.push(`Quy ra hệ số gia tốc: c_x = sinθ + a/g = ${fmt(cxRoad, 3)} g ${cxRoad <= m.coef.cxF ? '≤' : '>'} c_x EN = ${fmt(m.coef.cxF, 2)} g; c_y = v²/(g·R) + sinβ = ${fmt(cyRoad, 3)} g ${cyRoad <= m.coef.cy ? '≤' : '>'} c_y EN = ${fmt(m.coef.cy, 2)} g`);
+  return {
+    slope, cross, centrifugal, braking, accel, frictionLong, frictionLat, cxRoad, cyRoad,
+    coveredX: cxRoad <= m.coef.cxF + 1e-9, coveredY: cyRoad <= m.coef.cy + 1e-9, checks, steps,
+  };
 }
 
 /**
@@ -550,7 +620,7 @@ export function analyzeTransport(m: TransportModel): TransportResult {
   if (axle.error) warnings.push(axle.error);
   if (ground.worst && ground.worst.p > ground.whole.p * 1.5) warnings.push(`Áp lực dưới ${ground.worst.label.toLowerCase()} (${fmt(ground.worst.p, 2)} t/m²) lớn hơn nhiều so với cách chia đều cho toàn xe (${fmt(ground.whole.p, 2)} t/m²): nên kiểm tra nền theo từng cụm trục.`);
   if (barges.length) warnings.push('Tỉ lệ tải sà lan chỉ so khối lượng với trọng tải; chưa kiểm tra ổn định nổi, mớn nước và sức bền boong sà lan.');
-  const ok = slide.every((s) => s.ok) && tip.every((x) => x.ok) && axle.ok && dim.ok && ground.ok && barges.every((b) => b.ok);
+  const ok = slide.every((s) => s.ok) && tip.every((x) => x.ok) && axle.ok && dim.ok && ground.ok && barges.every((b) => b.ok) && road.checks.every((c) => c.ok);
   return { ground, barges, slide, tip, axle, dim, road, warnings, ok };
 }
 
@@ -567,7 +637,7 @@ export const defaultTransport = (): TransportModel => ({
     trailerTare: 7, trailerCgX: 7, tractorFront: 5.5, tractorRear: 3.5, tractorRearAxles: 2, wheelbase: 3.9, fifthWheelOffset: 0.5,
   },
   limits: { frontAxle: 10, tractorGroup: 18, trailerGroup: 24, gross: 48, height: 4.2, width: 2.5 },
-  road: { slope: 5, vCurve: 5, radius: 7.87, brake: 4.16 },
+  road: { slope: 5, crossSlope: 5, vStraight: 8.3, vCurve: 1.38, radius: 7.87, brakeMode: 'accel', brake: 4.16, brakeTime: 2, brakeDist: 8.3, frictionCos: false },
   ground: { layerH: 0.5, angle: 45, allow: 10, tyreL: 0.25, wheelW: 2.5, wholeL: 0, wholeB: 0 },
   barges: [
     { name: 'Sà lan 158 DWT', dwt: 158, ucLimit: 100, items: [{ name: 'Ống thép', mass: 74.133 }, { name: 'Hạng mục phụ 1', mass: 0.5 }, { name: 'Hạng mục phụ 2', mass: 0.5 }] },

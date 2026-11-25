@@ -235,7 +235,10 @@ Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trê
   tính cho toàn xe (như cách tính trong hồ sơ, có thể nhập tay L₀ × B₀) và cho từng cụm trục, so với áp lực cho phép [p] (t/m², kèm kPa).
 - **Tỉ lệ tải sà lan**: nhiều sà lan, mỗi sà lan một danh sách hạng mục; UC = Σ khối lượng / DWT so với UC cho phép
   (chưa gồm ổn định nổi, mớn nước, sức bền boong).
-- **Đối chiếu điều kiện đường** (dốc, ly tâm khi vào cua, phanh) theo cách tính tĩnh học trong hồ sơ, quy ra hệ số gia tốc tương đương để so với EN.
+- **Kiểm tra theo hồ sơ** (bảng "Force effects to cargo"): dốc dọc θ, dốc ngang β, vận tốc vào cua (m/s) và bán kính,
+  vận tốc chạy thẳng với gia tốc phanh nhập trực tiếp hoặc tính từ thời gian (a = v/t) / quãng đường (a = v²/2s);
+  ma sát f·Q (như hồ sơ) hoặc f·Q·cosθ. Ba trường hợp PASS/FAIL chỉ dùng ma sát: dốc dọc Q·sinθ; phanh khi xuống dốc
+  Q·sinθ + m·a; vào cua trên dốc ngang m·v²/R + Q·sinβ. Quy ra hệ số gia tốc tương đương để so với EN.
 
 Mọi hệ số (c, f_s, f_μ, μ, giới hạn tải trục) đều sửa được để theo quy trình riêng. Có lời giải từng bước và báo cáo PDF.
 

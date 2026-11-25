@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { G, analyzeTransport, axleLoads, bargeCheck, groundPressure, checkSliding, checkTipping, defaultTransport, roadCheck, type TransportModel } from '../src/core/transport';
+import { G, analyzeTransport, axleLoads, bargeCheck, groundPressure, checkSliding, checkTipping, defaultTransport, migrateRoad, roadCheck, type TransportModel } from '../src/core/transport';
 
 const none = (m: TransportModel): TransportModel => ({
   ...m, topOver: { ...m.topOver, n: 0 }, direct: { ...m.direct, nLong: 0, nTrans: 0 }, blocking: { fwd: 0, rear: 0, side: 0 },
@@ -67,12 +67,30 @@ describe('Tải trọng trục', () => {
 describe('Đối chiếu điều kiện đường (số liệu bản vẽ)', () => {
   it('dốc 5°, ly tâm và phanh khớp với hồ sơ (tấn lực)', () => {
     const m = defaultTransport();
-    const r = roadCheck({ ...m, road: { slope: 5, vCurve: 1.38 * 3.6, radius: 7.87, brake: 4.16 } });
+    const r = roadCheck(m); // bảng hồ sơ: Q = 26,1; f = 0,6; v_thẳng 8,3; v_cua 1,38; R = 7,87; dốc dọc 5°, dốc ngang 5°
     expect(r.slope / G).toBeCloseTo(2.27, 2);
+    expect(r.cross / G).toBeCloseTo(2.27, 2);
     expect(r.centrifugal / G).toBeCloseTo(0.64, 2);
-    expect(r.braking / G).toBeCloseTo(11.07, 1);
-    expect(r.frictionRoad / G).toBeCloseTo(15.6, 1);
+    expect(r.braking / G).toBeCloseTo(11.07, 2);
+    expect(r.frictionLong / G).toBeCloseTo(15.66, 2); // f·Q như hồ sơ
+    expect(r.checks.map((c) => c.ok)).toEqual([true, true, true]);
+    expect(r.checks[1].force).toBeCloseTo(r.slope + r.braking, 9);
+    expect(r.checks[2].force).toBeCloseTo(r.centrifugal + r.cross, 9);
     expect(r.coveredX && r.coveredY).toBe(true);
+  });
+  it('gia tốc phanh từ vận tốc và thời gian / quãng đường; ma sát có cosθ', () => {
+    const m = defaultTransport();
+    const t = roadCheck({ ...m, road: { ...m.road, brakeMode: 'time', vStraight: 8.3, brakeTime: 2 } });
+    expect(t.accel).toBeCloseTo(4.15, 9);
+    const d = roadCheck({ ...m, road: { ...m.road, brakeMode: 'distance', vStraight: 8.3, brakeDist: 8.3 } });
+    expect(d.accel).toBeCloseTo(4.15, 9);
+    const c = roadCheck({ ...m, road: { ...m.road, frictionCos: true } });
+    expect(c.frictionLong).toBeCloseTo(0.6 * 26.1 * G * Math.cos((5 * Math.PI) / 180), 9);
+  });
+  it('dữ liệu cũ: vận tốc vào cua km/h được đổi sang m/s', () => {
+    const d = defaultTransport().road;
+    expect(migrateRoad({ slope: 5, vCurve: 18, radius: 10, brake: 3 } as never, d).vCurve).toBeCloseTo(5, 9);
+    expect(migrateRoad({ ...d, vCurve: 1.38 }, d).vCurve).toBe(1.38);
   });
   it('phân tích tổng hợp chạy được với mọi bài mẫu', () => {
     const r = analyzeTransport(defaultTransport());

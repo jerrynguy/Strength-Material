@@ -70,7 +70,15 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
             note="UC = tổng khối lượng / trọng tải. Chưa kiểm tra ổn định nổi, mớn nước, sức bền boong." />
         </RSection>
       )}
-      <RSection n={N()} title="Đối chiếu điều kiện đường">
+      <RSection n={N()} title="Kiểm tra theo hồ sơ (lực tác dụng lên hàng)">
+        <RKV rows={[
+          ['Điều kiện đường', `dốc dọc θ = ${model.road.slope}°; dốc ngang β = ${model.road.crossSlope}°; vào cua v = ${model.road.vCurve} m/s, R = ${model.road.radius} m; chạy thẳng v = ${model.road.vStraight} m/s`],
+          ['Gia tốc phanh', `a = ${fmt(r.road.accel, 3)} m/s²`],
+          ['Ma sát', model.road.frictionCos ? 'f·Q·cosθ (dọc), f·Q·cosβ (ngang)' : 'f·Q (không nhân cos góc dốc, như hồ sơ)'],
+        ]} />
+        <RTable head={['Trường hợp', 'Công thức', 'Lực gây trượt', 'Ma sát F_ms', 'Kết luận']}
+          rows={r.road.checks.map((c) => [c.label, c.formula, `${fmt(c.force, 2)} kN (${fmt(c.force / 9.81, 2)} t)`, `${fmt(c.friction, 2)} kN (${fmt(c.friction / 9.81, 2)} t)`, ok(c.ok)])}
+          note="Chỉ dùng ma sát, chưa kể dây chằng." />
         <RSteps lines={r.road.steps} />
       </RSection>
     </>
