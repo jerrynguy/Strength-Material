@@ -245,6 +245,25 @@ Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trê
 
 Mọi hệ số (c, f_s, f_μ, μ, giới hạn tải trục) đều sửa được để theo quy trình riêng. Có lời giải từng bước và báo cáo PDF.
 
+## Nâng hạ bằng cẩu (lifting arrangement)
+
+Tab **Nâng hạ (cẩu)** lập các bảng kiểm tra như hồ sơ "Lifting arrangement" (bản vẽ PTSC-PL-LA-DW-004, PTSC-PL-PLA-DW-005):
+
+- **Check crane**: tải nâng tính toán = (tải trên móc·CF·COG·TF·YF·SKL + phụ kiện)·DAF (mặc định CF = 1,05; DAF = 1,15);
+  UC = tải tính toán / sức nâng ≤ UC cho phép. Sức nâng tra bảng tải theo chiều dài cần và bán kính (lấy dòng bán kính lớn hơn kề
+  hoặc nội suy), hoặc nhập tay; kiểm tra nhiều vị trí làm việc (nhấc khỏi sà lan, đặt lên xe…).
+  Có sẵn phần bảng tải trích trên bản vẽ: Liebherr LTM 1080/1, Terex ATT 1354, Sumitomo LS-248RH-5.
+- **Check sling / shackles**: tải một nhánh T = W/(n·sinα); tải lớn nhất = T·CF·COG·TF·YF·SKL + phụ kiện·DAF;
+  hệ số an toàn = SWL·hệ số giảm / tải lớn nhất ≥ 1. Áp dụng cho cáp thép, dây vải, ma ní, thanh gánh.
+- **Check ground pressure**: chân chống p = (F + tự trọng tấm kê) / diện tích (có thể kể lan truyền qua tấm kê);
+  bánh xích nhập áp lực theo nhà sản xuất hoặc tính p_tb = W/(2·L·B), p_max theo lệch tâm (hình thang / tam giác).
+- **Bãi xếp ống**: xếp lồng, mỗi tầng ít hơn tầng dưới 1 ống; p = số ống × khối lượng / diện tích chịu tải.
+
+Bài mẫu theo bản vẽ (khớp số liệu hồ sơ): LTM 1080/1 R = 12 m — 12,528 t, UC 81,88%; ATT 1354 R = 14 m — 12,758 t, UC 75,71%;
+LS-248RH-5 R = 18 m — 14,701 t, UC 48,20%; sling 5,77 t, hệ số 1,30; ma ní 4,58 t, hệ số 1,64; bãi ống 2/3/4/5 tầng
+= 4,10 / 6,02 / 7,86 / 9,62 t/m². Riêng áp lực chân chống, hồ sơ ghi 8,11 và 9,07 t/m² trong khi F/A = 33,6/4 = 8,40 và
+37,6/4 = 9,40 t/m² — app dùng F/A. `tests/lifting.test.ts` kiểm chứng các số trên.
+
 ## Xuất báo cáo PDF
 
 Bấm nút **Xuất báo cáo PDF** để mở trang xem trước báo cáo, rồi bấm **In / Lưu PDF** và chọn “Lưu dưới dạng PDF”. App xuất qua chức năng in của trình duyệt: tiếng Việt hiển thị đúng, hình vẽ dạng vector, chữ trong PDF chọn và tìm kiếm được, không cần thư viện ngoài.
@@ -368,3 +387,4 @@ Mỗi lần push lên `main`, GitHub Actions chạy test rồi deploy lên GitHu
 - [x] Sườn dọc bản bụng (EN 1993-1-5 A.2, A.3)
 - [x] Làm việc kiểu tấm / kiểu thanh của bản có sườn (A.1, hai sườn gộp, nội suy ρ_c), vỏ trụ loại 4
 - [x] Xuất báo cáo PDF (thanh thẳng, khung, ổn định)
+- [x] Nâng hạ bằng cẩu: bảng tải, cáp / ma ní, áp lực nền chân chống, bánh xích, bãi xếp ống
