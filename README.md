@@ -261,6 +261,12 @@ Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trê
     0,363 m SPMT / 0,381 m pull type), bỏ qua xe module nên thiên về an toàn;
   - **dầm sống** (trang 8): M = W_axleline·D_AS·(1 + 2 + … + n) với n trục dòng thò ra ngoài hàng ở mỗi đầu, so với mô men cho phép
     (pull type 560 / 725, SPMT 650 / 775 t·m); số trục dòng được thò ra từ M_cho phép / (A_C·2·D_AS) ≥ 1 + … + n.
+  - **áp lực nền** (trang 9): cách 1 P = (W_T + W_L)/(T_L·T_W); cách 2 (lan truyền 45° tới độ sâu D_AS/2) P = (W_T + W_L)/(T_L·(T_W + D_AS));
+    chọn cách để kết luận so với áp lực cho phép;
+  - **ngoại lực** (trang 10–12): ly tâm F = W_TOT/g·V0²/r; gió F = cos φ / sin φ·W_P·A·S_f; tăng tốc / phanh F = W_TOT/g·cos φ / sin φ·a;
+    dốc chưa bù F = sin α_GL / sin β_GT·W_TOT. Lực treo F_SUSP = F·CoG (hoặc CoW)/(0,5·T_L) theo phương dọc, /D_AB theo phương ngang;
+    lực trục F_AXLE = F_SUSP / số trục của nhóm treo (treo 4 điểm: nhóm 2+3 và 1+2; treo 3 điểm: nhóm 2 và nhóm 1 / 2+3).
+    Vận tốc vào cua, bán kính, gia tốc phanh lấy từ thẻ Điều kiện đường. Tải trục kể ngoại lực = W_axle + tổng F_AXLE (cộng như xảy ra đồng thời) so với A_C.
   Các công thức là cách gần đúng của thẻ: trọng tâm ở trọng tâm vùng ổn định, các trục cách đều.
 
 Mọi hệ số (c, f_s, f_μ, μ, giới hạn tải trục) đều sửa được để theo quy trình riêng. Có lời giải từng bước và báo cáo PDF.

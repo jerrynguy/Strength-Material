@@ -686,6 +686,11 @@ export function modularInputOf(m: TransportModel): ModularInput {
     load: m.cargo.mass,
     accessories: (m.others ?? []).reduce((s, o) => s + o.mass, 0),
     cog: (mi.cogMode ?? 'load') === 'load' ? loadCogAboveStability(m) : mi.cog,
+    // bề rộng xe và điều kiện đường lấy từ thẻ Xe và thẻ Điều kiện đường
+    tw: m.vehicle.width,
+    vCurve: m.road.vCurve,
+    radius: m.road.radius,
+    accel: brakeAccel(m.road),
   };
 }
 
@@ -781,7 +786,7 @@ export function pipeType2(): TransportModel {
 
 /**
  * Ví dụ trang 4 thẻ tham khảo xe module thủy lực: động cơ diesel 350 t trên SPMT 14 trục dòng (6 + 4 + 4), dốc 8%.
- * Kích thước, trọng tâm, ma sát và chằng buộc của hàng là giả định để minh hoạ — thẻ tham khảo không cho.
+ * Kích thước, trọng tâm, ma sát, chằng buộc của hàng và điều kiện đường là giả định để minh hoạ — thẻ tham khảo không cho.
  */
 export function spmtDieselEngine(): TransportModel {
   const d = defaultTransport();
@@ -798,6 +803,8 @@ export function spmtDieselEngine(): TransportModel {
     others: [],
     vehicleKind: 'modular',
     modular: defaultModular('spmt'),
+    // điều kiện đường giả định cho xe module chạy chậm: vào cua 5 km/h, R = 15 m; phanh từ 5 km/h dừng trong 2 s
+    road: { ...d.road, slope: 0, crossSlope: 0, vStraight: 1.39, vCurve: 1.39, radius: 15, brakeMode: 'time', brakeTime: 2 },
     barges: [],
   };
 }

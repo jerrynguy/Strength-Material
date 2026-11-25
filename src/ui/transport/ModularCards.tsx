@@ -85,6 +85,29 @@ export function ModularEditor({ mi, set, cargoMass, others, cogAuto }: { mi: Mod
           onChange={(k) => { const s = SPINE_MOMENTS.find((x) => x.key === k); if (s) set({ spineM: s.m }); }} />
         <NumField label="M cho phép" unit="t·m" value={mi.spineM ?? 0} width={85} onChange={(x) => set({ spineM: x })} />
       </div>
+      <p className="lead">Áp lực nền (trang 9)</p>
+      <div className="row">
+        <Select label="Kết luận theo" value={String(mi.gpMethod ?? 1)} options={[{ value: '1', label: 'Cách 1: bóng xe T_L × T_W' }, { value: '2', label: 'Cách 2: lan truyền 45°, T_L × (T_W + D_AS)' }]}
+          onChange={(x) => set({ gpMethod: x === '2' ? 2 : 1 })} />
+        <NumField label="Áp lực cho phép" unit="t/m²" value={mi.pAllow ?? 0} width={85} title="0 = chỉ tính, không kết luận" onChange={(x) => set({ pAllow: x })} />
+      </div>
+      <p className="hint">T_W lấy từ ô “Rộng xe” ở trên.</p>
+      <p className="lead">Ngoại lực (trang 10–12)</p>
+      <div className="row">
+        <NumField label="Góc lệch lực tăng tốc / phanh φ" unit="°" value={mi.accPhi ?? 0} width={70} onChange={(x) => set({ accPhi: x })} />
+        <NumField label="Dốc dọc chưa bù α_GL" unit="°" value={mi.alphaGL ?? 0} width={70} onChange={(x) => set({ alphaGL: x })} />
+        <NumField label="Dốc ngang chưa bù β_GT" unit="°" value={mi.betaGT ?? 0} width={70} onChange={(x) => set({ betaGT: x })} />
+      </div>
+      <div className="row">
+        <NumField label="Áp lực gió W_P" unit="kN/m²" value={mi.windP ?? 0} width={85} onChange={(x) => set({ windP: x })} />
+        <NumField label="Diện tích chắn gió" unit="m²" value={mi.windA ?? 0} width={80} onChange={(x) => set({ windA: x })} />
+        <NumField label="Hệ số hình dạng S_f" value={mi.windSf ?? 1} width={65} onChange={(x) => set({ windSf: x })} />
+      </div>
+      <div className="row">
+        <NumField label="Góc gió φ" unit="°" value={mi.windPhi ?? 0} width={70} title="0° = gió dọc xe, 90° = gió ngang" onChange={(x) => set({ windPhi: x })} />
+        <NumField label="Tâm mặt chắn gió CoW" unit="m" value={mi.cow ?? 0} width={80} title="Chiều cao tâm mặt chắn gió trên vùng ổn định; 0 = lấy bằng CoG" onChange={(x) => set({ cow: x })} />
+      </div>
+      <p className="hint">Vận tốc vào cua, bán kính cua và gia tốc phanh lấy từ thẻ “Điều kiện đường”. Dốc chưa bù = góc đường − góc xe (sau khi xe tự cân bằng thủy lực).</p>
       <p className="hint">Theo thẻ tham khảo: SPMT 30 t, pull type 25 t mỗi trục dòng; mỗi trục dòng có 2 trục (cụm bánh). Lực kéo cần = (cản lăn + dốc) × tổng trọng lượng.
         Pull type: lực kéo tối đa = 80% trọng lượng trên trục chủ động của xe kéo.</p>
     </>
@@ -144,5 +167,29 @@ export function ModularTable({ x }: { x: ModularResult }) {
         <tr><td>Số trục dòng được thò ra (theo khả năng trục)</td><td>{x.spine.nMax} (M_cho phép / (A_C·2·D_AS) = {fmt(x.spine.ratio, 2)})</td><td></td></tr>
       </tbody>
     </table>
+  );
+}
+
+export function GroundExtTables({ x }: { x: ModularResult }) {
+  const g = x.ground, e = x.ext;
+  return (
+    <>
+      <table className="grid">
+        <thead><tr><th>Áp lực nền (trang 9)</th><th>Diện tích (m²)</th><th>P (t/m²)</th><th>P (kPa)</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>Cách 1: T_L × T_W = {fmt(g.TL, 2)} × {fmt(g.TW, 2)}</td><td>{fmt(g.TL * g.TW, 2)}</td><td><b>{fmt(g.p1, 3)}</b></td><td>{fmt(g.p1 * 9.81, 1)}</td><td>{g.method === 1 && <Pass ok={g.ok} />}</td></tr>
+          <tr><td>Cách 2: T_L × (T_W + D_AS) = {fmt(g.TL, 2)} × {fmt(g.TW + g.DAS, 2)}</td><td>{fmt(g.TL * (g.TW + g.DAS), 2)}</td><td><b>{fmt(g.p2, 3)}</b></td><td>{fmt(g.p2 * 9.81, 1)}</td><td>{g.method === 2 && <Pass ok={g.ok} />}</td></tr>
+        </tbody>
+      </table>
+      {e && e.forces.length > 0 && (
+        <table className="grid">
+          <thead><tr><th>Ngoại lực (trang 10–12)</th><th>F (t)</th><th>F_SUSP (t)</th><th>Số trục nhóm</th><th>F_AXLE (t/trục)</th></tr></thead>
+          <tbody>
+            {e.forces.map((f, i) => <tr key={i}><td>{f.label}</td><td>{fmt(f.F, 3)}</td><td>{fmt(f.Fs, 3)}</td><td>{f.n}</td><td>{fmt(f.Faxle, 4)}</td></tr>)}
+            <tr><td>Tổng thêm trên trục (ngang / dọc)</td><td colSpan={3}></td><td>{fmt(e.axleT, 4)} / {fmt(e.axleL, 4)}</td></tr>
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }

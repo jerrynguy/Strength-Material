@@ -115,3 +115,57 @@ describe('Ổn định và dầm sống — ví dụ trên thẻ tham khảo', (
     expect(b.modular!.spine.Mmax).toBeCloseTo(350, 6);
   });
 });
+
+describe('Áp lực nền và ngoại lực — thẻ tham khảo trang 9–12', () => {
+  it('trang 9: máy biến áp 250 t, 12 trục dòng pull type, T_L 18, T_W 3, W_T 42 → 5,4 và 3,6 t/m²', () => {
+    const r = analyzeModular({ ...defaultModular('pull'), load: 250, units: [{ lines: 12, drive: 0 }], tw: 3 });
+    expect(r.lines * 3.5).toBeCloseTo(42, 9);
+    expect(r.ground.TL).toBeCloseTo(18, 9);
+    expect(r.ground.p1).toBeCloseTo(292 / 54, 9);
+    expect(r.ground.p1).toBeCloseTo(5.4, 1);
+    expect(r.ground.p2).toBeCloseTo(292 / 81, 9);
+    expect(r.ground.p2).toBeCloseTo(3.6, 1);
+    const chk = analyzeModular({ ...defaultModular('pull'), load: 250, units: [{ lines: 12, drive: 0 }], tw: 3, pAllow: 5, gpMethod: 1 });
+    expect(chk.ground.ok).toBe(false);
+    expect(analyzeModular({ ...defaultModular('pull'), load: 250, units: [{ lines: 12, drive: 0 }], tw: 3, pAllow: 5, gpMethod: 2 }).ground.ok).toBe(true);
+  });
+
+  const base = { ...defaultModular('pull'), load: 400, units: [{ lines: 16, drive: 0 }], wide: 2 as const, axleBase: 3.3, cog: 4.85, accel: 0, vCurve: 0, radius: 0 };
+
+  it('trang 10: lực ly tâm F = W_TOT/g·V0²/r; F_SUSP-T = F·CoG/D_AB; treo 3 điểm chia cho số trục nhóm 2 (1/4 số trục)', () => {
+    const r = analyzeModular({ ...base, suspension: '3', vCurve: 2, radius: 20 });
+    const f = r.ext!.forces.find((x) => x.label.startsWith('Ly tâm'))!;
+    expect(f.F).toBeCloseTo((512 / 9.81) * (4 / 20), 9);
+    expect(f.Fs).toBeCloseTo((f.F * 4.85) / 3.3, 9);
+    expect(f.n).toBe(16);
+    expect(f.Faxle).toBeCloseTo(f.Fs / 16, 9);
+    // vận tốc gấp đôi → lực ly tâm gấp 4
+    const r2 = analyzeModular({ ...base, suspension: '3', vCurve: 4, radius: 20 });
+    expect(r2.ext!.forces[0].F).toBeCloseTo(4 * f.F, 9);
+    // treo 4 điểm: chia cho nhóm 2+3 (nửa số trục)
+    expect(analyzeModular({ ...base, suspension: '4', vCurve: 2, radius: 20 }).ext!.forces[0].n).toBe(32);
+  });
+
+  it('trang 11: gió W_P–L = cos φ·W_P; F_SUSP-L = F·CoW/(0,5·T_L); tăng tốc a = V0/t, F_ACC = W_TOT/g·a', () => {
+    const r = analyzeModular({ ...base, suspension: '3', windP: 0.981, windA: 100, windSf: 1.2, windPhi: 30, cow: 6, accel: 1.39 / 2, accPhi: 0 });
+    const wl = r.ext!.forces.find((x) => x.label === 'Gió (dọc)')!;
+    const wt = r.ext!.forces.find((x) => x.label === 'Gió (ngang)')!;
+    expect(wl.F).toBeCloseTo(Math.cos(Math.PI / 6) * 0.1 * 100 * 1.2, 9);
+    expect(wl.Fs).toBeCloseTo((wl.F * 6) / 12, 9);
+    expect(wt.Fs).toBeCloseTo((wt.F * 6) / 3.3, 9);
+    const acc = r.ext!.forces.find((x) => x.label === 'Tăng tốc / phanh (dọc)')!;
+    expect(acc.F).toBeCloseTo((512 / 9.81) * 0.695, 9);
+    expect(acc.Fs).toBeCloseTo((acc.F * 4.85) / 12, 9);
+    expect(acc.n).toBe(32);
+  });
+
+  it('trang 12: dốc chưa bù F = sin α_GL·W_TOT, sin β_GT·W_TOT; tải trục kể ngoại lực so với A_C', () => {
+    const r = analyzeModular({ ...base, suspension: '3', alphaGL: 2, betaGT: 1 });
+    const L = r.ext!.forces.find((x) => x.label === 'Dốc dọc chưa bù')!;
+    const T = r.ext!.forces.find((x) => x.label === 'Dốc ngang chưa bù')!;
+    expect(L.F).toBeCloseTo(Math.sin((2 * Math.PI) / 180) * 512, 9);
+    expect(T.F).toBeCloseTo(Math.sin(Math.PI / 180) * 512, 9);
+    expect(r.ext!.Waxle).toBeCloseTo(8 + Math.max(r.ext!.axleT, r.ext!.axleL), 9);
+    expect(r.notes.some((n) => /Dốc chưa bù/.test(n))).toBe(true);
+  });
+});

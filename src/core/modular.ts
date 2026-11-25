@@ -10,6 +10,9 @@
  *  - Trang 5: ổn định thủy lực — góc từ trọng tâm chung tới cạnh lật của vùng ổn định (treo 4 điểm / 3 điểm).
  *  - Trang 6: ổn định kết cấu — độ dời trọng tâm để tải trục đạt khả năng trục A_C; góc khuyến nghị S_HSA = 8°, S_SSA = 5°.
  *  - Trang 8: dầm sống — mô men do các trục dòng thò ra ngoài hàng, số trục dòng được phép thò ra.
+ *  - Trang 9: áp lực nền theo diện tích bóng xe — cách 1: (W_T + W_L)/(T_L·T_W); cách 2 (lan truyền 45° tới độ sâu D_AS/2): (W_T + W_L)/(T_L·(T_W + D_AS)).
+ *  - Trang 10–12: ngoại lực — ly tâm khi vào cua, gió, tăng tốc / phanh, độ dốc chưa bù — quy ra lực treo F_SUSPENSION = F·cánh tay đòn / (0,5·T_L hoặc D_AB)
+ *    và lực trục F_AXLE = F_SUSPENSION / số trục của nhóm treo.
  * Đơn vị: khối lượng và lực theo tấn (t, tấn lực), chiều dài m, mô men t·m, độ sâu mm, góc độ.
  */
 import { fmt } from './stress';
@@ -108,6 +111,24 @@ export interface ModularInput {
   overhangFront?: number;
   overhangRear?: number;
   spineM?: number;
+  /** áp lực nền (trang 9): bề rộng xe T_W (m), áp lực cho phép (t/m², 0 = bỏ qua), cách dùng để kết luận */
+  tw?: number;
+  pAllow?: number;
+  gpMethod?: 1 | 2;
+  /** ngoại lực (trang 10–12) — vận tốc vào cua V0 (m/s), bán kính cua r (m), gia tốc tăng tốc / phanh (m/s²), góc lệch φ của lực quán tính (°) */
+  vCurve?: number;
+  radius?: number;
+  accel?: number;
+  accPhi?: number;
+  /** gió: áp lực gió W_P (kN/m²), diện tích chắn gió (m²), hệ số hình dạng S_f, góc φ, chiều cao tâm mặt chắn gió trên vùng ổn định CoW (m) */
+  windP?: number;
+  windA?: number;
+  windSf?: number;
+  windPhi?: number;
+  cow?: number;
+  /** góc dốc chưa bù của xe (sau khi xe tự cân bằng), dọc α_GL và ngang β_GT (°) */
+  alphaGL?: number;
+  betaGT?: number;
 }
 
 export const defaultModular = (type: ModType = 'spmt'): ModularInput => ({
@@ -137,6 +158,16 @@ export const defaultModular = (type: ModType = 'spmt'): ModularInput => ({
   overhangFront: 0,
   overhangRear: 0,
   spineM: type === 'spmt' ? 650 : 560,
+  pAllow: 0,
+  gpMethod: 1,
+  accPhi: 0,
+  windP: 0,
+  windA: 0,
+  windSf: 1,
+  windPhi: 0,
+  cow: 0,
+  alphaGL: 0,
+  betaGT: 0,
 });
 
 export interface ModCheck {
@@ -194,6 +225,43 @@ export interface SpineResult {
   steps: string[];
 }
 
+export interface GroundPressureM {
+  Wtot: number;
+  TL: number;
+  TW: number;
+  DAS: number;
+  /** áp lực theo cách 1 và cách 2 (t/m²) */
+  p1: number;
+  p2: number;
+  method: 1 | 2;
+  allow: number;
+  ok: boolean | null;
+  steps: string[];
+}
+
+export interface ExtForce {
+  label: string;
+  /** phương: T ngang, L dọc */
+  dir: 'T' | 'L';
+  /** ngoại lực (t), lực treo (t), số trục của nhóm chịu, lực thêm trên mỗi trục (t) */
+  F: number;
+  Fs: number;
+  n: number;
+  Faxle: number;
+  formula: string;
+}
+
+export interface ExtResult {
+  forces: ExtForce[];
+  /** tổng lực thêm trên mỗi trục theo phương ngang / dọc nếu các ngoại lực xảy ra đồng thời (t) */
+  axleT: number;
+  axleL: number;
+  /** tải trục lớn nhất W_axle + lực thêm, so với A_C */
+  Waxle: number;
+  Ac: number;
+  steps: string[];
+}
+
 export interface ModularResult {
   spec: ModTypeSpec;
   /** tải đặt lên xe = hàng + gối kê/dầm (t) */
@@ -224,6 +292,8 @@ export interface ModularResult {
   length: number;
   stab: StabilityAngles | null;
   spine: SpineResult;
+  ground: GroundPressureM;
+  ext: ExtResult | null;
   checks: ModCheck[];
   notes: string[];
   ok: boolean;
@@ -363,6 +433,78 @@ export function analyzeModular(mi: ModularInput): ModularResult {
     notes.push('Chưa có chiều cao trọng tâm chung: chưa tính góc ổn định.');
   }
 
+  // Áp lực nền (trang 9)
+  const TW = mi.tw && mi.tw > 0 ? mi.tw : DAB;
+  const DAS = spec.axleSpacing;
+  const gSteps: string[] = [];
+  const p1 = Wtot / (TL * TW);
+  const p2 = Wtot / (TL * (TW + DAS));
+  gSteps.push(`Cách 1 (bóng xe bằng mặt sàn): P = (W_T + W_L)/(T_L·T_W) = ${fmt(Wtot, 3)}/(${fmt(TL, 3)}·${fmt(TW, 3)}) = ${fmt(p1, 3)} t/m² (${fmt(p1 * 9.81, 1)} kPa)`);
+  gSteps.push(`Cách 2 (lan truyền 45°, đều ở độ sâu D_AS/2): P = (W_T + W_L)/(T_L·(T_W + D_AS)) = ${fmt(Wtot, 3)}/(${fmt(TL, 3)}·(${fmt(TW, 3)} + ${fmt(DAS, 2)})) = ${fmt(p2, 3)} t/m² (${fmt(p2 * 9.81, 1)} kPa)`);
+  const gpMethod: 1 | 2 = mi.gpMethod === 2 ? 2 : 1;
+  const pAllow = mi.pAllow ?? 0;
+  const pUse = gpMethod === 1 ? p1 : p2;
+  const gOk = pAllow > 0 ? pUse <= pAllow + 1e-9 : null;
+  if (pAllow > 0) {
+    gSteps.push(`Kết luận theo cách ${gpMethod}: ${fmt(pUse, 3)} ${gOk ? '≤' : '>'} [p] = ${fmt(pAllow, 2)} t/m² → ${gOk ? 'ĐẠT' : 'KHÔNG ĐẠT'}`);
+    checks.push({ label: `Áp lực nền (cách ${gpMethod})`, value: `${fmt(pUse, 3)} / ${fmt(pAllow, 2)} t/m²`, ok: gOk });
+  }
+  const ground: GroundPressureM = { Wtot, TL, TW, DAS, p1, p2, method: gpMethod, allow: pAllow, ok: gOk, steps: gSteps };
+
+  // Ngoại lực (trang 10–12)
+  let ext: ExtResult | null = null;
+  if (stab) {
+    const G = 9.81;
+    const eSteps: string[] = [];
+    const n4 = axles / 2;
+    // số trục của nhóm chịu: treo 4 điểm — nhóm 2+3 (ngang) và 1+2 (dọc) đều bằng nửa số trục;
+    // treo 3 điểm — nhóm 2 (ngang) bằng 1/4 số trục; nhóm 1 và nhóm 2+3 (dọc) đều bằng nửa số trục
+    const nT = susp === '4' ? n4 : axles / 4;
+    const nL = n4;
+    eSteps.push(susp === '4'
+      ? `Treo 4 điểm: 4 nhóm, mỗi nhóm ${axles / 4} trục; ngang dùng nhóm 2+3 (${nT} trục), dọc dùng nhóm 1+2 (${nL} trục)`
+      : `Treo 3 điểm: nhóm 1 có ${axles / 2} trục, nhóm 2 và 3 mỗi nhóm ${axles / 4} trục; ngang dùng nhóm 2 (${nT} trục), dọc dùng nhóm 1 hoặc 2+3 (${nL} trục)`);
+    const forces: ExtForce[] = [];
+    const add = (label: string, dir: 'T' | 'L', F: number, arm: number, armName: string, formula: string) => {
+      if (!(Math.abs(F) > 1e-12)) return;
+      const lever = dir === 'T' ? DAB : 0.5 * TL;
+      const Fs = (F * arm) / lever;
+      const n = dir === 'T' ? nT : nL;
+      const Faxle = Fs / n;
+      forces.push({ label, dir, F, Fs, n, Faxle, formula });
+      eSteps.push(`${label}: ${formula} = ${fmt(F, 4)} t; F_SUSP-${dir} = F·${armName}/${dir === 'T' ? 'D_AB' : '(0,5·T_L)'} = ${fmt(F, 4)}·${fmt(arm, 3)}/${fmt(lever, 3)} = ${fmt(Fs, 4)} t; F_AXLE = ${fmt(Fs, 4)}/${n} = ${fmt(Faxle, 4)} t`);
+    };
+    const v0 = mi.vCurve ?? 0, r = mi.radius ?? 0;
+    if (v0 > 0 && r > 0) {
+      const a = (v0 * v0) / r;
+      add('Ly tâm khi vào cua', 'T', (Wtot / G) * a, cog, 'CoG', `W_TOT/g·V0²/r = ${fmt(Wtot, 3)}/${G}·${fmt(v0, 3)}²/${fmt(r, 3)}`);
+    }
+    const wp = (mi.windP ?? 0) / G; // kN/m² → t/m²
+    const wa = mi.windA ?? 0, sf = mi.windSf ?? 1, wphi = ((mi.windPhi ?? 0) * Math.PI) / 180, cow = mi.cow && mi.cow > 0 ? mi.cow : cog;
+    if (wp > 0 && wa > 0) {
+      add('Gió (dọc)', 'L', Math.cos(wphi) * wp * wa * sf, cow, 'CoW', `cos φ·W_P·A·S_f = ${fmt(Math.cos(wphi), 4)}·${fmt(wp, 4)}·${fmt(wa, 2)}·${fmt(sf, 2)}`);
+      add('Gió (ngang)', 'T', Math.sin(wphi) * wp * wa * sf, cow, 'CoW', `sin φ·W_P·A·S_f = ${fmt(Math.sin(wphi), 4)}·${fmt(wp, 4)}·${fmt(wa, 2)}·${fmt(sf, 2)}`);
+    }
+    const acc = Math.abs(mi.accel ?? 0), aphi = ((mi.accPhi ?? 0) * Math.PI) / 180;
+    if (acc > 0) {
+      add('Tăng tốc / phanh (dọc)', 'L', (Wtot / G) * Math.cos(aphi) * acc, cog, 'CoG', `W_TOT/g·cos φ·a = ${fmt(Wtot, 3)}/${G}·${fmt(Math.cos(aphi), 4)}·${fmt(acc, 3)}`);
+      add('Tăng tốc / phanh (ngang)', 'T', (Wtot / G) * Math.sin(aphi) * acc, cog, 'CoG', `W_TOT/g·sin φ·a = ${fmt(Wtot, 3)}/${G}·${fmt(Math.sin(aphi), 4)}·${fmt(acc, 3)}`);
+    }
+    const aGL = ((mi.alphaGL ?? 0) * Math.PI) / 180, bGT = ((mi.betaGT ?? 0) * Math.PI) / 180;
+    add('Dốc dọc chưa bù', 'L', Math.sin(aGL) * Wtot, cog, 'CoG', `sin α_GL·W_TOT = ${fmt(Math.sin(aGL), 4)}·${fmt(Wtot, 3)}`);
+    add('Dốc ngang chưa bù', 'T', Math.sin(bGT) * Wtot, cog, 'CoG', `sin β_GT·W_TOT = ${fmt(Math.sin(bGT), 4)}·${fmt(Wtot, 3)}`);
+    const axleT = forces.filter((f) => f.dir === 'T').reduce((s, f) => s + f.Faxle, 0);
+    const axleL = forces.filter((f) => f.dir === 'L').reduce((s, f) => s + f.Faxle, 0);
+    const Wmax = stab.Waxle + Math.max(axleT, axleL);
+    if (forces.length) {
+      eSteps.push(`Cộng các ngoại lực như xảy ra đồng thời (thiên về an toàn): thêm ${fmt(axleT, 4)} t/trục (ngang), ${fmt(axleL, 4)} t/trục (dọc)`);
+      eSteps.push(`Tải trục lớn nhất: W_axle + ${fmt(Math.max(axleT, axleL), 4)} = ${fmt(stab.Waxle, 4)} + ${fmt(Math.max(axleT, axleL), 4)} = ${fmt(Wmax, 4)} t ${Wmax <= Ac + 1e-9 ? '≤' : '>'} A_C = ${fmt(Ac, 3)} t`);
+      checks.push({ label: 'Tải trục kể ngoại lực', value: `${fmt(Wmax, 3)} / ${fmt(Ac, 3)} t`, ok: Wmax <= Ac + 1e-9 });
+      if ((mi.alphaGL ?? 0) !== 0 || (mi.betaGT ?? 0) !== 0) notes.push('Dốc chưa bù làm dời trọng tâm nên ảnh hưởng cả ổn định thủy lực (thẻ trang 12); góc ổn định thủy lực ở trên tính khi xe nằm ngang.');
+    }
+    ext = { forces, axleT, axleL, Waxle: Wmax, Ac, steps: eSteps };
+  }
+
   // Dầm sống (trang 8)
   const Mallow = mi.spineM && mi.spineM > 0 ? mi.spineM : spmt ? 650 : 560;
   const wLine = mi.load / lines;
@@ -377,6 +519,6 @@ export function analyzeModular(mi: ModularInput): ModularResult {
 
   return {
     spec, payload, linesReq, lines, linesLong, wide, uc, perLine, gvw, effort, driveReq, driveAvail, ppuHp, ppuKw, pullAvail, trucksReq, lean,
-    length: TL, stab, spine, checks, notes, ok: checks.every((c) => c.ok !== false), steps,
+    length: TL, stab, spine, ground, ext, checks, notes, ok: checks.every((c) => c.ok !== false), steps,
   };
 }
