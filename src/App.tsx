@@ -61,6 +61,7 @@ function mergeTransport(m: Partial<TransportModel>): TransportModel {
     ...d, ...m,
     cargo: { ...d.cargo, ...m.cargo }, coef: { ...d.coef, ...m.coef }, topOver: { ...d.topOver, ...m.topOver }, direct: { ...d.direct, ...m.direct },
     blocking: { ...d.blocking, ...m.blocking }, vehicle: { ...d.vehicle, ...m.vehicle }, limits: { ...d.limits, ...m.limits }, road: { ...d.road, ...m.road },
+    ground: { ...d.ground, ...m.ground }, barges: Array.isArray(m.barges) ? m.barges : d.barges,
   };
 }
 

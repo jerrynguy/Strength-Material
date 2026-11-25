@@ -57,6 +57,19 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
           ]} />
         {parts.steps && <RSteps lines={r.axle.steps} />}
       </RSection>
+      <RSection n={N()} title="Áp lực xuống nền">
+        <RTable head={['Vị trí', 'Tải (t)', 'L₀ × B₀ (m)', 'L × B (m)', 'A (m²)', 'p (t/m²)', 'p (kPa)', 'Kết luận']}
+          rows={[r.ground.whole, ...r.ground.groups].map((x) => [x.label, fmt(x.load, 3), `${fmt(x.L0, 3)} × ${fmt(x.B0, 3)}`, `${fmt(x.L, 3)} × ${fmt(x.B, 3)}`, fmt(x.area, 3), fmt(x.p, 3), fmt(x.p * 9.81, 1), ok(x.ok)])}
+          note={`Lan truyền qua lớp dày h = ${model.ground.layerH} m theo góc θ = ${model.ground.angle}°: A = (L₀ + 2·h·tanθ)·(B₀ + 2·h·tanθ). Áp lực cho phép [p] = ${model.ground.allow} t/m².`} />
+        {parts.steps && <RSteps lines={r.ground.steps} />}
+      </RSection>
+      {r.barges.length > 0 && (
+        <RSection n={N()} title="Tỉ lệ tải sà lan">
+          <RTable head={['Sà lan', 'Hạng mục', 'Tổng tải (t)', 'DWT (t)', 'UC', 'Cho phép', 'Kết luận']}
+            rows={r.barges.map((b, i) => [b.name, model.barges[i].items.map((it) => `${it.name}: ${fmt(it.mass, 3)} t`).join('; '), fmt(b.total, 3), fmt(b.dwt, 3), `${fmt(b.uc * 100, 2)}%`, `${fmt(b.limit * 100, 1)}%`, ok(b.ok)])}
+            note="UC = tổng khối lượng / trọng tải. Chưa kiểm tra ổn định nổi, mớn nước, sức bền boong." />
+        </RSection>
+      )}
       <RSection n={N()} title="Đối chiếu điều kiện đường">
         <RSteps lines={r.road.steps} />
       </RSection>

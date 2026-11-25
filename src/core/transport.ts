@@ -146,6 +146,38 @@ export interface Road {
   brake: number;
 }
 
+export interface Ground {
+  /** chiều dày lớp phân bố dưới bánh (tấm thép, đá dăm, nền đường; m) và góc lan truyền so với phương đứng (°) */
+  layerH: number;
+  angle: number;
+  /** áp lực cho phép của nền (t/m²) */
+  allow: number;
+  /** chiều dài vệt tiếp xúc của lốp theo phương dọc (m) và bề rộng ngoài hai cụm bánh (m) */
+  tyreL: number;
+  wheelW: number;
+  /** diện tích tiếp xúc toàn xe nhập tay (m): 0 = tự tính từ trục trước đầu kéo đến trục cuối sơ mi rơ moóc */
+  wholeL: number;
+  wholeB: number;
+}
+
+export interface BargeItem {
+  name: string;
+  /** khối lượng (t) */
+  mass: number;
+}
+
+export interface Barge {
+  name: string;
+  /** trọng tải (DWT, t) */
+  dwt: number;
+  /** tỉ lệ tải cho phép (%) */
+  ucLimit: number;
+  items: BargeItem[];
+}
+
+/** Khoảng cách giữa các trục trong cụm sau của đầu kéo (m) — giả định khi tính diện tích tiếp xúc */
+export const TRACTOR_AXLE_SPACING = 1.3;
+
 export interface TransportModel {
   title: string;
   cargo: Cargo;
@@ -157,6 +189,8 @@ export interface TransportModel {
   vehicle: Vehicle;
   limits: Limits;
   road: Road;
+  ground: Ground;
+  barges: Barge[];
 }
 
 export type Dir = 'fwd' | 'rear' | 'side';
@@ -239,7 +273,43 @@ export interface RoadResult {
   steps: string[];
 }
 
+export interface GroundPatch {
+  label: string;
+  /** tải (t) */
+  load: number;
+  /** kích thước vệt tiếp xúc tại mặt đường (m) và sau khi lan truyền qua lớp phân bố (m) */
+  L0: number;
+  B0: number;
+  L: number;
+  B: number;
+  area: number;
+  /** áp lực (t/m²) */
+  p: number;
+  ok: boolean;
+}
+
+export interface GroundResult {
+  whole: GroundPatch;
+  groups: GroundPatch[];
+  /** cụm trục bất lợi nhất */
+  worst: GroundPatch | null;
+  ok: boolean;
+  steps: string[];
+}
+
+export interface BargeResult {
+  name: string;
+  total: number;
+  dwt: number;
+  uc: number;
+  limit: number;
+  ok: boolean;
+  steps: string[];
+}
+
 export interface TransportResult {
+  ground: GroundResult;
+  barges: BargeResult[];
   slide: SlideResult[];
   tip: TipResult[];
   axle: AxleResult;
@@ -414,6 +484,52 @@ export function roadCheck(m: TransportModel): RoadResult {
   return { slope, centrifugal, braking, cxRoad, cyRoad, coveredX: cxRoad <= m.coef.cxF + 1e-9, coveredY: cyRoad <= m.coef.cy + 1e-9, frictionRoad, steps };
 }
 
+/**
+ * Áp lực xuống nền: tải chia cho diện tích vệt tiếp xúc mở rộng qua lớp phân bố dày h theo góc θ:
+ * A = (L₀ + 2·h·tanθ)·(B₀ + 2·h·tanθ). Tính cho toàn xe (như cách tính thường gặp trong hồ sơ) và cho từng cụm trục.
+ */
+export function groundPressure(m: TransportModel, axle: AxleResult = axleLoads(m)): GroundResult {
+  const g = m.ground, v = m.vehicle;
+  const sp = Math.max(0, g.layerH) * Math.tan(rad(g.angle));
+  const steps: string[] = [];
+  steps.push(`Lan truyền qua lớp phân bố dày h = ${fmt(g.layerH, 3)} m, góc θ = ${fmt(g.angle, 1)}°: mỗi phía mở rộng h·tanθ = ${fmt(sp, 3)} m`);
+  const patch = (label: string, load: number, L0: number, B0: number): GroundPatch => {
+    const L = L0 + 2 * sp, B = B0 + 2 * sp, area = L * B;
+    const p = area > 0 ? load / area : Infinity;
+    const ok = g.allow <= 0 || p <= g.allow + 1e-9;
+    steps.push(`${label}: A = (${fmt(L0, 3)} + 2·${fmt(sp, 3)})·(${fmt(B0, 3)} + 2·${fmt(sp, 3)}) = ${fmt(L, 3)}·${fmt(B, 3)} = ${fmt(area, 3)} m²; p = ${fmt(load, 3)} / ${fmt(area, 3)} = ${fmt(p, 3)} t/m² (${fmt(p * G, 1)} kPa)${g.allow > 0 ? ` ${ok ? '≤' : '>'} [p] = ${fmt(g.allow, 2)} t/m²` : ''}`);
+    return { label, load, L0, B0, L, B, area, p, ok };
+  };
+  const rearX = v.kingpinX + v.fifthWheelOffset;
+  const frontX = rearX - v.wheelbase;
+  const xs = v.axles.map((a) => a.x);
+  const lastX = xs.length ? Math.max(...xs) : rearX;
+  const firstX = xs.length ? Math.min(...xs) : rearX;
+  const autoL = lastX - frontX + g.tyreL;
+  const whole = patch('Toàn xe', axle.gross, g.wholeL > 0 ? g.wholeL : autoL, g.wholeB > 0 ? g.wholeB : g.wheelW);
+  const nr = Math.max(1, Math.round(v.tractorRearAxles));
+  const groups = axle.error && axle.gross === 0 ? [] : [
+    patch('Trục trước đầu kéo', axle.tractorFront, g.tyreL, g.wheelW),
+    patch(`Cụm ${nr} trục sau đầu kéo`, axle.tractorGroup, (nr - 1) * TRACTOR_AXLE_SPACING + g.tyreL, g.wheelW),
+    patch(`Cụm ${xs.length} trục sơ mi rơ moóc`, axle.trailerGroup, lastX - firstX + g.tyreL, g.wheelW),
+  ];
+  const worst = groups.length ? groups.reduce((a, b) => (b.p > a.p ? b : a)) : null;
+  return { whole, groups, worst, ok: whole.ok && groups.every((x) => x.ok), steps };
+}
+
+/** Tỉ lệ tải sà lan: UC = Σ khối lượng / DWT */
+export function bargeCheck(b: Barge): BargeResult {
+  const total = b.items.reduce((s, i) => s + (Number.isFinite(i.mass) ? i.mass : 0), 0);
+  const uc = b.dwt > 0 ? total / b.dwt : Infinity;
+  const limit = b.ucLimit > 0 ? b.ucLimit / 100 : 1;
+  const ok = uc <= limit + 1e-9;
+  const steps = [
+    `Tổng tải: ${b.items.map((i) => `${fmt(i.mass, 3)}`).join(' + ') || '0'} = ${fmt(total, 3)} t`,
+    `UC = ${fmt(total, 3)} / ${fmt(b.dwt, 3)} = ${fmt(uc * 100, 2)}% ${ok ? '≤' : '>'} ${fmt(limit * 100, 1)}% → ${ok ? 'ĐẠT' : 'KHÔNG ĐẠT'}`,
+  ];
+  return { name: b.name, total, dwt: b.dwt, uc, limit, ok, steps };
+}
+
 export function analyzeTransport(m: TransportModel): TransportResult {
   const dirs: Dir[] = ['fwd', 'rear', 'side'];
   const slide = dirs.map((d) => checkSliding(m, d));
@@ -421,6 +537,8 @@ export function analyzeTransport(m: TransportModel): TransportResult {
   const axle = axleLoads(m);
   const dim = dimensions(m);
   const road = roadCheck(m);
+  const ground = groundPressure(m, axle);
+  const barges = m.barges.map(bargeCheck);
   const warnings: string[] = [];
   const to = m.topOver;
   if (to.n > 0 && to.lc > 0 && to.stf > 0.5 * to.lc) warnings.push(`STF = ${to.stf} daN lớn hơn 0,5·LC = ${fmt(0.5 * to.lc, 0)} daN: EN 12195-1 giới hạn lực căng dùng trong tính toán ≤ 0,5·LC.`);
@@ -430,8 +548,10 @@ export function analyzeTransport(m: TransportModel): TransportResult {
   if (m.cargo.cgX < 0 || m.cargo.cgX > m.vehicle.deckL) warnings.push('Trọng tâm hàng nằm ngoài chiều dài sàn.');
   if (!road.coveredX || !road.coveredY) warnings.push('Điều kiện đường khai báo cho gia tốc lớn hơn hệ số EN 12195-1 — kiểm tra lại với hệ số lớn hơn.');
   if (axle.error) warnings.push(axle.error);
-  const ok = slide.every((s) => s.ok) && tip.every((x) => x.ok) && axle.ok && dim.ok;
-  return { slide, tip, axle, dim, road, warnings, ok };
+  if (ground.worst && ground.worst.p > ground.whole.p * 1.5) warnings.push(`Áp lực dưới ${ground.worst.label.toLowerCase()} (${fmt(ground.worst.p, 2)} t/m²) lớn hơn nhiều so với cách chia đều cho toàn xe (${fmt(ground.whole.p, 2)} t/m²): nên kiểm tra nền theo từng cụm trục.`);
+  if (barges.length) warnings.push('Tỉ lệ tải sà lan chỉ so khối lượng với trọng tải; chưa kiểm tra ổn định nổi, mớn nước và sức bền boong sà lan.');
+  const ok = slide.every((s) => s.ok) && tip.every((x) => x.ok) && axle.ok && dim.ok && ground.ok && barges.every((b) => b.ok);
+  return { ground, barges, slide, tip, axle, dim, road, warnings, ok };
 }
 
 export const defaultTransport = (): TransportModel => ({
@@ -448,6 +568,10 @@ export const defaultTransport = (): TransportModel => ({
   },
   limits: { frontAxle: 10, tractorGroup: 18, trailerGroup: 24, gross: 48, height: 4.2, width: 2.5 },
   road: { slope: 5, vCurve: 5, radius: 7.87, brake: 4.16 },
+  ground: { layerH: 0.5, angle: 45, allow: 10, tyreL: 0.25, wheelW: 2.5, wholeL: 0, wholeB: 0 },
+  barges: [
+    { name: 'Sà lan 158 DWT', dwt: 158, ucLimit: 100, items: [{ name: 'Ống thép', mass: 74.133 }, { name: 'Hạng mục phụ 1', mass: 0.5 }, { name: 'Hạng mục phụ 2', mass: 0.5 }] },
+  ],
 });
 
 export const TRANSPORT_PRESETS: { key: string; label: string; build: () => TransportModel }[] = [
@@ -462,6 +586,7 @@ export const TRANSPORT_PRESETS: { key: string; label: string; build: () => Trans
       topOver: { n: 6, alpha: 70, stf: 500, lc: 2500 },
       direct: { nLong: 0, nTrans: 0, lc: 0, alpha: 45, beta: 30 },
       blocking: { fwd: 0, rear: 0, side: 0 },
+      barges: [],
     }),
   },
   {
@@ -474,6 +599,7 @@ export const TRANSPORT_PRESETS: { key: string; label: string; build: () => Trans
       topOver: { n: 4, alpha: 75, stf: 500, lc: 2500 },
       direct: { nLong: 2, nTrans: 2, lc: 5000, alpha: 40, beta: 35 },
       blocking: { fwd: 60, rear: 0, side: 0 },
+      barges: [],
     }),
   },
 ];

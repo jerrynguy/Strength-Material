@@ -231,6 +231,10 @@ Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trê
 - **Chống lật**: hàng tự ổn định khi b/d ≥ c/c_z; nếu không, tính số dây vắt qua nóc cần (mô men n·F_T·w·sinα / f_s).
 - **Tải trọng trục**: cân bằng mô men quanh chốt kéo, các trục trong cụm chịu như nhau; tải chốt chia về trục trước và cụm sau đầu kéo; so với giới hạn nhập vào.
 - **Kích thước bao** (cao = cao sàn + cao hàng, rộng) so với giới hạn.
+- **Áp lực nền**: tải chia cho vệt tiếp xúc mở rộng qua lớp phân bố dày h theo góc θ, A = (L₀ + 2·h·tanθ)·(B₀ + 2·h·tanθ);
+  tính cho toàn xe (như cách tính trong hồ sơ, có thể nhập tay L₀ × B₀) và cho từng cụm trục, so với áp lực cho phép [p] (t/m², kèm kPa).
+- **Tỉ lệ tải sà lan**: nhiều sà lan, mỗi sà lan một danh sách hạng mục; UC = Σ khối lượng / DWT so với UC cho phép
+  (chưa gồm ổn định nổi, mớn nước, sức bền boong).
 - **Đối chiếu điều kiện đường** (dốc, ly tâm khi vào cua, phanh) theo cách tính tĩnh học trong hồ sơ, quy ra hệ số gia tốc tương đương để so với EN.
 
 Mọi hệ số (c, f_s, f_μ, μ, giới hạn tải trục) đều sửa được để theo quy trình riêng. Có lời giải từng bước và báo cáo PDF.
