@@ -231,8 +231,11 @@ Tab **Vận chuyển & chằng buộc** kiểm tra phương án chở hàng trê
 - **Chống lật**: hàng tự ổn định khi b/d ≥ c/c_z; nếu không, tính số dây vắt qua nóc cần (mô men n·F_T·w·sinα / f_s).
 - **Tải trọng trục**: cân bằng mô men quanh chốt kéo, các trục trong cụm chịu như nhau; tải chốt chia về trục trước và cụm sau đầu kéo; so với giới hạn nhập vào.
 - **Kích thước bao** (cao = cao sàn + cao hàng, rộng) so với giới hạn.
-- **Áp lực nền**: tải chia cho vệt tiếp xúc mở rộng qua lớp phân bố dày h theo góc θ, A = (L₀ + 2·h·tanθ)·(B₀ + 2·h·tanθ);
-  tính cho toàn xe (như cách tính trong hồ sơ, có thể nhập tay L₀ × B₀) và cho từng cụm trục, so với áp lực cho phép [p] (t/m², kèm kPa).
+- **Áp lực nền** theo vệt dưới từng cụm bánh: mỗi trục 2 vệt (2 bên xe), vệt = (vệt lốp + 2·h·tanθ) × (rộng cụm bánh + 2·h·tanθ)
+  hoặc nhập tay (ví dụ 1,3 × 1,11 m); diện tích = số trục × 2 × dọc × ngang. Ra cả cách tính trong hồ sơ (tổng tải / tổng diện tích)
+  và áp lực dưới từng cụm trục (giá trị lớn nhất nền phải chịu); cảnh báo khi vệt các trục kề nhau chồng lên nhau.
+- **Tải khác trên xe** (vật tư kê chèn, gỗ kê…): tính vào tải trục và áp lực nền, không tính vào chằng buộc.
+- **Tự trọng xe** nhập tách (đầu kéo / sơ mi rơ moóc) hoặc một con số tổng phân bổ theo % về trục trước, cụm sau đầu kéo, cụm sơ mi rơ moóc.
 - **Tỉ lệ tải sà lan**: nhiều sà lan, mỗi sà lan một danh sách hạng mục; UC = Σ khối lượng / DWT so với UC cho phép
   (chưa gồm ổn định nổi, mớn nước, sức bền boong).
 - **Kiểm tra theo hồ sơ** (bảng "Force effects to cargo"): dốc dọc θ, dốc ngang β, vận tốc vào cua (m/s) và bán kính,

@@ -26,8 +26,9 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
             ['Chằng vắt qua nóc', model.topOver.n > 0 ? `${model.topOver.n} dây; α = ${model.topOver.alpha}°; STF = ${model.topOver.stf} daN; LC = ${model.topOver.lc} daN` : 'không dùng'],
             ['Chằng trực tiếp', model.direct.lc > 0 && (model.direct.nLong > 0 || model.direct.nTrans > 0) ? `LC = ${model.direct.lc} daN/nhánh; α = ${model.direct.alpha}°, β = ${model.direct.beta}°; nhánh làm việc: ${model.direct.nLong} (dọc), ${model.direct.nTrans} (ngang)` : 'không dùng'],
             ['Chặn', `BC = ${model.blocking.fwd} kN (trước), ${model.blocking.rear} kN (sau), ${model.blocking.side} kN (bên)`],
-            ['Xe', `sàn dài ${v.deckL} m, cao ${v.deckH} m, rộng ${v.width} m; chốt kéo x = ${v.kingpinX} m; trục SMRM x = ${v.axles.map((a) => a.x).join('; ')} m; tự trọng SMRM ${v.trailerTare} t tại x = ${v.trailerCgX} m`],
-            ['Đầu kéo', `không tải: trục trước ${v.tractorFront} t, cụm sau ${v.tractorRear} t (${v.tractorRearAxles} trục); WB = ${v.wheelbase} m; mâm kéo trước tâm cụm sau e = ${v.fifthWheelOffset} m`],
+            ['Xe', `sàn dài ${v.deckL} m, cao ${v.deckH} m, rộng ${v.width} m; chốt kéo x = ${v.kingpinX} m; trục SMRM x = ${v.axles.map((a) => a.x).join('; ')} m; ${v.tareMode === 'total' ? `tự trọng tổ hợp ${v.tareTotal} t, phân bổ ${v.tareShare?.front} / ${v.tareShare?.tractorRear} / ${v.tareShare?.trailer} % (trục trước / cụm sau đầu kéo / cụm SMRM)` : `tự trọng SMRM ${v.trailerTare} t tại x = ${v.trailerCgX} m`}`],
+            ...((model.others ?? []).length ? [['Tải khác trên xe', (model.others ?? []).map((o) => `${o.name}: ${fmt(o.mass, 3)} t tại x = ${fmt(o.x, 3)} m`).join('; ')] as [string, string]] : []),
+            ['Đầu kéo', `${v.tareMode === 'total' ? '' : `không tải: trục trước ${v.tractorFront} t, cụm sau ${v.tractorRear} t; `}${v.tractorRearAxles} trục sau; WB = ${v.wheelbase} m; mâm kéo trước tâm cụm sau e = ${v.fifthWheelOffset} m`],
             ['Giới hạn', `trục trước ${model.limits.frontAxle} t; cụm sau đầu kéo ${model.limits.tractorGroup} t; cụm SMRM ${model.limits.trailerGroup} t; tổng ${model.limits.gross} t; cao ${model.limits.height} m; rộng ${model.limits.width} m`],
           ]} />
         </RSection>
@@ -58,9 +59,9 @@ export function TransportReport({ model, parts }: { model: TransportModel; parts
         {parts.steps && <RSteps lines={r.axle.steps} />}
       </RSection>
       <RSection n={N()} title="Áp lực xuống nền">
-        <RTable head={['Vị trí', 'Tải (t)', 'L₀ × B₀ (m)', 'L × B (m)', 'A (m²)', 'p (t/m²)', 'p (kPa)', 'Kết luận']}
-          rows={[r.ground.whole, ...r.ground.groups].map((x) => [x.label, fmt(x.load, 3), `${fmt(x.L0, 3)} × ${fmt(x.B0, 3)}`, `${fmt(x.L, 3)} × ${fmt(x.B, 3)}`, fmt(x.area, 3), fmt(x.p, 3), fmt(x.p * 9.81, 1), ok(x.ok)])}
-          note={`Lan truyền qua lớp dày h = ${model.ground.layerH} m theo góc θ = ${model.ground.angle}°: A = (L₀ + 2·h·tanθ)·(B₀ + 2·h·tanθ). Áp lực cho phép [p] = ${model.ground.allow} t/m².`} />
+        <RTable head={['Vị trí', 'Tải (t)', 'Số trục', 'Vệt 1 cụm bánh (m)', 'A (m²)', 'p (t/m²)', 'p (kPa)', 'Kết luận']}
+          rows={[r.ground.whole, ...r.ground.groups].map((x) => [x.label, fmt(x.load, 3), `${x.axles} × 2 bên`, `${fmt(x.L, 3)} × ${fmt(x.B, 3)}`, fmt(x.area, 3), fmt(x.p, 3), fmt(x.p * 9.81, 1), ok(x.ok)])}
+          note={`Mỗi trục 2 vệt chịu tải (2 bên xe); A = số trục × 2 × dọc × ngang. Áp lực cho phép [p] = ${model.ground.allow} t/m².${r.ground.overlap ? ' Vệt các trục kề nhau chồng lên nhau: áp lực thực tế lớn hơn.' : ''}`} />
         {parts.steps && <RSteps lines={r.ground.steps} />}
       </RSection>
       {r.barges.length > 0 && (

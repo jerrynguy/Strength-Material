@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { G, analyzeTransport, axleLoads, bargeCheck, groundPressure, checkSliding, checkTipping, defaultTransport, migrateRoad, roadCheck, type TransportModel } from '../src/core/transport';
+import { G, analyzeTransport, axleLoads, bargeCheck, groundPressure, checkSliding, checkTipping, defaultTransport, migrateRoad, pipeType2, roadCheck, type TransportModel } from '../src/core/transport';
 
 const none = (m: TransportModel): TransportModel => ({
   ...m, topOver: { ...m.topOver, n: 0 }, direct: { ...m.direct, nLong: 0, nTrans: 0 }, blocking: { fwd: 0, rear: 0, side: 0 },
@@ -101,20 +101,39 @@ describe('Đối chiếu điều kiện đường (số liệu bản vẽ)', () 
 
 
 describe('Áp lực nền và tỉ lệ tải sà lan', () => {
-  it('toàn xe: A = (L₀ + 2h·tanθ)(B₀ + 2h·tanθ), p = tổng tải / A', () => {
-    const m = defaultTransport();
-    const r = groundPressure({ ...m, ground: { ...m.ground, layerH: 0.5, angle: 45, wholeL: 13, wholeB: 2.5 } });
-    const gross = axleLoads(m).gross;
-    expect(r.whole.area).toBeCloseTo(14 * 3.5, 9);
-    expect(r.whole.p).toBeCloseTo(gross / 49, 9);
-  });
-  it('cụm trục: chiều dài vệt = khoảng trục ngoài cùng + vệt lốp', () => {
-    const m = defaultTransport();
-    const r = groundPressure({ ...m, ground: { ...m.ground, layerH: 0, tyreL: 0.25, wheelW: 2.5 } });
+  it('ống loại 2 theo bản vẽ: 42,83 t / (6 × 1,3 × 2 × 1,11 = 17,316 m²) = 2,47 t/m²', () => {
+    const m = pipeType2();
+    const a = axleLoads(m);
+    expect(a.gross).toBeCloseTo(16.49 + 26.1 + 0.24, 9);
+    const r = groundPressure(m, a);
+    expect(r.whole.area).toBeCloseTo(17.316, 9);
+    expect(r.whole.p).toBeCloseTo(42.83 / 17.316, 9);
+    expect(r.whole.p).toBeCloseTo(2.47, 2);
+    // áp lực theo từng cụm trục: tải cụm / (số trục × 2 vệt)
     const g3 = r.groups[2];
-    expect(g3.area).toBeCloseTo((11.52 - 8.9 + 0.25) * 2.5, 9);
-    expect(g3.p).toBeCloseTo(axleLoads(m).trailerGroup / g3.area, 9);
-    expect(r.worst!.p).toBeGreaterThan(r.whole.p);
+    expect(g3.area).toBeCloseTo(3 * 2 * 1.3 * 1.11, 9);
+    expect(g3.p).toBeCloseTo(a.trailerGroup / g3.area, 9);
+    expect(r.worst!.p).toBeGreaterThanOrEqual(r.whole.p);
+    expect(r.overlap).toBe(false); // trục cách 1,3 m = chiều dài vệt
+  });
+  it('vệt tự tính = (vệt lốp + 2h·tanθ) × (rộng cụm bánh + 2h·tanθ); cảnh báo khi vệt chồng nhau', () => {
+    const m = defaultTransport();
+    const r = groundPressure({ ...m, ground: { ...m.ground, layerH: 0.5, angle: 45, tyreL: 0.3, setW: 0.6, patchL: 0, patchB: 0 } });
+    expect(r.whole.L).toBeCloseTo(1.3, 9);
+    expect(r.whole.B).toBeCloseTo(1.6, 9);
+    expect(r.whole.area).toBeCloseTo(6 * 2 * 1.3 * 1.6, 9);
+    expect(groundPressure({ ...m, ground: { ...m.ground, layerH: 1 } }).overlap).toBe(true);
+  });
+  it('tự trọng tổng phân bổ theo %, tải khác vào tải trục nhưng không vào chằng buộc', () => {
+    const m = pipeType2();
+    const a = axleLoads(m);
+    const b = axleLoads({ ...m, others: [] });
+    expect(a.gross - b.gross).toBeCloseTo(0.24, 9);
+    expect(checkSliding(m, 'fwd').demand).toBeCloseTo(checkSliding({ ...m, others: [] }, 'fwd').demand, 12);
+    const z = axleLoads({ ...m, cargo: { ...m.cargo, mass: 0 }, others: [] });
+    const sh = m.vehicle.tareShare!;
+    expect(z.tractorFront).toBeCloseTo((16.49 * sh.front) / 100, 9);
+    expect(z.trailerGroup).toBeCloseTo((16.49 * sh.trailer) / 100, 9);
   });
   it('sà lan 158 DWT theo bản vẽ: (74,133 + 0,5 + 0,5) / 158 = 47,55%', () => {
     const b = bargeCheck(defaultTransport().barges[0]);

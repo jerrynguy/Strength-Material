@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { fmt } from '../../core/stress';
 import {
-  BRAKE_MODES, DIR_LABEL, EN12195_ROAD, FRICTION_PRESETS, analyzeTransport, toT,
-  type Barge, type Blocking, type Cargo, type Ground, type Coefficients, type Direct, type Limits, type Road, type TopOver, type TransportModel, type TransportResult, type Vehicle,
+  BRAKE_MODES, DIR_LABEL, EN12195_ROAD, equalShare, FRICTION_PRESETS, analyzeTransport, toT,
+  type Barge, type Blocking, type OtherLoad, type Cargo, type Ground, type Coefficients, type Direct, type Limits, type Road, type TopOver, type TransportModel, type TransportResult, type Vehicle,
 } from '../../core/transport';
 import { Card, NumField, Select, TextField } from '../fields';
 import { TransportView } from './TransportView';
@@ -26,6 +26,7 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
   const gnd = (p: Partial<Ground>) => setModel((m) => ({ ...m, ground: { ...m.ground, ...p } }));
   const setBarges = (fn: (b: Barge[]) => Barge[]) => setModel((m) => ({ ...m, barges: fn(m.barges) }));
   const g = model.ground;
+  const setOthers = (fn: (o: OtherLoad[]) => OtherLoad[]) => setModel((m) => ({ ...m, others: fn(m.others ?? []) }));
   const c = model.cargo, k = model.coef, v = model.vehicle;
   const muKey = FRICTION_PRESETS.findIndex((f) => f.mu === model.mu);
 
@@ -52,6 +53,19 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
             <NumField label="Trọng tâm cách mép trước sàn" unit="m" value={c.cgX} onChange={(x) => cargo({ cgX: x })} />
           </div>
           <p className="hint">Trọng tâm coi như nằm giữa chân đế. Nhiều kiện giống nhau xếp chung một khối thì nhập tổng khối lượng.</p>
+        </Card>
+
+        <Card title="Tải khác trên xe" actions={<button onClick={() => setOthers((o) => [...o, { name: 'Vật tư kê chèn', mass: 0, x: c.cgX }])}>+ tải</button>}>
+          {(model.others ?? []).length === 0 && <p className="muted">Không có. Dùng cho gỗ kê, nêm, vật tư kê chèn an toàn…</p>}
+          {(model.others ?? []).map((o, i) => (
+            <div key={i} className="row">
+              <TextField label={i === 0 ? 'Tên' : ''} value={o.name} width={170} onChange={(t) => setOthers((arr) => arr.map((y, j) => (j === i ? { ...y, name: t } : y)))} />
+              <NumField label={i === 0 ? 'Khối lượng' : undefined} unit="t" value={o.mass} width={85} onChange={(x) => setOthers((arr) => arr.map((y, j) => (j === i ? { ...y, mass: x } : y)))} />
+              <NumField label={i === 0 ? 'Cách mép trước sàn' : undefined} unit="m" value={o.x} width={85} onChange={(x) => setOthers((arr) => arr.map((y, j) => (j === i ? { ...y, x } : y)))} />
+              <button className="del" onClick={() => setOthers((arr) => arr.filter((_, j) => j !== i))}>×</button>
+            </div>
+          ))}
+          <p className="hint">Tính vào tải trục và áp lực nền, không tính vào kiểm tra chằng buộc hàng.</p>
         </Card>
 
         <Card title="Ma sát & hệ số EN 12195-1" actions={<button onClick={() => coef({ ...EN12195_ROAD })}>Về mặc định đường bộ</button>}>
@@ -118,9 +132,23 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
           </div>
           <div className="row">
             <NumField label="Chốt kéo cách mép trước" unit="m" value={v.kingpinX} width={90} onChange={(x) => veh({ kingpinX: x })} />
-            <NumField label="Tự trọng SMRM" unit="t" value={v.trailerTare} width={90} onChange={(x) => veh({ trailerTare: x })} />
-            <NumField label="Trọng tâm SMRM" unit="m" value={v.trailerCgX} width={90} onChange={(x) => veh({ trailerCgX: x })} />
+            <Select label="Tự trọng xe" value={v.tareMode ?? 'split'} options={[{ value: 'split', label: 'Tách đầu kéo / sơ mi rơ moóc' }, { value: 'total', label: 'Một con số tổng, phân bổ theo %' }]}
+              onChange={(x) => veh(x === 'total' ? { tareMode: x, tareTotal: v.tareTotal ?? v.tractorFront + v.tractorRear + v.trailerTare, tareShare: v.tareShare ?? equalShare(v) } : { tareMode: x })} />
           </div>
+          {(v.tareMode ?? 'split') === 'split' ? (
+            <div className="row">
+              <NumField label="Tự trọng SMRM" unit="t" value={v.trailerTare} width={90} onChange={(x) => veh({ trailerTare: x })} />
+              <NumField label="Trọng tâm SMRM" unit="m" value={v.trailerCgX} width={90} onChange={(x) => veh({ trailerCgX: x })} />
+            </div>
+          ) : (
+            <div className="row">
+              <NumField label="Tự trọng tổ hợp" unit="t" value={v.tareTotal ?? 0} width={90} onChange={(x) => veh({ tareTotal: x })} />
+              <NumField label="% trục trước" value={v.tareShare?.front ?? 0} width={70} onChange={(x) => veh({ tareShare: { ...(v.tareShare ?? equalShare(v)), front: x } })} />
+              <NumField label="% cụm sau ĐK" value={v.tareShare?.tractorRear ?? 0} width={70} onChange={(x) => veh({ tareShare: { ...(v.tareShare ?? equalShare(v)), tractorRear: x } })} />
+              <NumField label="% cụm SMRM" value={v.tareShare?.trailer ?? 0} width={70} onChange={(x) => veh({ tareShare: { ...(v.tareShare ?? equalShare(v)), trailer: x } })} />
+              <button onClick={() => veh({ tareShare: equalShare(v) })} title="Chia đều theo số trục">Chia đều theo trục</button>
+            </div>
+          )}
           <div className="row">
             {v.axles.map((a, i) => (
               <NumField key={i} label={`Trục ${i + 1}`} unit="m" value={a.x} width={85} onChange={(x) => veh({ axles: v.axles.map((b, j) => (j === i ? { x } : b)) })} />
@@ -129,9 +157,11 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
             {v.axles.length > 1 && <button className="del" onClick={() => veh({ axles: v.axles.slice(0, -1) })}>− trục</button>}
           </div>
           <div className="row">
-            <NumField label="Đầu kéo: trục trước (không tải)" unit="t" value={v.tractorFront} width={90} onChange={(x) => veh({ tractorFront: x })} />
-            <NumField label="Cụm sau (không tải)" unit="t" value={v.tractorRear} width={90} onChange={(x) => veh({ tractorRear: x })} />
-            <NumField label="Số trục sau" value={v.tractorRearAxles} width={60} onChange={(x) => veh({ tractorRearAxles: Math.max(1, Math.round(x)) })} />
+            {(v.tareMode ?? 'split') === 'split' && <>
+              <NumField label="Đầu kéo: trục trước (không tải)" unit="t" value={v.tractorFront} width={90} onChange={(x) => veh({ tractorFront: x })} />
+              <NumField label="Cụm sau (không tải)" unit="t" value={v.tractorRear} width={90} onChange={(x) => veh({ tractorRear: x })} />
+            </>}
+            <NumField label="Số trục sau đầu kéo" value={v.tractorRearAxles} width={60} onChange={(x) => veh({ tractorRearAxles: Math.max(1, Math.round(x)) })} />
           </div>
           <div className="row">
             <NumField label="Chiều dài cơ sở WB" unit="m" value={v.wheelbase} width={90} title="Trục trước → tâm cụm trục sau" onChange={(x) => veh({ wheelbase: x })} />
@@ -188,14 +218,15 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
           </div>
           <div className="row">
             <NumField label="Vệt lốp dọc" unit="m" value={g.tyreL} width={80} onChange={(x) => gnd({ tyreL: x })} />
-            <NumField label="Rộng ngoài cụm bánh" unit="m" value={g.wheelW} width={80} onChange={(x) => gnd({ wheelW: x })} />
+            <NumField label="Rộng một cụm bánh" unit="m" value={g.setW} width={80} title="Bề rộng cụm bánh ở một bên xe (bánh đôi: tính cả hai lốp)" onChange={(x) => gnd({ setW: x })} />
           </div>
           <div className="row">
-            <NumField label="Toàn xe: dài tiếp xúc" unit="m" value={g.wholeL} width={85} onChange={(x) => gnd({ wholeL: x })} />
-            <NumField label="rộng tiếp xúc" unit="m" value={g.wholeB} width={85} onChange={(x) => gnd({ wholeB: x })} />
+            <NumField label="Vệt chịu tải nhập tay: dọc" unit="m" value={g.patchL} width={85} onChange={(x) => gnd({ patchL: x })} />
+            <NumField label="ngang" unit="m" value={g.patchB} width={85} onChange={(x) => gnd({ patchB: x })} />
+            <span className="muted small">đang dùng {fmt(r.ground.whole.L, 3)} × {fmt(r.ground.whole.B, 3)} m mỗi cụm bánh</span>
           </div>
-          <p className="hint">A = (L₀ + 2·h·tanθ)·(B₀ + 2·h·tanθ). Toàn xe: để 0 thì L₀ tính từ trục trước đầu kéo đến trục cuối sơ mi rơ moóc, B₀ = bề rộng cụm bánh.
-            1 t/m² ≈ 9,81 kPa. [p] = 0 để bỏ qua.</p>
+          <p className="hint">Mỗi trục có 2 vệt (2 bên xe). Vệt = (vệt lốp + 2·h·tanθ) × (rộng cụm bánh + 2·h·tanθ), hoặc nhập tay (để 0 = tự tính).
+            Diện tích = số trục × 2 × dọc × ngang. 1 t/m² ≈ 9,81 kPa. [p] = 0 để bỏ qua.</p>
         </Card>
 
         <Card title="Tỉ lệ tải sà lan" actions={<button onClick={() => setBarges((b) => [...b, { name: `Sà lan ${b.length + 1}`, dwt: 200, ucLimit: 100, items: [{ name: c.name || 'Hàng', mass: c.mass }] }])}>+ sà lan</button>}>
@@ -373,11 +404,11 @@ function RoadCard({ r, model }: { r: TransportResult; model: TransportModel }) {
 
 export const GroundTable = ({ r }: { r: TransportResult }) => (
   <table className="grid">
-    <thead><tr><th>Vị trí</th><th>Tải (t)</th><th>L₀ × B₀ (m)</th><th>L × B (m)</th><th>A (m²)</th><th>p (t/m²)</th><th>p (kPa)</th><th></th></tr></thead>
+    <thead><tr><th>Vị trí</th><th>Tải (t)</th><th>Số trục</th><th>Vệt 1 cụm bánh (m)</th><th>A (m²)</th><th>p (t/m²)</th><th>p (kPa)</th><th></th></tr></thead>
     <tbody>
       {[r.ground.whole, ...r.ground.groups].map((x, i) => (
         <tr key={i}>
-          <td>{x.label}</td><td>{fmt(x.load, 3)}</td><td>{fmt(x.L0, 3)} × {fmt(x.B0, 3)}</td><td>{fmt(x.L, 3)} × {fmt(x.B, 3)}</td><td>{fmt(x.area, 3)}</td>
+          <td>{x.label}</td><td>{fmt(x.load, 3)}</td><td>{x.axles} × 2 bên</td><td>{fmt(x.L, 3)} × {fmt(x.B, 3)}</td><td>{fmt(x.area, 3)}</td>
           <td><b>{fmt(x.p, 3)}</b></td><td>{fmt(x.p * 9.81, 1)}</td><td><Pass ok={x.ok} /></td>
         </tr>
       ))}
@@ -389,7 +420,8 @@ function GroundCard({ r }: { r: TransportResult }) {
   return (
     <Card title="Áp lực nền">
       <GroundTable r={r} />
-      <p className="hint">Cách chia đều cho toàn xe cho áp lực trung bình; áp lực dưới từng cụm trục sát với thực tế hơn khi lớp phân bố mỏng.</p>
+      {r.ground.worst && <p className="hint">Dòng đầu là cách tính trong hồ sơ (áp lực trung bình). Nền chịu áp lực theo từng cụm trục: lớn nhất <b>{fmt(r.ground.worst.p, 3)} t/m²</b> dưới {r.ground.worst.label.toLowerCase()}.</p>}
+      {r.ground.overlap && <p className="warn">Vệt của các trục kề nhau chồng lên nhau: áp lực thực tế lớn hơn giá trị tính.</p>}
       <details><summary>Lời giải</summary><ol className="steps">{r.ground.steps.map((l, i) => <li key={i}>{l}</li>)}</ol></details>
     </Card>
   );
