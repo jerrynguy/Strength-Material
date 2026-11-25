@@ -12,13 +12,16 @@ import { BeamReport } from './BeamReport';
 import { FrameReport } from './FrameReport';
 import { PART_LABELS, type ReportParts } from './primitives';
 import { StabReport } from './StabReport';
+import { TransportReport } from './TransportReport';
+import type { TransportModel } from '../../core/transport';
 
 export type ReportInput =
   | { mode: 'beam'; model: Model; ltb: LtbOptions; local: LocalOptions; stab?: BeamStabParams }
   | { mode: 'frame'; model: FrameModel; local: LocalOptions; mu?: FrameMu; ltb?: FrameLtbOptions }
-  | { mode: 'stab'; model: StabModel; local: LocalOptions };
+  | { mode: 'stab'; model: StabModel; local: LocalOptions }
+  | { mode: 'transport'; model: TransportModel };
 
-const MODE_LABEL = { beam: 'Thanh thẳng (dầm, trục, cột)', frame: 'Khung phẳng / dầm nghiêng', stab: 'Ổn định thanh chịu nén' };
+const MODE_LABEL = { beam: 'Thanh thẳng (dầm, trục, cột)', frame: 'Khung phẳng / dầm nghiêng', stab: 'Ổn định thanh chịu nén', transport: 'Kiểm tra vận chuyển và chằng buộc hàng (EN 12195-1)' };
 
 const PARTS_KEY = 'strength-material:report-parts';
 
@@ -83,18 +86,25 @@ export function ReportShell({ input, onClose }: { input: ReportInput; onClose: (
           <table className="r-meta">
             <tbody>
               <tr><th>Loại bài toán</th><td>{MODE_LABEL[input.mode]}</td><th>Ngày lập</th><td>{today}</td></tr>
-              <tr><th>Đơn vị</th><td>kN, m, kN·m; mặt cắt mm; ứng suất MPa</td><th>Người lập</th><td>{author || '—'}</td></tr>
+              <tr><th>Đơn vị</th><td>{input.mode === 'transport' ? 'khối lượng t; lực kN (1 t = 9,81 kN); dây daN; m' : 'kN, m, kN·m; mặt cắt mm; ứng suất MPa'}</td><th>Người lập</th><td>{author || '—'}</td></tr>
             </tbody>
           </table>
         </header>
         {input.mode === 'beam' && <BeamReport model={input.model} parts={parts} ltbOpt={input.ltb} local={input.local} stab={input.stab} />}
         {input.mode === 'frame' && <FrameReport model={input.model} parts={parts} local={input.local} mu={input.mu} ltb={input.ltb} />}
         {input.mode === 'stab' && <StabReport model={input.model} parts={parts} local={input.local} />}
+        {input.mode === 'transport' && <TransportReport model={input.model} parts={parts} />}
         <footer className="r-foot">
+          {input.mode === 'transport' ? (
+            <>Phương pháp: chằng buộc hàng theo EN 12195-1:2010 (vận chuyển đường bộ) — trượt và lật theo phương tiến, lùi, ngang; tải trọng trục bằng cân bằng
+            tĩnh học, các trục trong một cụm chịu tải như nhau. Kết quả do phần mềm tính — người lập chịu trách nhiệm kiểm tra số liệu đầu vào và đối chiếu
+            quy định hiện hành về tải trọng trục, kích thước xe.</>
+          ) : (<>
           Phương pháp: phân tích cấu tạo hình học bằng hạng ma trận; phương pháp ma trận độ cứng; nội lực bằng phương pháp mặt cắt; ứng suất theo
           Navier, Jurapxki, thuyết bền 3/4; ổn định theo Euler/Iasinski/bảng φ, EN 1993-1-1 &amp; 1-5. Quy ước dấu: N &gt; 0 kéo; Q &gt; 0 làm phân tố
           quay thuận chiều kim đồng hồ; M &gt; 0 căng thớ dưới. Kết quả do phần mềm tính — người lập chịu trách nhiệm kiểm tra số liệu đầu vào và
           đối chiếu tiêu chuẩn thiết kế hiện hành.
+          </>)}
         </footer>
       </article>
     </div>,

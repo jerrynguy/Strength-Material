@@ -14,6 +14,8 @@ import { LtbCard, defaultFrameLtbOptions, defaultLtbOptions } from './ui/stabili
 import { LocalCard } from './ui/stability/LocalCard';
 import { ReportShell } from './ui/report/ReportShell';
 import { ClassicalCard } from './ui/ClassicalCard';
+import { TransportApp } from './ui/transport/TransportApp';
+import { TRANSPORT_PRESETS, defaultTransport, migrateRoad, type TransportModel } from './core/transport';
 import { DEFAULT_BEAM_STAB, type BeamStabParams } from './core/beamAxial';
 import type { FrameLtbOptions, LtbOptions } from './core/ltb';
 import { DEFAULT_LOCAL, type LocalOptions } from './core/localBuckling';
@@ -30,8 +32,10 @@ const MODE_KEY = 'strength-material:mode';
 const STAB_KEY = 'strength-material:stab:v1';
 const LOCAL_KEY = 'strength-material:local:v1';
 const BSTAB_KEY = 'strength-material:beam-stab:v1';
+const TRANSPORT_KEY = 'strength-material:transport:v1';
 
-type Mode = 'beam' | 'frame' | 'stab';
+type Mode = 'beam' | 'frame' | 'stab' | 'transport';
+type StructMode = Exclude<Mode, 'transport'>;
 
 function load<T>(key: string, fallback: () => T): T {
   try {
@@ -50,14 +54,26 @@ const save = (key: string, v: unknown) => {
   }
 };
 
+/** Ghép dữ liệu đã lưu với mặc định (phòng thiếu trường khi phiên bản thay đổi) */
+function mergeTransport(m: Partial<TransportModel>): TransportModel {
+  const d = defaultTransport();
+  return {
+    ...d, ...m,
+    cargo: { ...d.cargo, ...m.cargo }, coef: { ...d.coef, ...m.coef }, topOver: { ...d.topOver, ...m.topOver }, direct: { ...d.direct, ...m.direct },
+    blocking: { ...d.blocking, ...m.blocking }, vehicle: { ...d.vehicle, ...m.vehicle }, limits: { ...d.limits, ...m.limits }, road: migrateRoad(m.road, d.road),
+    ground: { ...d.ground, ...m.ground }, barges: Array.isArray(m.barges) ? m.barges : d.barges,
+  };
+}
+
 export default function App() {
   const [mode, setMode] = useState<Mode>(() => load<Mode>(MODE_KEY, () => 'beam'));
   const [model, setModel] = useState<Model>(() => load(STORE_KEY, defaultModel));
   const [frame, setFrame] = useState<FrameModel>(() => load(FRAME_KEY, () => FRAME_PRESETS[0].build()));
   const [stab, setStab] = useState<StabModel>(() => load(STAB_KEY, defaultStabModel));
+  const [transport, setTransport] = useState<TransportModel>(() => mergeTransport(load<Partial<TransportModel>>(TRANSPORT_KEY, defaultTransport)));
   // f_y và khoảng cách sườn ngang cho ổn định cục bộ — riêng từng chế độ, dùng chung cho thẻ, báo cáo và chọn tiết diện
-  const [localOpts, setLocalOpts] = useState<Record<Mode, LocalOptions>>(() => load(LOCAL_KEY, () => ({ beam: DEFAULT_LOCAL, frame: DEFAULT_LOCAL, stab: DEFAULT_LOCAL })));
-  const setLocalFor = (m: Mode) => (o: LocalOptions) => setLocalOpts((p) => ({ ...p, [m]: o }));
+  const [localOpts, setLocalOpts] = useState<Record<StructMode, LocalOptions>>(() => load(LOCAL_KEY, () => ({ beam: DEFAULT_LOCAL, frame: DEFAULT_LOCAL, stab: DEFAULT_LOCAL })));
+  const setLocalFor = (m: StructMode) => (o: LocalOptions) => setLocalOpts((p) => ({ ...p, [m]: o }));
   const [version, setVersion] = useState(0);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [pickX, setPickX] = useState(() => model.length / 2);
@@ -68,6 +84,7 @@ export default function App() {
   useEffect(() => save(FRAME_KEY, frame), [frame]);
   useEffect(() => save(MODE_KEY, mode), [mode]);
   useEffect(() => save(STAB_KEY, stab), [stab]);
+  useEffect(() => save(TRANSPORT_KEY, transport), [transport]);
   useEffect(() => save(LOCAL_KEY, localOpts), [localOpts]);
 
   const [beamStab, setBeamStab] = useState<BeamStabParams>(() => ({ ...DEFAULT_BEAM_STAB, ...load<Partial<BeamStabParams>>(BSTAB_KEY, () => ({})) }));
@@ -93,6 +110,10 @@ export default function App() {
     setFrame(m);
     setVersion((v) => v + 1);
   };
+  const replaceTransport = (m: TransportModel) => {
+    setTransport(m);
+    setVersion((v) => v + 1);
+  };
   const replaceStab = (m: StabModel) => {
     setStab(m);
     setVersion((v) => v + 1);
@@ -110,11 +131,11 @@ export default function App() {
   const set = (fn: (m: Model) => Model) => setModel((m) => fn(m));
 
   const exportJson = () => {
-    const data = mode === 'beam' ? { kind: 'beam', ...model } : mode === 'frame' ? { kind: 'frame', ...frame } : { kind: 'stab', ...stab };
+    const data = mode === 'beam' ? { kind: 'beam', ...model } : mode === 'frame' ? { kind: 'frame', ...frame } : mode === 'transport' ? { kind: 'transport', ...transport } : { kind: 'stab', ...stab };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    const title = mode === 'beam' ? model.title : mode === 'frame' ? frame.title : stab.title;
+    const title = mode === 'beam' ? model.title : mode === 'frame' ? frame.title : mode === 'transport' ? transport.title : stab.title;
     a.download = `${title.replace(/[^\p{L}\p{N}]+/gu, '_') || 'bai_toan'}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
@@ -122,7 +143,11 @@ export default function App() {
   const importJson = async (f: File) => {
     try {
       const m = JSON.parse(await f.text());
-      if (m.kind === 'stab') {
+      if (m.kind === 'transport') {
+        if (!m.cargo || !m.vehicle) throw new Error();
+        replaceTransport(mergeTransport(m));
+        setMode('transport');
+      } else if (m.kind === 'stab') {
         if (typeof m.N !== 'number' || !m.section) throw new Error();
         replaceStab({ ...defaultStabModel(), ...m });
         setMode('stab');
@@ -159,6 +184,7 @@ export default function App() {
             <button className={mode === 'beam' ? 'on' : ''} onClick={() => setMode('beam')}>Thanh thẳng (dầm, trục, cột)</button>
             <button className={mode === 'frame' ? 'on' : ''} onClick={() => setMode('frame')}>Khung phẳng / dầm nghiêng</button>
             <button className={mode === 'stab' ? 'on' : ''} onClick={() => setMode('stab')}>Ổn định thanh nén</button>
+            <button className={mode === 'transport' ? 'on' : ''} onClick={() => setMode('transport')}>Vận chuyển & chằng buộc</button>
           </div>
           <select
             value=""
@@ -169,6 +195,9 @@ export default function App() {
               } else if (mode === 'frame') {
                 const p = FRAME_PRESETS.find((x) => x.key === e.target.value);
                 if (p) replaceFrame(p.build());
+              } else if (mode === 'transport') {
+                const p = TRANSPORT_PRESETS.find((x) => x.key === e.target.value);
+                if (p) replaceTransport(p.build());
               } else {
                 const p = STAB_PRESETS.find((x) => x.key === e.target.value);
                 if (p) replaceStab(p.build());
@@ -176,7 +205,7 @@ export default function App() {
             }}
           >
             <option value="">Mở bài mẫu…</option>
-            {(mode === 'beam' ? PRESETS : mode === 'frame' ? FRAME_PRESETS : STAB_PRESETS).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+            {(mode === 'beam' ? PRESETS : mode === 'frame' ? FRAME_PRESETS : mode === 'transport' ? TRANSPORT_PRESETS : STAB_PRESETS).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
           <button className="primary" onClick={() => setReportOpen(true)}>Xuất báo cáo PDF</button>
           <button onClick={exportJson}>Lưu (.json)</button>
@@ -186,7 +215,9 @@ export default function App() {
         </div>
       </header>
 
-      {mode === 'stab' ? (
+      {mode === 'transport' ? (
+        <TransportApp key={version} model={transport} setModel={(fn) => setTransport((m) => fn(m))} />
+      ) : mode === 'stab' ? (
         <StabilityApp key={version} model={stab} setModel={(fn) => setStab((m) => fn(m))} local={localOpts.stab} setLocal={setLocalFor('stab')} />
       ) : mode === 'frame' ? (
         <FrameApp key={version} model={frame} setModel={(fn) => setFrame((m) => fn(m))} replace={replaceFrame} local={localOpts.frame} setLocal={setLocalFor('frame')} mu={frameMu} setMu={setFrameMu} ltb={frameLtb} setLtb={setFrameLtb} />
@@ -266,12 +297,16 @@ export default function App() {
       {reportOpen && (
         <ReportShell
           onClose={closeReport}
-          input={mode === 'beam' ? { mode, model, ltb: ltbMerged, local: localOpts.beam, stab: beamStab } : mode === 'frame' ? { mode, model: frame, local: localOpts.frame, mu: frameMu, ltb: frameLtb } : { mode, model: stab, local: localOpts.stab }}
+          input={mode === 'transport' ? { mode, model: transport } : mode === 'beam' ? { mode, model, ltb: ltbMerged, local: localOpts.beam, stab: beamStab } : mode === 'frame' ? { mode, model: frame, local: localOpts.frame, mu: frameMu, ltb: frameLtb } : { mode, model: stab, local: localOpts.stab }}
         />
       )}
       <footer className="foot muted">
+        {mode === 'transport' ? (
+          <>Phương pháp: chằng buộc hàng theo EN 12195-1:2010 (đường bộ) · tải trọng trục bằng cân bằng tĩnh học, cụm trục chia đều · đối chiếu điều kiện đường bằng tĩnh học.</>
+        ) : (<>
         Phương pháp: phân tích cấu tạo hình học bằng hạng ma trận liên kết · phản lực bằng phương pháp ma trận độ cứng (dầm Euler–Bernoulli) ·
         nội lực bằng phương pháp mặt cắt · ứng suất theo Navier, Jurapxki, thuyết bền 3 và 4.
+        </>)}
       </footer>
     </div>
   );
