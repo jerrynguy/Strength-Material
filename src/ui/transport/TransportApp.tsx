@@ -2,10 +2,12 @@ import { useMemo } from 'react';
 import { fmt } from '../../core/stress';
 import {
   BRAKE_MODES, DIR_LABEL, EN12195_ROAD, equalShare, FRICTION_PRESETS, analyzeTransport, toT,
-  type Barge, type Blocking, type OtherLoad, type Cargo, type Ground, type Coefficients, type Direct, type Limits, type Road, type TopOver, type TransportModel, type TransportResult, type Vehicle,
+  type Barge, type Blocking, type OtherLoad, type Cargo, type Ground, type Coefficients, type Direct, type Limits, type Road, type TopOver, type TransportModel, type TransportResult, type Vehicle, type VehicleKind,
 } from '../../core/transport';
 import { Card, NumField, Select, TextField } from '../fields';
 import { TransportView } from './TransportView';
+import { ModularEditor, ModularTable } from './ModularCards';
+import { defaultModular, type ModularInput } from '../../core/modular';
 
 type SetFn = (fn: (m: TransportModel) => TransportModel) => void;
 
@@ -26,6 +28,8 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
   const gnd = (p: Partial<Ground>) => setModel((m) => ({ ...m, ground: { ...m.ground, ...p } }));
   const setBarges = (fn: (b: Barge[]) => Barge[]) => setModel((m) => ({ ...m, barges: fn(m.barges) }));
   const g = model.ground;
+  const kind: VehicleKind = model.vehicleKind ?? 'trailer';
+  const mod = (p: Partial<ModularInput>) => setModel((m) => ({ ...m, modular: { ...(m.modular ?? defaultModular()), ...p } }));
   const setOthers = (fn: (o: OtherLoad[]) => OtherLoad[]) => setModel((m) => ({ ...m, others: fn(m.others ?? []) }));
   const c = model.cargo, k = model.coef, v = model.vehicle;
   const muKey = FRICTION_PRESETS.findIndex((f) => f.mu === model.mu);
@@ -89,11 +93,12 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
             <NumField label="c_z" unit="g" value={k.cz} width={80} onChange={(x) => coef({ cz: x })} />
           </div>
           <div className="row">
-            <NumField label="f_s dọc" value={k.fsLong} width={70} onChange={(x) => coef({ fsLong: x })} />
+            <NumField label="f_s tiến" value={k.fsFwd} width={70} onChange={(x) => coef({ fsFwd: x })} />
+            <NumField label="f_s lùi" value={k.fsRear} width={70} onChange={(x) => coef({ fsRear: x })} />
             <NumField label="f_s ngang" value={k.fsTrans} width={70} onChange={(x) => coef({ fsTrans: x })} />
             <NumField label="f_μ" value={k.fmu} width={70} onChange={(x) => coef({ fmu: x })} />
           </div>
-          <p className="hint">Đường bộ: c_x = 0,8 (tiến), 0,5 (lùi), c_y = 0,5, c_z = 1,0. f_s là hệ số an toàn cho chằng vắt qua nóc; f_μ = 0,75 quy đổi ma sát khi chằng trực tiếp hoặc chặn.
+          <p className="hint">Đường bộ: c_x = 0,8 (tiến), 0,5 (lùi), c_y = 0,5, c_z = 1,0. f_s là hệ số an toàn cho chằng vắt qua nóc: 1,25 (tiến), 1,1 (lùi, ngang); f_μ = 0,75 quy đổi ma sát khi chằng trực tiếp (chặn dùng μ).
             Hàng dễ lắc lư (wobbling) nên tăng c_y lật. Có thể sửa các hệ số theo quy trình riêng.</p>
         </Card>
 
@@ -124,12 +129,19 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
           <p className="hint">Nhập 0 nếu không dùng. Xích, cáp ghi SWL theo tấn: LC ≈ SWL·981 daN (5 t ≈ 4900 daN). Chằng chéo 4 nhánh đối xứng: 2 nhánh làm việc mỗi phương.</p>
         </Card>
 
-        <Card title="Xe đầu kéo & sơ mi rơ moóc">
+        <Card title={kind === 'modular' ? 'Xe module thủy lực' : 'Xe đầu kéo & sơ mi rơ moóc'}>
+          <div className="row">
+            <Select<VehicleKind> label="Loại xe" value={kind} options={[{ value: 'trailer', label: 'Đầu kéo + sơ mi rơ moóc' }, { value: 'modular', label: 'Xe module thủy lực (SPMT / pull type)' }]}
+              onChange={(k) => set({ vehicleKind: k, modular: model.modular ?? defaultModular() })} />
+          </div>
           <div className="row">
             <NumField label="Dài sàn" unit="m" value={v.deckL} width={90} onChange={(x) => veh({ deckL: x })} />
             <NumField label="Cao mặt sàn" unit="m" value={v.deckH} width={90} onChange={(x) => veh({ deckH: x })} />
             <NumField label="Rộng xe" unit="m" value={v.width} width={90} onChange={(x) => veh({ width: x })} />
           </div>
+          {kind === 'modular' ? (
+            <ModularEditor mi={model.modular ?? defaultModular()} set={mod} cargoMass={c.mass} others={(model.others ?? []).reduce((s, o) => s + o.mass, 0)} />
+          ) : (<>
           <div className="row">
             <NumField label="Chốt kéo cách mép trước" unit="m" value={v.kingpinX} width={90} onChange={(x) => veh({ kingpinX: x })} />
             <Select label="Tự trọng xe" value={v.tareMode ?? 'split'} options={[{ value: 'split', label: 'Tách đầu kéo / sơ mi rơ moóc' }, { value: 'total', label: 'Một con số tổng, phân bổ theo %' }]}
@@ -168,15 +180,16 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
             <NumField label="Mâm kéo trước tâm cụm sau e" unit="m" value={v.fifthWheelOffset} width={90} onChange={(x) => veh({ fifthWheelOffset: x })} />
           </div>
           <p className="hint">Toạ độ dọc tính từ mép trước sàn sơ mi rơ moóc, hướng về phía sau. Các trục trong cùng cụm coi như chịu tải bằng nhau (hệ treo cân bằng).</p>
+          </>)}
         </Card>
 
         <Card title="Giới hạn cho phép">
-          <div className="row">
+          {kind === 'trailer' && <div className="row">
             <NumField label="Trục trước" unit="t" value={model.limits.frontAxle} width={80} onChange={(x) => lim({ frontAxle: x })} />
             <NumField label="Cụm sau đầu kéo" unit="t" value={model.limits.tractorGroup} width={80} onChange={(x) => lim({ tractorGroup: x })} />
             <NumField label="Cụm trục SMRM" unit="t" value={model.limits.trailerGroup} width={80} onChange={(x) => lim({ trailerGroup: x })} />
             <NumField label="Tổng" unit="t" value={model.limits.gross} width={80} onChange={(x) => lim({ gross: x })} />
-          </div>
+          </div>}
           <div className="row">
             <NumField label="Cao tối đa" unit="m" value={model.limits.height} width={80} onChange={(x) => lim({ height: x })} />
             <NumField label="Rộng tối đa" unit="m" value={model.limits.width} width={80} onChange={(x) => lim({ width: x })} />
@@ -210,7 +223,7 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
           <p className="hint">Kiểm tra tĩnh học như bảng “Force effects to cargo”: lực gây trượt so với ma sát (chưa kể dây chằng), và quy ra hệ số gia tốc để so với EN 12195-1.</p>
         </Card>
 
-        <Card title="Áp lực nền">
+        {kind === 'trailer' && <Card title="Áp lực nền">
           <div className="row">
             <NumField label="Lớp phân bố h" unit="m" value={g.layerH} width={85} title="Chiều dày tấm thép / lớp đá dăm / kết cấu áo đường dưới bánh xe" onChange={(x) => gnd({ layerH: x })} />
             <NumField label="Góc lan truyền θ" unit="°" value={g.angle} width={80} onChange={(x) => gnd({ angle: x })} />
@@ -227,7 +240,7 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
           </div>
           <p className="hint">Mỗi trục có 2 vệt (2 bên xe). Vệt = (vệt lốp + 2·h·tanθ) × (rộng cụm bánh + 2·h·tanθ), hoặc nhập tay (để 0 = tự tính).
             Diện tích = số trục × 2 × dọc × ngang. 1 t/m² ≈ 9,81 kPa. [p] = 0 để bỏ qua.</p>
-        </Card>
+        </Card>}
 
         <Card title="Tỉ lệ tải sà lan" actions={<button onClick={() => setBarges((b) => [...b, { name: `Sà lan ${b.length + 1}`, dwt: 200, ucLimit: 100, items: [{ name: c.name || 'Hàng', mass: c.mass }] }])}>+ sà lan</button>}>
           {model.barges.length === 0 && <p className="muted">Chưa có sà lan. Bấm “+ sà lan” nếu có chặng vận chuyển thuỷ.</p>}
@@ -266,8 +279,10 @@ export function TransportApp({ model, setModel }: { model: TransportModel; setMo
         <ConclusionCard r={r} />
         <SlideCard r={r} />
         <TipCard r={r} />
-        <AxleCard r={r} />
-        <GroundCard r={r} />
+        {r.modular ? <ModularCard r={r} /> : <>
+          <AxleCard r={r} />
+          <GroundCard r={r} />
+        </>}
         {r.barges.length > 0 && <BargeCard r={r} />}
         <RoadCard r={r} model={model} />
       </div>
@@ -279,9 +294,11 @@ export function conclusionItems(r: TransportResult) {
   return [
     ...r.slide.map((s) => ({ label: `Trượt – ${DIR_LABEL[s.dir].toLowerCase()}`, ok: s.ok, detail: `F = ${fmt(s.demand, 1)} kN; khả năng giữ ${fmt(s.capacity, 1)} kN; UC = ${fmt(s.uc, 3)}` })),
     ...r.tip.map((x) => ({ label: `Lật – ${DIR_LABEL[x.dir].toLowerCase()}`, ok: x.ok, detail: `M_lật = ${fmt(x.mOver, 1)}; M_chống = ${fmt(x.mStab + x.mLash, 1)} kN·m` })),
-    ...r.axle.checks.map((a) => ({ label: a.label, ok: a.ok, detail: `${fmt(a.value, 2)} t${a.limit > 0 ? ` so với ${fmt(a.limit, 2)} t` : ''}` })),
+    ...(r.modular
+      ? r.modular.checks.filter((c) => c.ok !== null).map((c) => ({ label: `Xe module: ${c.label.toLowerCase()}`, ok: c.ok as boolean, detail: c.value }))
+      : r.axle.checks.map((a) => ({ label: a.label, ok: a.ok, detail: `${fmt(a.value, 2)} t${a.limit > 0 ? ` so với ${fmt(a.limit, 2)} t` : ''}` }))),
     ...r.dim.checks.map((a) => ({ label: a.label, ok: a.ok, detail: `${fmt(a.value, 3)} m${a.limit > 0 ? ` so với ${fmt(a.limit, 2)} m` : ''}` })),
-    ...[r.ground.whole, ...(r.ground.worst ? [r.ground.worst] : [])].map((x) => ({ label: `Áp lực nền – ${x.label.toLowerCase()}`, ok: x.ok, detail: `p = ${fmt(x.p, 3)} t/m² (${fmt(x.p * 9.81, 1)} kPa) trên ${fmt(x.area, 2)} m²` })),
+    ...(r.modular ? [] : [r.ground.whole, ...(r.ground.worst ? [r.ground.worst] : [])]).map((x) => ({ label: `Áp lực nền – ${x.label.toLowerCase()}`, ok: x.ok, detail: `p = ${fmt(x.p, 3)} t/m² (${fmt(x.p * 9.81, 1)} kPa) trên ${fmt(x.area, 2)} m²` })),
     ...r.road.checks.map((c) => ({ label: `Hồ sơ: ${c.label.toLowerCase()}`, ok: c.ok, detail: `${c.formula} = ${fmt(c.force, 1)} kN so với F_ms = ${fmt(c.friction, 1)} kN` })),
     ...r.barges.map((b) => ({ label: `Tỉ lệ tải ${b.name}`, ok: b.ok, detail: `${fmt(b.total, 3)} / ${fmt(b.dwt, 3)} t = ${fmt(b.uc * 100, 2)}% (cho phép ${fmt(b.limit * 100, 1)}%)` })),
   ];
@@ -314,7 +331,7 @@ function SlideCard({ r }: { r: TransportResult }) {
           ))}
         </tbody>
       </table>
-      <p className="hint">Lực (kN). UC = lực quán tính / tổng khả năng giữ. Khi có chằng trực tiếp hoặc chặn, ma sát dùng μ·f_μ cho mọi thành phần (thiên về an toàn).</p>
+      <p className="hint">Lực (kN). UC = lực quán tính / tổng khả năng giữ. Có chằng trực tiếp thì ma sát dùng μ·f_μ cho mọi thành phần (thiên về an toàn); chỉ chặn hoặc vắt nóc thì dùng μ.</p>
       {r.slide.map((s) => (
         <details key={s.dir}><summary>Lời giải – {DIR_LABEL[s.dir].toLowerCase()}</summary><ol className="steps">{s.steps.map((l, i) => <li key={i}>{l}</li>)}</ol></details>
       ))}
@@ -340,6 +357,20 @@ function TipCard({ r }: { r: TransportResult }) {
       {r.tip.map((x) => (
         <details key={x.dir}><summary>Lời giải – {DIR_LABEL[x.dir].toLowerCase()}</summary><ol className="steps">{x.steps.map((l, i) => <li key={i}>{l}</li>)}</ol></details>
       ))}
+    </Card>
+  );
+}
+
+function ModularCard({ r }: { r: TransportResult }) {
+  const x = r.modular!;
+  return (
+    <Card title={`Xe module thủy lực — ${x.spec.label}`}>
+      <ModularTable x={x} />
+      <table className="grid">
+        <tbody>{r.dim.checks.map((c, i) => <tr key={i}><td>{c.label}</td><td>{fmt(c.value, 3)} m{c.limit > 0 ? ` (giới hạn ${c.limit} m)` : ''}</td><td><Pass ok={c.ok} /></td></tr>)}</tbody>
+      </table>
+      <p className="hint">Theo thẻ tham khảo xe module thủy lực: chưa kể hệ số động; chưa kiểm tra góc ổn định thủy lực / kết cấu (S_HSA, S_SSA).</p>
+      <details><summary>Lời giải</summary><ol className="steps">{x.steps.map((l, i) => <li key={i}>{l}</li>)}</ol></details>
     </Card>
   );
 }
