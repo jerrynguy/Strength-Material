@@ -125,6 +125,29 @@ export interface Vehicle {
   wheelbase: number;
   /** mâm kéo nằm trước tâm cụm trục sau (m) */
   fifthWheelOffset: number;
+  /** cách nhập tự trọng xe: tách từng phần (mặc định) hay một con số tổng phân bổ theo tỉ lệ */
+  tareMode?: TareMode;
+  /** tự trọng cả tổ hợp (t) khi tareMode = 'total' */
+  tareTotal?: number;
+  /** tỉ lệ phân bổ tự trọng tổng về trục trước / cụm sau đầu kéo / cụm sơ mi rơ moóc (%) */
+  tareShare?: { front: number; tractorRear: number; trailer: number };
+}
+
+export type TareMode = 'split' | 'total';
+
+/** Tải khác trên xe (vật tư kê chèn, gỗ kê...): vào tải trục và áp lực nền, không vào kiểm tra chằng buộc hàng */
+export interface OtherLoad {
+  name: string;
+  /** khối lượng (t) và vị trí tính từ mép trước sàn (m) */
+  mass: number;
+  x: number;
+}
+
+/** Tỉ lệ phân bổ chia đều theo số trục */
+export function equalShare(v: Vehicle) {
+  const nr = Math.max(1, Math.round(v.tractorRearAxles)), nt = v.axles.length, n = 1 + nr + nt;
+  const r = (k: number) => Math.round((k / n) * 1000) / 10;
+  return { front: r(1), tractorRear: r(nr), trailer: Math.round((100 - r(1) - r(nr)) * 10) / 10 };
 }
 
 export interface Limits {
@@ -184,12 +207,12 @@ export interface Ground {
   angle: number;
   /** áp lực cho phép của nền (t/m²) */
   allow: number;
-  /** chiều dài vệt tiếp xúc của lốp theo phương dọc (m) và bề rộng ngoài hai cụm bánh (m) */
+  /** vệt lốp theo phương dọc (m) và bề rộng một cụm bánh (một bên xe, m) */
   tyreL: number;
-  wheelW: number;
-  /** diện tích tiếp xúc toàn xe nhập tay (m): 0 = tự tính từ trục trước đầu kéo đến trục cuối sơ mi rơ moóc */
-  wholeL: number;
-  wholeB: number;
+  setW: number;
+  /** vệt chịu tải dưới một cụm bánh nhập tay (dọc × ngang, m): 0 = tự tính vệt lốp + 2·h·tanθ */
+  patchL: number;
+  patchB: number;
 }
 
 export interface BargeItem {
@@ -221,6 +244,8 @@ export interface TransportModel {
   vehicle: Vehicle;
   limits: Limits;
   road: Road;
+  /** tải khác trên xe (không phải hàng được chằng) */
+  others?: OtherLoad[];
   ground: Ground;
   barges: Barge[];
 }
@@ -322,11 +347,10 @@ export interface RoadResult {
 
 export interface GroundPatch {
   label: string;
-  /** tải (t) */
+  /** tải (t) và số trục */
   load: number;
-  /** kích thước vệt tiếp xúc tại mặt đường (m) và sau khi lan truyền qua lớp phân bố (m) */
-  L0: number;
-  B0: number;
+  axles: number;
+  /** vệt chịu tải dưới một cụm bánh (dọc × ngang, m) và tổng diện tích (m²) = số trục × 2 bên × L × B */
   L: number;
   B: number;
   area: number;
@@ -336,11 +360,14 @@ export interface GroundPatch {
 }
 
 export interface GroundResult {
+  /** cách tính trong hồ sơ: tổng tải / tổng diện tích các vệt */
   whole: GroundPatch;
   groups: GroundPatch[];
   /** cụm trục bất lợi nhất */
   worst: GroundPatch | null;
   ok: boolean;
+  /** vệt hai trục kề nhau chồng lên nhau */
+  overlap: boolean;
   steps: string[];
 }
 
@@ -467,24 +494,41 @@ export function axleLoads(m: TransportModel): AxleResult {
   const arm = xg - v.kingpinX;
   if (arm <= 0) return empty('Cụm trục phải nằm sau chốt kéo.');
   if (v.wheelbase <= 0) return empty('Chiều dài cơ sở đầu kéo phải dương.');
+  const total = v.tareMode === 'total';
   // Mô men quanh chốt kéo (t·m)
   const items = [
-    { name: 'tự trọng sơ mi rơ moóc', m: v.trailerTare, x: v.trailerCgX },
+    ...(total ? [] : [{ name: 'tự trọng sơ mi rơ moóc', m: v.trailerTare, x: v.trailerCgX }]),
     { name: cg.name || 'hàng', m: cg.mass, x: cg.cgX },
+    ...(m.others ?? []).filter((o) => o.mass !== 0).map((o) => ({ name: o.name, m: o.mass, x: o.x })),
   ];
   const sumM = items.reduce((s, i) => s + i.m, 0);
   const mom = items.reduce((s, i) => s + i.m * (i.x - v.kingpinX), 0);
-  const group = mom / arm;
-  const kingpin = sumM - group;
+  const group0 = mom / arm;
+  const kingpin = sumM - group0;
   steps.push(`Tâm cụm trục sơ mi rơ moóc: x_g = ${fmt(xg, 3)} m; cánh tay đòn tới chốt kéo a = ${fmt(xg, 3)} − ${fmt(v.kingpinX, 3)} = ${fmt(arm, 3)} m`);
-  steps.push(`ΣM quanh chốt kéo: R_g·a = ${items.map((i) => `${fmt(i.m, 3)}·(${fmt(i.x, 3)} − ${fmt(v.kingpinX, 3)})`).join(' + ')} = ${fmt(mom, 3)} t·m → R_g = ${fmt(group, 3)} t`);
-  steps.push(`ΣY: R_chốt = ${fmt(sumM, 3)} − ${fmt(group, 3)} = ${fmt(kingpin, 3)} t; mỗi trục sơ mi rơ moóc (hệ treo cân bằng) = ${fmt(group / v.axles.length, 3)} t`);
+  steps.push(`ΣM quanh chốt kéo (${items.map((i) => i.name).join(', ')}): R_g·a = ${items.map((i) => `${fmt(i.m, 3)}·(${fmt(i.x, 3)} − ${fmt(v.kingpinX, 3)})`).join(' + ')} = ${fmt(mom, 3)} t·m → R_g = ${fmt(group0, 3)} t`);
+  steps.push(`ΣY: R_chốt = ${fmt(sumM, 3)} − ${fmt(group0, 3)} = ${fmt(kingpin, 3)} t`);
   const e = v.fifthWheelOffset, wb = v.wheelbase;
   const dFront = (kingpin * e) / wb;
-  const tf = v.tractorFront + dFront;
-  const tr = v.tractorRear + kingpin - dFront;
   const nr = Math.max(1, Math.round(v.tractorRearAxles));
-  steps.push(`Đầu kéo: tải chốt chia về trục trước R_chốt·e/WB = ${fmt(kingpin, 3)}·${fmt(e, 3)}/${fmt(wb, 3)} = ${fmt(dFront, 3)} t → trục trước ${fmt(v.tractorFront, 3)} + ${fmt(dFront, 3)} = ${fmt(tf, 3)} t; cụm sau ${fmt(v.tractorRear, 3)} + ${fmt(kingpin - dFront, 3)} = ${fmt(tr, 3)} t (${nr} trục, ${fmt(tr / nr, 3)} t/trục)`);
+  let tf: number, tr: number, group: number;
+  if (total) {
+    const T = v.tareTotal ?? 0;
+    const sh = v.tareShare ?? equalShare(v);
+    const sum = sh.front + sh.tractorRear + sh.trailer || 1;
+    const tF = (T * sh.front) / sum, tR = (T * sh.tractorRear) / sum, tT = (T * sh.trailer) / sum;
+    steps.push(`Tự trọng tổ hợp ${fmt(T, 3)} t phân bổ ${fmt(sh.front, 1)} / ${fmt(sh.tractorRear, 1)} / ${fmt(sh.trailer, 1)} %: trục trước ${fmt(tF, 3)} t; cụm sau đầu kéo ${fmt(tR, 3)} t; cụm sơ mi rơ moóc ${fmt(tT, 3)} t`);
+    tf = tF + dFront;
+    tr = tR + kingpin - dFront;
+    group = group0 + tT;
+    steps.push(`Tải chốt chia về trục trước R_chốt·e/WB = ${fmt(kingpin, 3)}·${fmt(e, 3)}/${fmt(wb, 3)} = ${fmt(dFront, 3)} t → trục trước ${fmt(tf, 3)} t; cụm sau ${fmt(tr, 3)} t (${nr} trục); cụm sơ mi rơ moóc ${fmt(group0, 3)} + ${fmt(tT, 3)} = ${fmt(group, 3)} t`);
+  } else {
+    tf = v.tractorFront + dFront;
+    tr = v.tractorRear + kingpin - dFront;
+    group = group0;
+    steps.push(`Đầu kéo: tải chốt chia về trục trước R_chốt·e/WB = ${fmt(kingpin, 3)}·${fmt(e, 3)}/${fmt(wb, 3)} = ${fmt(dFront, 3)} t → trục trước ${fmt(v.tractorFront, 3)} + ${fmt(dFront, 3)} = ${fmt(tf, 3)} t; cụm sau ${fmt(v.tractorRear, 3)} + ${fmt(kingpin - dFront, 3)} = ${fmt(tr, 3)} t (${nr} trục, ${fmt(tr / nr, 3)} t/trục)`);
+  }
+  steps.push(`Mỗi trục sơ mi rơ moóc (hệ treo cân bằng) = ${fmt(group / v.axles.length, 3)} t`);
   const gross = tf + tr + group;
   steps.push(`Tổng trọng lượng tổ hợp: ${fmt(tf, 3)} + ${fmt(tr, 3)} + ${fmt(group, 3)} = ${fmt(gross, 3)} t`);
   const checks = [
@@ -555,36 +599,42 @@ export function roadCheck(m: TransportModel): RoadResult {
 }
 
 /**
- * Áp lực xuống nền: tải chia cho diện tích vệt tiếp xúc mở rộng qua lớp phân bố dày h theo góc θ:
- * A = (L₀ + 2·h·tanθ)·(B₀ + 2·h·tanθ). Tính cho toàn xe (như cách tính thường gặp trong hồ sơ) và cho từng cụm trục.
+ * Áp lực xuống nền theo vệt dưới từng cụm bánh (mỗi trục 2 bên): vệt L × B = (vệt lốp + 2·h·tanθ) × (bề rộng cụm bánh + 2·h·tanθ),
+ * hoặc nhập tay. Diện tích = số trục × 2 × L × B.
+ *  - Cách trong hồ sơ: tổng tải / tổng diện tích mọi vệt (áp lực trung bình).
+ *  - Từng cụm trục: tải cụm / diện tích các vệt của cụm — áp lực lớn nhất là giá trị nền thực sự phải chịu.
  */
 export function groundPressure(m: TransportModel, axle: AxleResult = axleLoads(m)): GroundResult {
   const g = m.ground, v = m.vehicle;
   const sp = Math.max(0, g.layerH) * Math.tan(rad(g.angle));
   const steps: string[] = [];
-  steps.push(`Lan truyền qua lớp phân bố dày h = ${fmt(g.layerH, 3)} m, góc θ = ${fmt(g.angle, 1)}°: mỗi phía mở rộng h·tanθ = ${fmt(sp, 3)} m`);
-  const patch = (label: string, load: number, L0: number, B0: number): GroundPatch => {
-    const L = L0 + 2 * sp, B = B0 + 2 * sp, area = L * B;
+  const L = g.patchL > 0 ? g.patchL : g.tyreL + 2 * sp;
+  const B = g.patchB > 0 ? g.patchB : g.setW + 2 * sp;
+  if (g.patchL > 0 && g.patchB > 0) steps.push(`Vệt chịu tải dưới một cụm bánh (nhập tay): L × B = ${fmt(L, 3)} × ${fmt(B, 3)} m`);
+  else steps.push(`Vệt chịu tải dưới một cụm bánh: lan truyền qua lớp dày h = ${fmt(g.layerH, 3)} m theo góc θ = ${fmt(g.angle, 1)}° (mỗi phía h·tanθ = ${fmt(sp, 3)} m): L = ${g.patchL > 0 ? `${fmt(L, 3)} (nhập tay)` : `${fmt(g.tyreL, 3)} + 2·${fmt(sp, 3)} = ${fmt(L, 3)}`} m; B = ${g.patchB > 0 ? `${fmt(B, 3)} (nhập tay)` : `${fmt(g.setW, 3)} + 2·${fmt(sp, 3)} = ${fmt(B, 3)}`} m`);
+  const patch = (label: string, load: number, n: number): GroundPatch => {
+    const area = n * 2 * L * B;
     const p = area > 0 ? load / area : Infinity;
     const ok = g.allow <= 0 || p <= g.allow + 1e-9;
-    steps.push(`${label}: A = (${fmt(L0, 3)} + 2·${fmt(sp, 3)})·(${fmt(B0, 3)} + 2·${fmt(sp, 3)}) = ${fmt(L, 3)}·${fmt(B, 3)} = ${fmt(area, 3)} m²; p = ${fmt(load, 3)} / ${fmt(area, 3)} = ${fmt(p, 3)} t/m² (${fmt(p * G, 1)} kPa)${g.allow > 0 ? ` ${ok ? '≤' : '>'} [p] = ${fmt(g.allow, 2)} t/m²` : ''}`);
-    return { label, load, L0, B0, L, B, area, p, ok };
+    steps.push(`${label}: A = ${n}·2·${fmt(L, 3)}·${fmt(B, 3)} = ${fmt(area, 3)} m²; p = ${fmt(load, 3)} / ${fmt(area, 3)} = ${fmt(p, 3)} t/m² (${fmt(p * G, 1)} kPa)${g.allow > 0 ? ` ${ok ? '≤' : '>'} [p] = ${fmt(g.allow, 2)} t/m²` : ''}`);
+    return { label, load, axles: n, L, B, area, p, ok };
   };
-  const rearX = v.kingpinX + v.fifthWheelOffset;
-  const frontX = rearX - v.wheelbase;
-  const xs = v.axles.map((a) => a.x);
-  const lastX = xs.length ? Math.max(...xs) : rearX;
-  const firstX = xs.length ? Math.min(...xs) : rearX;
-  const autoL = lastX - frontX + g.tyreL;
-  const whole = patch('Toàn xe', axle.gross, g.wholeL > 0 ? g.wholeL : autoL, g.wholeB > 0 ? g.wholeB : g.wheelW);
   const nr = Math.max(1, Math.round(v.tractorRearAxles));
-  const groups = axle.error && axle.gross === 0 ? [] : [
-    patch('Trục trước đầu kéo', axle.tractorFront, g.tyreL, g.wheelW),
-    patch(`Cụm ${nr} trục sau đầu kéo`, axle.tractorGroup, (nr - 1) * TRACTOR_AXLE_SPACING + g.tyreL, g.wheelW),
-    patch(`Cụm ${xs.length} trục sơ mi rơ moóc`, axle.trailerGroup, lastX - firstX + g.tyreL, g.wheelW),
-  ];
+  const nt = v.axles.length;
+  const valid = !(axle.error && axle.gross === 0);
+  const whole = patch(`Toàn xe (cách trong hồ sơ: tổng tải / tổng diện tích ${1 + nr + nt} trục)`, axle.gross, 1 + nr + nt);
+  const groups = valid ? [
+    patch('Trục trước đầu kéo', axle.tractorFront, 1),
+    patch(`Cụm ${nr} trục sau đầu kéo`, axle.tractorGroup, nr),
+    patch(`Cụm ${nt} trục sơ mi rơ moóc`, axle.trailerGroup, nt),
+  ] : [];
   const worst = groups.length ? groups.reduce((a, b) => (b.p > a.p ? b : a)) : null;
-  return { whole, groups, worst, ok: whole.ok && groups.every((x) => x.ok), steps };
+  // Chồng vệt giữa các trục kề nhau trong cụm
+  const xs = [...v.axles.map((a) => a.x)].sort((a, b) => a - b);
+  const minGap = Math.min(...xs.slice(1).map((x, i) => x - xs[i]), nr > 1 ? TRACTOR_AXLE_SPACING : Infinity);
+  const overlap = minGap < L - 1e-9;
+  if (overlap) steps.push(`Lưu ý: khoảng cách trục nhỏ nhất ${fmt(minGap, 3)} m < chiều dài vệt ${fmt(L, 3)} m — các vệt chồng lên nhau, diện tích thực nhỏ hơn và áp lực lớn hơn giá trị trên.`);
+  return { whole, groups, worst, ok: whole.ok && groups.every((x) => x.ok), overlap, steps };
 }
 
 /** Tỉ lệ tải sà lan: UC = Σ khối lượng / DWT */
@@ -618,7 +668,8 @@ export function analyzeTransport(m: TransportModel): TransportResult {
   if (m.cargo.cgX < 0 || m.cargo.cgX > m.vehicle.deckL) warnings.push('Trọng tâm hàng nằm ngoài chiều dài sàn.');
   if (!road.coveredX || !road.coveredY) warnings.push('Điều kiện đường khai báo cho gia tốc lớn hơn hệ số EN 12195-1 — kiểm tra lại với hệ số lớn hơn.');
   if (axle.error) warnings.push(axle.error);
-  if (ground.worst && ground.worst.p > ground.whole.p * 1.5) warnings.push(`Áp lực dưới ${ground.worst.label.toLowerCase()} (${fmt(ground.worst.p, 2)} t/m²) lớn hơn nhiều so với cách chia đều cho toàn xe (${fmt(ground.whole.p, 2)} t/m²): nên kiểm tra nền theo từng cụm trục.`);
+  if (ground.worst && ground.worst.p > ground.whole.p * 1.05) warnings.push(`Áp lực dưới ${ground.worst.label.toLowerCase()} (${fmt(ground.worst.p, 2)} t/m²) lớn hơn cách chia đều cho toàn xe (${fmt(ground.whole.p, 2)} t/m²): nền chịu áp lực theo từng cụm trục, nên dùng giá trị lớn nhất.`);
+  if (ground.overlap) warnings.push('Vệt chịu tải của các trục kề nhau chồng lên nhau: áp lực nền thực tế lớn hơn giá trị tính.');
   if (barges.length) warnings.push('Tỉ lệ tải sà lan chỉ so khối lượng với trọng tải; chưa kiểm tra ổn định nổi, mớn nước và sức bền boong sà lan.');
   const ok = slide.every((s) => s.ok) && tip.every((x) => x.ok) && axle.ok && dim.ok && ground.ok && barges.every((b) => b.ok) && road.checks.every((c) => c.ok);
   return { ground, barges, slide, tip, axle, dim, road, warnings, ok };
@@ -638,14 +689,54 @@ export const defaultTransport = (): TransportModel => ({
   },
   limits: { frontAxle: 10, tractorGroup: 18, trailerGroup: 24, gross: 48, height: 4.2, width: 2.5 },
   road: { slope: 5, crossSlope: 5, vStraight: 8.3, vCurve: 1.38, radius: 7.87, brakeMode: 'accel', brake: 4.16, brakeTime: 2, brakeDist: 8.3, frictionCos: false },
-  ground: { layerH: 0.5, angle: 45, allow: 10, tyreL: 0.25, wheelW: 2.5, wholeL: 0, wholeB: 0 },
+  others: [],
+  ground: { layerH: 0.5, angle: 45, allow: 10, tyreL: 0.3, setW: 0.6, patchL: 0, patchB: 0 },
   barges: [
     { name: 'Sà lan 158 DWT', dwt: 158, ucLimit: 100, items: [{ name: 'Ống thép', mass: 74.133 }, { name: 'Hạng mục phụ 1', mass: 0.5 }, { name: 'Hạng mục phụ 2', mass: 0.5 }] },
   ],
 });
 
+/**
+ * Ống loại 2 theo bản vẽ áp lực nền: 3 ống 8 690 kg xếp 2 dưới 1 trên, xích vắt qua đỉnh xuống hai bên sàn (4 dây),
+ * 6 trục cách nhau 1,3 m, vệt chịu tải 1,3 × 1,11 m mỗi cụm bánh; xe 16,49 t, vật tư kê chèn 0,24 t; cao toàn bộ 3,435 m.
+ * Giả định tạm (đo gần đúng trên hình vẽ hoặc giá trị điển hình): đường kính ống ≈ 1,0 m; STF = 500 daN; góc dây 70°;
+ * vị trí chốt kéo, các trục, chiều dài cơ sở; tự trọng phân bổ 32 / 34 / 34 % (trục trước / cụm sau đầu kéo / cụm sơ mi rơ moóc).
+ */
+export function pipeType2(): TransportModel {
+  const D = 1.0;
+  const saddle = 0.1;
+  const cargoH = saddle + D * (1 + Math.sqrt(3) / 2);
+  const vehicle: Vehicle = {
+    ...defaultTransport().vehicle,
+    deckL: 11.6, deckH: 3.435 - cargoH, width: 2.5,
+    kingpinX: 0.65, fifthWheelOffset: 0.1, wheelbase: 4.3,
+    axles: [{ x: 7.45 }, { x: 8.75 }, { x: 10.05 }],
+    tractorRearAxles: 2,
+    tareMode: 'total',
+    tareTotal: 16.49,
+    tareShare: { front: 32, tractorRear: 34, trailer: 34 },
+  };
+  return {
+    ...defaultTransport(),
+    title: 'Ống loại 2 — 3 × 8,69 t, chằng vắt nóc, áp lực nền',
+    cargo: {
+      name: 'Ống loại 2 (3 ống × 8,69 t)', mass: 26.1, length: 11.1, width: 2 * D, height: cargoH,
+      footL: 11.1, footW: D, cgH: saddle + D / 2 + (D * Math.sqrt(3)) / 6, cgX: 5.9,
+    },
+    mu: 0.6,
+    topOver: { n: 4, alpha: 70, stf: 500, lc: 4900 },
+    direct: { nLong: 0, nTrans: 0, lc: 4900, alpha: 45, beta: 30 },
+    blocking: { fwd: 0, rear: 0, side: 0 },
+    vehicle,
+    others: [{ name: 'Vật tư kê chèn an toàn', mass: 0.24, x: 5.9 }],
+    ground: { layerH: 0.5, angle: 45, allow: 10, tyreL: 0.3, setW: 0.11, patchL: 1.3, patchB: 1.11 },
+    barges: [],
+  };
+}
+
 export const TRANSPORT_PRESETS: { key: string; label: string; build: () => TransportModel }[] = [
-  { key: 'pipe', label: 'Ống thép 26,1 t, chằng chéo xích 5 t (theo bản vẽ; kích thước xe, trọng tâm giả định)', build: defaultTransport },
+  { key: 'pipe', label: 'Ống thép 26,1 t — bảng lực tác dụng lên hàng (kích thước xe, trọng tâm giả định)', build: defaultTransport },
+  { key: 'pipe2', label: 'Ống loại 2: 3 × 8,69 t, chằng vắt nóc 4 dây — áp lực nền theo bản vẽ (STF, đường kính ống tạm)', build: pipeType2 },
   {
     key: 'crate', label: 'Kiện gỗ 10 t trên sàn gỗ, chằng vắt qua nóc',
     build: () => ({
